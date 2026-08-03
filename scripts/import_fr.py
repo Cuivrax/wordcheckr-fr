@@ -8,6 +8,7 @@ produisent des rapports au sha256 identique — c'est un test de la porte Phase 
 Ordre de fusion, conforme à docs/03_SOURCES_ET_IMPORT_DATA.md §4 :
 
     1. formes Kartmaan filtrées      is_french = 1
+    1 bis. formes hbenbel filtrées   is_french = 1   (D-014)
     2. ODS8                          is_ods8 = 1, is_ods9 = 1, is_french = 1
     3. retraits ODS9                 is_ods9 = 0
     4. keep_overrides ODS9           is_ods9 = 1
@@ -44,6 +45,8 @@ from lib.normalize import (  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 ODS8_PATH = ROOT / "data" / "raw" / "ods8.json"
 KARTMAAN_PATH = ROOT / "data" / "raw" / "french_dict.db"
+HBENBEL_DIR = ROOT / "data" / "raw" / "hbenbel"
+HBENBEL_FILES = ("dictionary.csv", "adj.csv", "noun.csv", "verb.csv", "adv.csv")
 ODS9_PATH = ROOT / "data" / "ods9" / "ods9_patch.sqlite"
 SCHEMA_PATH = ROOT / "schema.sql"
 TARGET_PATH = ROOT / "storage" / "dictionary_fr.sqlite"
@@ -145,8 +148,59 @@ def load_kartmaan() -> tuple[dict[str, set[str]], Counter, list[tuple[str, str, 
     return kept, rejected, samples
 
 
+def load_hbenbel() -> tuple[dict[str, set[str]], Counter, list[tuple[str, str, str]]]:
+    """Charge le dictionnaire hbenbel (D-014).
+
+    hbenbel n'a pas d'étiquette `NP` : ses noms propres et ses sigles sont noyés
+    dans noun.csv. La CASSE de la forme d'origine est le seul marqueur
+    disponible — `Aberdonien`, `Ewok`, `ADN`, `AVC` commencent par une
+    majuscule, un nom commun français jamais. Cette règle implémente donc les
+    exclusions « noms propres » et « sigles » exigées par docs/03 §5.
+    """
+    forms: dict[str, set[str]] = defaultdict(set)
+    rejected: Counter = Counter()
+    samples: list[tuple[str, str, str]] = []
+    seen_rejected: set[tuple[str, str]] = set()
+    origins: dict[str, set[str]] = defaultdict(set)
+
+    for name in HBENBEL_FILES:
+        path = HBENBEL_DIR / name
+        category = path.stem
+        with path.open(encoding="utf-8", newline="") as handle:
+            if category == "dictionary":
+                # Liste plate, une forme par ligne, sans en-tête.
+                raw_forms = (line.strip() for line in handle)
+            else:
+                raw_forms = (
+                    (row.get("form") or "").strip() for row in csv.DictReader(handle)
+                )
+            for form in raw_forms:
+                if form:
+                    origins[form].add(category)
+
+    for form in sorted(origins):
+        normalized = normalize(form)
+        rule = rejection_rule(form, None, normalized)
+        if rule is None and form[:1].isupper():
+            rule = "majuscule initiale (nom propre ou sigle)"
+        if rule is not None:
+            rejected[rule] += 1
+            key = (rule, form)
+            if key not in seen_rejected:
+                seen_rejected.add(key)
+                samples.append((rule, form, "+".join(sorted(origins[form]))))
+            continue
+        forms[normalized].add(form)
+
+    samples.sort()
+    return forms, rejected, samples
+
+
 def build_terms(
-    ods8: list[str], ods9: dict[str, list[str]], kartmaan: dict[str, set[str]]
+    ods8: list[str],
+    ods9: dict[str, list[str]],
+    kartmaan: dict[str, set[str]],
+    hbenbel: dict[str, set[str]],
 ) -> tuple[dict[str, dict], dict[str, int]]:
     """Applique l'ordre de fusion et renvoie (termes, compteurs d'effet)."""
     terms: dict[str, dict] = {}
@@ -156,9 +210,17 @@ def build_terms(
     for normalized in kartmaan:
         terms[normalized] = {"is_french": 1, "is_ods8": 0, "is_ods9": 0}
 
+    # 1 bis. hbenbel — complément français (D-014).
+    created_by_hbenbel = 0
+    for normalized in hbenbel:
+        if normalized not in terms:
+            terms[normalized] = {"is_french": 1, "is_ods8": 0, "is_ods9": 0}
+            created_by_hbenbel += 1
+    effects["hbenbel_forms_absent_from_kartmaan"] = created_by_hbenbel
+
     # 2. ODS8 — admis dans les deux éditions par défaut.
     #    Un mot admis est français par construction : is_french = 1 sans
-    #    consulter Kartmaan, qui ignore 81 843 formes d'ODS8.
+    #    consulter les sources françaises, qui ne couvrent pas tout ODS8.
     created_by_ods8 = 0
     for word in ods8:
         entry = terms.get(word)
@@ -167,7 +229,7 @@ def build_terms(
             created_by_ods8 += 1
         entry["is_ods8"] = 1
         entry["is_ods9"] = 1
-    effects["ods8_rows_absent_from_kartmaan"] = created_by_ods8
+    effects["ods8_rows_absent_from_french_sources"] = created_by_ods8
 
     # 3. Retraits ODS9.
     removed = 0
@@ -267,18 +329,29 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    for path in (ODS8_PATH, KARTMAAN_PATH, ODS9_PATH, SCHEMA_PATH):
+    required = [ODS8_PATH, KARTMAAN_PATH, ODS9_PATH, SCHEMA_PATH]
+    required += [HBENBEL_DIR / name for name in HBENBEL_FILES]
+    for path in required:
         if not path.exists():
             raise SystemExit("source manquante : %s" % path)
 
     ods8 = load_ods8()
     ods9 = load_ods9()
     kartmaan, rejected, rejected_samples = load_kartmaan()
-    terms, effects = build_terms(ods8, ods9, kartmaan)
+    hbenbel, hb_rejected, hb_samples = load_hbenbel()
+    terms, effects = build_terms(ods8, ods9, kartmaan, hbenbel)
 
+    # Les collisions se calculent sur l'union des formes sources : deux graphies
+    # venues de sources différentes qui se rejoignent après normalisation sont
+    # une fusion au même titre que deux graphies d'une même source.
+    merged_forms: dict[str, set[str]] = defaultdict(set)
+    for normalized, forms in kartmaan.items():
+        merged_forms[normalized] |= forms
+    for normalized, forms in hbenbel.items():
+        merged_forms[normalized] |= forms
     collisions = {
         normalized: sorted(forms)
-        for normalized, forms in kartmaan.items()
+        for normalized, forms in merged_forms.items()
         if len(forms) > 1
     }
 
@@ -294,9 +367,12 @@ def main() -> int:
             status["french_non_ods"] += 1
 
     summary = {
-        "french_source_rows": 1_000_747,
-        "french_distinct_normalized": len(kartmaan),
-        "french_rejected": sum(rejected.values()),
+        "kartmaan_distinct_normalized": len(kartmaan),
+        "kartmaan_rejected": sum(rejected.values()),
+        "hbenbel_distinct_normalized": len(hbenbel),
+        "hbenbel_rejected": sum(hb_rejected.values()),
+        "french_distinct_normalized": len(merged_forms),
+        "french_rejected": sum(rejected.values()) + sum(hb_rejected.values()),
         "ods8_rows": len(ods8),
         "ods9_additions": len(ods9["additions"]),
         "ods9_removals": len(ods9["removals"]),
@@ -307,7 +383,8 @@ def main() -> int:
         "normalization_collisions": len(collisions),
         "terms_total": len(terms),
         "merge_effects": effects,
-        "rejections_by_rule": dict(sorted(rejected.items())),
+        "rejections_by_rule_kartmaan": dict(sorted(rejected.items())),
+        "rejections_by_rule_hbenbel": dict(sorted(hb_rejected.items())),
     }
 
     if args.dry_run:
@@ -323,6 +400,10 @@ def main() -> int:
         "source_kartmaan_sha256": sha256_of(KARTMAAN_PATH),
         "terms_total": str(len(terms)),
     }
+    for name in HBENBEL_FILES:
+        metadata["source_hbenbel_%s_sha256" % Path(name).stem] = sha256_of(
+            HBENBEL_DIR / name
+        )
     write_database(terms, metadata)
 
     REPORTS.mkdir(parents=True, exist_ok=True)
@@ -349,8 +430,11 @@ def main() -> int:
     )
     write_csv(
         REPORTS / "rejected-forms.csv",
-        ["rule", "form", "pos"],
-        rejected_samples,
+        ["source", "rule", "form", "pos_or_origin"],
+        sorted(
+            [("kartmaan",) + row for row in rejected_samples]
+            + [("hbenbel",) + row for row in hb_samples]
+        ),
     )
     write_csv(
         REPORTS / "duplicates.csv",

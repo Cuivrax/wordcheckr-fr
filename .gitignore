@@ -1,9 +1,9 @@
 # Données brutes — jamais committées (volume, licences)
-/data/raw/*.json
+# Reconstituables via scripts/download_*, empreintes dans data/raw/PROVENANCE.md
+/data/raw/*
+!/data/raw/README.md
+!/data/raw/PROVENANCE.md
 !/data/raw/ods8.example.json
-/data/raw/*.db
-/data/raw/*.parquet
-/data/raw/*.sha256
 
 # Bases de production — générées par l'import, jamais versionnées
 /storage/

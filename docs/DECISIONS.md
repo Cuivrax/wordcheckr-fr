@@ -286,3 +286,54 @@ la colonne display_term reste au schéma, partagé avec le futur site anglais,
   au coût mesuré d’environ 9 Mo de duplication
 la colonne is_french reste au schéma pour la même raison
 ```
+
+## D-014 — Seconde Source Française : hbenbel/French-Dictionary
+
+Date : 2026-08-03
+Statut : accepté
+
+Décision :
+
+```text
+data/raw/hbenbel/   dictionary.csv, adj.csv, noun.csv, verb.csv, adv.csv
+source              https://github.com/hbenbel/French-Dictionary
+obtention           python scripts/download_hbenbel.py
+```
+
+Raison :
+
+```text
+la couche française non admise reposait sur une source unique, dont les
+  lacunes sont réelles
+hbenbel apporte 34 300 formes absentes de la base, toutes en minuscule et
+  porteuses d’une catégorie grammaticale
+```
+
+Filtrage propre à cette source :
+
+```text
+hbenbel n’a pas d’étiquette NP : ses noms propres et ses sigles sont noyés
+dans noun.csv. La CASSE de la forme d’origine est le seul marqueur exploitable.
+Toute forme à majuscule initiale est écartée — 2 987 rejets, dont Ewok,
+Aberdonien, ADN, ARN, AVC, AOC. C’est ainsi que sont appliquées les exclusions
+« noms propres » et « sigles » exigées par docs/03 §5.
+```
+
+Conséquences :
+
+```text
+886 649 termes au total, dont 474 484 français non admis
+base à 166,6 Mo
+seconde attribution CC BY-SA : le dépôt est sous licence MIT, mais ses données
+  proviennent de kaikki.org, dérivé du Wiktionnaire — mêmes obligations que
+  pour Kartmaan, à porter sur le site
+```
+
+Limite constatée :
+
+```text
+QUEULEULEU reste absent des deux sources. L’exemple emblématique du brief pour
+« forme française non admise » n’existe dans aucune d’elles : il n’apparaît que
+dans la locution « à la queue leu leu », écartée par la règle des espaces.
+La microcopie doit choisir un autre exemple.
+```

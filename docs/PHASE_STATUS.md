@@ -14,7 +14,8 @@ Mis à jour le 2026-08-03.
 schema.sql                        schéma canonique
 scripts/lib/normalize.py          normalisation, score, signature, reversed
 scripts/import_fr.py              import déterministe et rejouable
-storage/dictionary_fr.sqlite      852 349 termes, 160 Mo, integrity ok
+scripts/download_hbenbel.py       seconde source française
+storage/dictionary_fr.sqlite      886 649 termes, 166,6 Mo, integrity ok
 reports/                          6 rapports + audit Phase 0
 8 agents installés dans .claude/agents/
 PHP 8.4.24 local avec pdo_sqlite, sqlite3, mbstring, intl, OPcache
@@ -23,15 +24,18 @@ PHP 8.4.24 local avec pdo_sqlite, sqlite3, mbstring, intl, OPcache
 ## Comptes De La Base
 
 ```text
-termes                   852 349
+termes                   886 649
 admis ODS8               411 430
 admis ODS9               412 101
 ODS8 seulement                64
 ODS9 seulement               735
 ODS8 et ODS9             411 366
-français non admis       440 184
-collisions fusionnées     46 232
+français non admis       474 484
+collisions fusionnées     49 213
 ```
+
+Quatre sources : ODS8 et patch ODS9 pour l'admissibilité, Kartmaan et hbenbel
+pour la couche française non admise (D-014).
 
 ## Porte Phase 0
 
@@ -40,7 +44,7 @@ integrity_check = ok                                          OK
 comptes conformes aux prévisions de l'audit                   OK
 déterminisme : deux exécutions, rapports au même sha256       OK
 score = somme des tuiles, échantillon de 2 000                OK
-7 requêtes témoins, toutes via index, 0,10 à 0,97 ms          OK
+7 requêtes témoins, toutes via index, 0,09 à 0,53 ms          OK
 audit code-reviewer                                           EN ATTENTE
 ```
 
@@ -53,10 +57,10 @@ aucun bloquant technique
 ## Points À Trancher Avant La Phase 1
 
 ```text
-QUEULEULEU, exemple emblématique du brief pour « français non admis »,
-  est absent de Kartmaan — le brief et la microcopie doivent choisir un
-  autre exemple, ou une source complémentaire doit être identifiée
-le rollout SEO doit être dimensionné sur 852 349 fiches, pas 412 000
+QUEULEULEU, exemple emblématique du brief pour « français non admis », est
+  absent des deux sources françaises — il n'existe que dans la locution
+  « à la queue leu leu ». La microcopie doit choisir un autre exemple.
+le rollout SEO doit être dimensionné sur 886 649 fiches, pas 412 000
 ```
 
 ## Prochaine Action

@@ -68,6 +68,37 @@ CREATE INDEX idx_forme ON mots(forme);
 `Loc*` et `loc-*` pour les locutions, `flex-*` pour les formes fléchies.
 `definitions` est un JSON de gloses — il n'est jamais copié en production (D-004).
 
+## hbenbel/ — seconde source française (D-014)
+
+```text
+source          https://github.com/hbenbel/French-Dictionary
+téléchargé le   2026-08-03
+obtention       python scripts/download_hbenbel.py
+licence dépôt   MIT
+licence données CC BY-SA — extraites de kaikki.org, dérivé du Wiktionnaire
+```
+
+```text
+dictionary.csv   4 869 842 o   b9fc59fe615a1ed9e89d27ddfb4226b175b5f6c075abbc535be077a40738b2b4
+adj.csv          1 331 447 o   482f870d6da61f0426248961ba3a2660f2a536275040a8a930fb4b38c13c71a5
+noun.csv         1 637 824 o   ef9b89416885d5a957fae887a2094f51efba8f9ff7ae878aa700bd13729fa4db
+verb.csv        22 726 815 o   a480f803adafa99b77be469f7262e3d76a3a226058b4d25fa3bc1c8542d518e8
+adv.csv             66 068 o   b6521cfcae6ed78156987b7dabba8bf0a0900ff383257c3986b4cc0cc642b655
+```
+
+```text
+404 849 formes brutes distinctes
+352 529 retenues après normalisation et filtrage
+ 34 300 absentes de la base construite depuis ODS8 + ODS9 + Kartmaan
+```
+
+`dictionary.csv` est une liste plate sans en-tête. Les quatre autres fichiers ont un
+en-tête `form,tags`.
+
+Cette source n'a **pas** d'étiquette `NP` : ses noms propres et ses sigles se trouvent dans
+`noun.csv`. La casse de la forme d'origine est le seul marqueur disponible et sert de filtre
+(D-014).
+
 ## data/ods9/
 
 Livré avec le pack de lancement, empreintes dans `data/ods9/manifest.json`.
