@@ -22,9 +22,13 @@ docs/04_UI_PAGES.md
 docs/05_URL_SEO_INDEXATION.md
 docs/06_PHASES_IMPLEMENTATION.md
 docs/07_CLAUDE_CODE_WORKFLOW.md
+docs/08_PROMPTS_PHASES.md
 docs/DECISIONS.md
 docs/PHASE_STATUS.md
 ```
+
+`docs/08_PROMPTS_PHASES.md` contient le prompt de lancement exact de chaque phase et de
+chaque audit, prêt à copier-coller.
 
 `docs/PHASE_STATUS.md` dit quelle phase est ouverte. Ne pas travailler sur une phase fermée.
 `docs/DECISIONS.md` est à consulter avant tout choix d'architecture, et à compléter après.

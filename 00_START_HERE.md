@@ -26,9 +26,10 @@ Lire, dans cet ordre :
 6.  docs/05_URL_SEO_INDEXATION.md
 7.  docs/06_PHASES_IMPLEMENTATION.md
 8.  docs/07_CLAUDE_CODE_WORKFLOW.md
-9.  docs/DECISIONS.md
-10. docs/PHASE_STATUS.md
-11. .claude/agents/*.md          les 8 agents, build et audit
+9.  docs/08_PROMPTS_PHASES.md    prompts de lancement, phase par phase
+10. docs/DECISIONS.md
+11. docs/PHASE_STATUS.md
+12. .claude/agents/*.md          les 8 agents, build et audit
 ```
 
 ## État Des Données
