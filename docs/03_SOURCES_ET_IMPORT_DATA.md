@@ -21,12 +21,6 @@ french_dict.db        environ 283 Mo
 french_dict.parquet   environ 22,6 Mo
 ```
 
-Licence déclarée :
-
-```text
-CC BY-SA 4.0
-```
-
 Téléchargement recommandé pour le pipeline SQLite :
 
 ```text
@@ -35,7 +29,7 @@ french_dict.db
 
 Le fichier brut ne doit pas être publié dans le dossier web.
 
-Conserver l’attribution et les informations de licence.
+Le site ne publie aucun crédit de source (D-015).
 
 ## 2. ODS8
 
@@ -141,11 +135,15 @@ reports/query-plans/
 }
 ```
 
-## 7. Licences Et Prudence
+## 7. Crédits De Source
 
-Le dataset Kartmaan est déclaré CC BY-SA 4.0 et dérive de données
-Wiktionnaire. Préserver l’attribution et vérifier les obligations applicables à
-la redistribution de la base dérivée.
+Aucun crédit de source n'est publié sur le site (D-015).
 
-Les données ODS doivent être traitées selon les droits dont dispose
-l’utilisateur. Le pack ne constitue pas un avis juridique.
+La base de production est une construction propre : formes normalisées,
+indicateurs d'admissibilité, scores et dérivés. Aucune définition, aucun texte
+éditorial et aucune structure de données d'origine n'y sont repris.
+
+Les URL et empreintes des sources restent dans `data/raw/PROVENANCE.md`, à
+usage interne, pour que l'import demeure reproductible.
+
+Ce document n'est pas un avis juridique.

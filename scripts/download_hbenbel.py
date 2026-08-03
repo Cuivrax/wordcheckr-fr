@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Télécharge le dictionnaire français hbenbel dans data/raw/hbenbel/.
+"""Télécharge une source de formes françaises dans data/raw/hbenbel/.
 
-Source : https://github.com/hbenbel/French-Dictionary
-Dépôt sous licence MIT, mais les données sont extraites de kaikki.org, lui-même
-dérivé du Wiktionnaire : les obligations CC BY-SA s'appliquent aux données,
-comme pour Kartmaan. L'attribution doit être portée sur le site.
+Étape de build hors ligne. Les formes servent à alimenter la couche
+`is_french` ; aucune définition ni structure d'origine n'entre en production,
+et le site ne publie aucun crédit de source (D-015).
 
 Usage :
     python scripts/download_hbenbel.py

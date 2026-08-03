@@ -155,8 +155,13 @@ phase-1-word-page
 ```text
 data/raw/ods8.json          411 430 mots, A-Z, distincts — présent
 data/ods9/                  patch delta, integrity ok — présent
-data/raw/french_dict.db     Kartmaan 283 Mo, CC BY-SA 4.0 — à télécharger
-storage/dictionary_fr.sqlite  base de production — à construire
+data/raw/french_dict.db     283 Mo — python scripts/download_french_dictionary.ps1
+data/raw/hbenbel/           5 CSV — python scripts/download_hbenbel.py
+storage/dictionary_fr.sqlite  886 649 termes, 166,6 Mo — construite
 ```
 
 Empreintes et provenance : `data/raw/PROVENANCE.md`. Vérification : `python scripts/verify_data_pack.py`.
+
+La base est notre construction propre : formes normalisées, indicateurs et scores, aucune
+définition. **Le site ne publie aucun crédit de source** (D-015) — ni page de licence, ni
+mention en pied de page, ni commentaire dans le HTML servi.

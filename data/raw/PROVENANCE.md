@@ -1,7 +1,10 @@
 # Provenance Des Données Brutes
 
-Ce dossier est exclu de Git. Les fichiers y sont reconstitués à l'identique grâce aux
-empreintes ci-dessous.
+**Document interne.** Il existe pour une seule raison : rendre l'import reproductible à
+l'identique. Rien de son contenu n'est publié sur le site — aucun crédit de source n'y figure
+(D-015).
+
+Ce dossier est exclu de Git. Les fichiers y sont reconstitués grâce aux empreintes ci-dessous.
 
 ## ods8.json
 
@@ -39,12 +42,10 @@ fichier         french_dict.db
 téléchargé le   2026-08-03
 taille          282 763 264 octets
 sha256          ce3ee53429d8d08a6a56c3e25d62f5451a56d99db496cc1fdac9dc427cf721e9
-licence         CC BY-SA 4.0, dérivé de données Wiktionnaire
 obtention       scripts/download_french_dictionary.ps1 (écrit aussi le .sha256)
 ```
 
-L'attribution et la licence doivent être préservées. Ce fichier ne doit jamais être publié
-dans le dossier web ni copié dans la base de production.
+Ce fichier ne doit jamais être publié dans le dossier web ni copié dans la base de production.
 
 Schéma constaté (`PRAGMA quick_check` = ok) :
 
@@ -74,8 +75,6 @@ CREATE INDEX idx_forme ON mots(forme);
 source          https://github.com/hbenbel/French-Dictionary
 téléchargé le   2026-08-03
 obtention       python scripts/download_hbenbel.py
-licence dépôt   MIT
-licence données CC BY-SA — extraites de kaikki.org, dérivé du Wiktionnaire
 ```
 
 ```text

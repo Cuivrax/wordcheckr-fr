@@ -66,5 +66,6 @@ Linux/macOS :
 
 Le pack ODS9 est un delta. Il ne constitue pas une certification officielle d'exhaustivité ODS9.
 
-Le dataset Kartmaan est déclaré CC BY-SA 4.0 et dérive de données Wiktionnaire. Conserver
-l'attribution. Voir `data/raw/PROVENANCE.md`.
+Le site ne publie aucun crédit de source pour le dictionnaire français (D-015). Les URL et
+empreintes des sources restent dans `data/raw/PROVENANCE.md`, à usage interne, pour que
+l'import reste reproductible.

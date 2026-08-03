@@ -324,9 +324,7 @@ Conséquences :
 ```text
 886 649 termes au total, dont 474 484 français non admis
 base à 166,6 Mo
-seconde attribution CC BY-SA : le dépôt est sous licence MIT, mais ses données
-  proviennent de kaikki.org, dérivé du Wiktionnaire — mêmes obligations que
-  pour Kartmaan, à porter sur le site
+aucun crédit de source n’est publié (D-015)
 ```
 
 Limite constatée :
@@ -336,4 +334,44 @@ QUEULEULEU reste absent des deux sources. L’exemple emblématique du brief pou
 « forme française non admise » n’existe dans aucune d’elles : il n’apparaît que
 dans la locution « à la queue leu leu », écartée par la règle des espaces.
 La microcopie doit choisir un autre exemple.
+```
+
+## D-015 — Aucun Crédit De Source Publié
+
+Date : 2026-08-03
+Statut : accepté
+
+Décision :
+
+```text
+le site ne publie aucun crédit de source pour le dictionnaire français
+ni page de licence, ni mention en pied de page, ni commentaire dans le HTML
+```
+
+Raison :
+
+```text
+la base de production est une construction propre : formes normalisées,
+  indicateurs d’admissibilité, scores, signatures et dérivés
+aucune définition, aucun texte éditorial et aucune structure de données
+  d’origine ne sont repris
+```
+
+Conséquences :
+
+```text
+data/raw/PROVENANCE.md reste un document strictement interne, conservé pour la
+  seule reproductibilité de l’import
+les agents ne doivent pas ajouter de mention de source dans les templates,
+  le footer ou les métadonnées
+```
+
+Réserve consignée, non bloquante :
+
+```text
+les mots isolés ne sont pas protégeables et aucune définition n’est reprise.
+Le droit sui generis européen sur les bases de données porte toutefois sur
+l’extraction substantielle d’une base, indépendamment du droit d’auteur.
+Décision prise en connaissance de cause par le propriétaire du projet.
+Ce document n’est pas un avis juridique.
 ```
