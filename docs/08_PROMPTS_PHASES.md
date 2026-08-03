@@ -22,12 +22,19 @@ Si un audit rend NO GO, corriger et relancer le même audit. Ne pas passer outre
 ## État Du Projet À La Sortie De La Phase 0
 
 ```text
-storage/dictionary_fr.sqlite   886 649 termes, 166,6 Mo, integrity ok
+storage/dictionary_fr.sqlite   838 180 termes, 154,5 Mo, integrity ok
 schema.sql                     terms + build_metadata
-scripts/lib/normalize.py       normalisation, score, signature, reversed
+scripts/lib/normalize.py       normalisation, score, signature, reversed,
+                                plafond de 15 lettres (D-010 révisée)
 scripts/import_fr.py           import déterministe, rejouable
+scripts/bench_queries.py       plans de requêtes persistés
 PHP 8.4.24 dans C:\php84       pdo_sqlite, sqlite3, mbstring, intl, OPcache
 ```
+
+Base issue du second tour de la Phase 0, après un premier NO GO de code-reviewer. Le fichier
+`data/raw/ods8.json` contient 411 430 formes brutes, dont 9 105 de plus de 15 lettres — non
+jouables, écartées de la base (D-010 révisée). Les 402 325 formes retenues correspondent à la
+valeur officielle de l'ODS8 publié par Larousse.
 
 Colonnes de `terms` :
 
@@ -50,29 +57,48 @@ Aucune table de postings : reportée en Phase 2/3 (D-012).
 
 ---
 
-## Étape 0 bis — Audit De La Phase 0
+## Étape 0 bis — Second Audit De La Phase 0
 
-Première chose à lancer après redémarrage.
+Première chose à lancer après redémarrage. Le premier audit a rendu **NO GO** ; les corrections
+sont appliquées, ce prompt lance le second tour.
 
 ```text
-Utilise l'agent code-reviewer pour auditer la Phase 0.
+Utilise l'agent code-reviewer pour auditer la Phase 0, second tour après un
+premier NO GO.
 
 Périmètre : schema.sql, scripts/import_fr.py, scripts/lib/normalize.py,
-scripts/download_hbenbel.py et les rapports de reports/.
+scripts/download_hbenbel.py, scripts/bench_queries.py, reports/ et
+reports/query-plans/phase0.md.
 
-Vérifie par toi-même, avec Bash, les comptes annoncés dans
-reports/import-summary.json contre storage/dictionary_fr.sqlite :
-886 649 termes, ods8_only 64, ods9_only 735, ods8_and_ods9 411 366,
-français non admis 474 484, is_french=0 attendu à 0.
+Le premier tour avait relevé cinq points, tous censés être corrigés — vérifie
+chacun par toi-même plutôt que de prendre ce résumé pour acquis :
+- I2 : 9 105 formes ODS8 de plus de 15 lettres étaient marquées admises à
+  tort. La base ne doit plus contenir aucune ligne avec length > 15, et
+  is_ods8=1 doit compter exactement 402 325 lignes.
+- B1 : un rapport AFTER doit exister, distinct du rapport BEFORE.
+- B2 : reports/query-plans/ doit contenir des plans persistés, pas seulement
+  avoir été affiché en console.
+- B3 : les comptes dans CLAUDE.md, docs/DECISIONS.md et docs/PHASE_STATUS.md
+  doivent correspondre aux valeurs réelles de la base reconstruite.
+- B4 : import-summary.json doit exposer french_source_rows et ne doit plus
+  additionner des lignes Kartmaan avec des formes hbenbel dans un même total.
+
+Vérifie par toi-même, avec Bash, les comptes contre storage/dictionary_fr.sqlite :
+838 180 termes, ods8_only 64, ods9_only 735, ods8_and_ods9 402 261,
+ods8 total 402 325, français non admis 435 120, is_french=0 attendu à 0,
+length > 15 attendu à 0.
 
 Contrôle aussi :
 - PRAGMA integrity_check
-- score = somme des tuiles sur un échantillon
-- normalized conforme à ^[A-Z]{2,} sur toutes les lignes
+- score = somme des tuiles — sur toutes les lignes si le temps le permet, sinon
+  un échantillon large et dis lequel
+- normalized conforme à ^[A-Z]{2,15}$ sur toutes les lignes
 - déterminisme : relance scripts/import_fr.py --dry-run et compare au rapport
 - absence de définition en base (D-004)
 - écarts entre schema.sql et schema/terms_fr_proposal.sql, et leur justification
   dans docs/DECISIONS.md (D-009 à D-015)
+- schema.sql : les requêtes commentées comme exemples utilisent-elles une
+  plage (>=, <) et jamais un LIKE sur une colonne indexée ?
 
 Rends ton verdict GO / NO GO.
 ```
@@ -291,8 +317,8 @@ Le registre est l'unique source de vérité : index/noindex, canonical, sitemaps
 maillage, rollout, métadonnées. Toute route absente reste noindex, follow.
 Aucune indexation par omission.
 
-Dimensionnement réel, à ne pas sous-estimer : la base compte 886 649 fiches
-mot, dont 474 484 formes françaises non admises. Le brief parlait de 412 000 —
+Dimensionnement réel, à ne pas sous-estimer : la base compte 838 180 fiches
+mot, dont 435 120 formes françaises non admises. Le brief parlait de 412 000 —
 c'est périmé.
 
 Propose des lots de rollout chiffrés, en commençant petit, avec un point de
@@ -374,7 +400,7 @@ Il ne peut pas être joué comme un mot unique.
 
 ### Ce Que Contient Réellement La Couche Non Admise
 
-À savoir avant d'écrire les textes et avant de dimensionner le rollout SEO : les 474 484
+À savoir avant d'écrire les textes et avant de dimensionner le rollout SEO : les 435 120
 formes françaises non admises sont massivement des gentilés et des flexions rares.
 Échantillon réel tiré de la base :
 

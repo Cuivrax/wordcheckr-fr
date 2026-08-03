@@ -176,37 +176,59 @@ le runtime PHP doit réimplémenter exactement les mêmes étapes
 tout écart entre les deux implémentations est un bug, pas une variante
 ```
 
-## D-010 — Aucun Plafond De Longueur En Base
+## D-010 — Plafond De 15 Lettres En Base (Révisée)
 
-Date : 2026-08-03
+Date : 2026-08-03, révisée le 2026-08-03
 Statut : accepté
+
+**Révision.** La version initiale de cette décision retenait toutes les formes sans plafond,
+justifiée par « un plafond à 15 lettres écarterait 9 105 mots ODS8 admis ». Cette justification
+était fausse : l'audit code-reviewer de la Phase 0 (NO GO, point I2) a établi que ces 9 105
+formes ne sont pas des mots ODS8. L'ODS8 publié par Larousse compte 402 325 mots ; notre
+fichier `data/raw/ods8.json` en compte 411 430 — l'écart exact est ces 9 105 formes, des
+conjugaisons générées (`CINEMATOGRAPHIASSIONS`, `REAPPROVISIONNERAIENT`) absentes de l'ODS
+réel. Les afficher comme « admises au Scrabble » aurait été une erreur factuelle sur le site.
+Confirmé par une source externe : [Wikipedia, L'Officiel du jeu Scrabble](https://en.wikipedia.org/wiki/L%27Officiel_du_jeu_Scrabble),
+402 325 mots pour l'édition 2020.
 
 Décision :
 
 ```text
-base de production   toutes les formes, sans plafond de longueur
-entrée du solveur    15 caractères maximum, validation de formulaire
+base de production   toutes les formes de 2 à 15 lettres, aucune au-delà
+entrée du solveur    15 caractères maximum — même borne, cohérente
 ```
 
 Raison :
 
 ```text
-un plafond à 15 lettres écarterait 9 105 mots ODS8 admis
-le 15 est la contrainte du plateau et du chevalet, pas celle du dictionnaire
-un mot long reste vérifiable et garde sa fiche, il n’est simplement jamais
-  produit par le solveur
+un mot de plus de 15 lettres ne peut jamais être posé sur un plateau standard :
+  ce n’est pas seulement une limite de saisie, c’est une limite du jeu lui-même
+le plafond sert aussi de contrôle d’intégrité de la source ODS8 : le nombre de
+  formes retenues doit valoir exactement 402 325, vérifié par
+  scripts/import_fr.py qui lève une erreur si ce n’est pas le cas
+le patch ODS9 confirme la borne : ses 1091 additions, 64 retraits et
+  10 keep_overrides ne contiennent aucune forme de plus de 15 lettres
+```
+
+Conséquences :
+
+```text
+ods8_rows passe de 411 430 à 402 325
+9 105 formes de 16 à 21 lettres retirées de la base, plus 46 119 lignes
+  Kartmaan et 12 054 formes hbenbel de même longueur, déjà écartées ailleurs
 ```
 
 ## D-011 — Dictionnaire Français Complet Dès Le Lancement
 
-Date : 2026-08-03
+Date : 2026-08-03, comptes mis à jour le 2026-08-03 (D-010 révisée, D-014)
 Statut : accepté
 
 Décision :
 
 ```text
-toutes les formes Kartmaan retenues après filtrage entrent en base avec
-is_french = 1, y compris les formes fléchies non admises
+toutes les formes des sources françaises retenues après filtrage entrent en
+base avec is_french = 1, y compris les formes fléchies non admises, dans la
+limite du plafond de longueur (D-010)
 ```
 
 Raison :
@@ -216,14 +238,13 @@ la distinction admis / non admis est la fonction centrale du site ; elle exige
 la couverture française la plus large possible dès le lancement
 ```
 
-Conséquences :
+Conséquences, comptes vérifiés exhaustivement sur les 838 180 lignes de
+`storage/dictionary_fr.sqlite` (pas un échantillon) :
 
 ```text
-440 184 formes françaises hors ODS, soit 852 349 termes au total
-la base atteint 160 Mo — le double de l’ordre de grandeur évoqué au brief
-le rollout SEO doit dimensionner ses lots sur ~852 000 fiches, pas ~412 000
-une variante plus étroite reste disponible : exclure les formes attestées
-  uniquement comme flex-* ramènerait la couche non-ODS à 76 384
+435 120 formes françaises hors ODS, 838 180 termes au total
+la base atteint 154,5 Mo
+le rollout SEO doit dimensionner ses lots sur ~838 000 fiches, pas ~412 000
 ```
 
 ## D-012 — Postings Reportés En Phase 2/3
@@ -270,11 +291,11 @@ aucun index simple sur normalized : la contrainte UNIQUE en crée déjà un
 Raison :
 
 ```text
-ODS8 ne contient aucun accent sur ses 411 430 entrées ; afficher une forme
-  accentuée venue d’une autre source rendrait les fiches incohérentes entre
-  elles selon leur provenance
-les 46 232 collisions de normalisation deviennent de simples fusions de
-  provenance, sans arbitrage d’affichage
+ODS8 ne contient aucun accent sur ses entrées ; afficher une forme accentuée
+  venue d’une autre source rendrait les fiches incohérentes entre elles selon
+  leur provenance
+les collisions de normalisation deviennent de simples fusions de provenance,
+  sans arbitrage d’affichage (48 319 après D-010 révisée et D-014)
 is_french vaut 1 sur toutes les lignes de la base française : un index sur une
   colonne constante ne sert à rien et coûte ~18 Mo
 ```
@@ -322,8 +343,8 @@ Aberdonien, ADN, ARN, AVC, AOC. C’est ainsi que sont appliquées les exclusion
 Conséquences :
 
 ```text
-886 649 termes au total, dont 474 484 français non admis
-base à 166,6 Mo
+838 180 termes au total, dont 435 120 français non admis, après D-010 révisée
+base à 154,5 Mo
 aucun crédit de source n’est publié (D-015)
 ```
 

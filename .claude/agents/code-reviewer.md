@@ -81,10 +81,13 @@ Plus le document du domaine audité (`docs/03` pour l'import, `docs/05` pour le 
 - Import **rejouable et déterministe** : deux exécutions successives produisent la même base et
   des rapports au même sha256.
 - `PRAGMA integrity_check` = `ok`.
-- Comptes cohérents entre `reports/import-summary.json`, la base produite et les sources.
-  Repères vérifiés en amont : ODS8 = 411 430 mots distincts ; patch ODS9 = 1091 additions dont
-  356 déjà présentes dans ODS8, 64 retraits tous présents dans ODS8, 10 keep_overrides disjoints
-  des retraits. Attendu : `ods8_only` = 64, `ods9_only` = 735, `ods8_and_ods9` = 411 366.
+- Comptes cohérents entre `reports/import-summary.json`, la base produite et les sources. Ne
+  te fie pas à un chiffre attendu figé ici : recalcule-le toi-même contre les sources actuelles
+  avec Bash, les fichiers sources ayant déjà changé une fois en cours de projet (D-010 révisée).
+  Repères de méthode : ODS8 ne vaut le nombre officiel Larousse (402 325 pour l'édition 2020)
+  qu'après filtrage à 15 lettres — un compte de 411 430 doit être considéré comme suspect et
+  vérifié contre une source externe avant d'être accepté. Patch ODS9 = 1091 additions, 64
+  retraits tous présents dans ODS8, 10 keep_overrides disjoints des retraits.
 - **Aucune collision de normalisation silencieuse** : `normalized` étant `UNIQUE`, toute fusion de
   formes (`côte` et `cote` → `COTE`) doit apparaître dans
   `reports/normalization-collisions.csv` avec la règle de choix du `display_term`.

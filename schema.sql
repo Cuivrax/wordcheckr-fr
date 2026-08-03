@@ -28,7 +28,14 @@ CREATE INDEX idx_terms_length_normalized ON terms(length, normalized);
 -- Anagrammes exactes, et point de départ des anagrammes ±1 lettre.
 CREATE INDEX idx_terms_signature ON terms(signature);
 
--- Suffixes : /mots/terminant/tion interroge reversed avec un LIKE ancré à gauche.
+-- Suffixes : /mots/terminant/tion interroge reversed par PLAGE, jamais par LIKE.
+--
+--   correct   WHERE reversed >= 'NOIT' AND reversed < 'NOIU'   -> index, 0,20 ms
+--   interdit  WHERE reversed LIKE 'NOIT%'                      -> SCAN complet
+--
+-- LIKE est insensible à la casse par défaut dans SQLite : l'optimiseur ne peut
+-- pas l'adosser à un index BINARY, et la requête dégénère en balayage des
+-- 850 000 lignes. La même règle vaut pour les préfixes sur normalized.
 CREATE INDEX idx_terms_reversed ON terms(reversed);
 
 -- Familles restreintes à une édition, en ordre alphabétique.
@@ -44,7 +51,10 @@ CREATE INDEX idx_terms_ods9 ON terms(is_ods9, normalized);
 
 -- Empreintes des sources et paramètres du build. Aucune date d'exécution :
 -- l'import doit rester déterministe et rejouable à l'identique.
+-- "key" et "value" sont entre guillemets : ils ne sont pas réservés en SQLite,
+-- mais le sont dans d'autres dialectes, ce qui fait crier les linters SQL sur
+-- un fichier que plusieurs agents vont relire.
 CREATE TABLE build_metadata (
-    key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL
+    "key"   TEXT PRIMARY KEY,
+    "value" TEXT NOT NULL
 );

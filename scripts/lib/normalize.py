@@ -15,13 +15,21 @@ import unicodedata
 # BOEUF et OEUF sont des mots admis à l'ODS8.
 LIGATURES = str.maketrans({"œ": "oe", "Œ": "OE", "æ": "ae", "Æ": "AE"})
 
-# Longueur minimale : un mot d'une seule lettre n'est jamais jouable.
-# Aucune longueur maximale : le dictionnaire est conservé en entier.
-# Le plafond de 15 caractères est une contrainte de saisie du solveur
-# (plateau et chevalet), appliquée à l'entrée du formulaire, pas aux données.
+# Le plateau fait 15 cases : un mot de plus de 15 lettres ne peut jamais être
+# posé. Le plafond s'applique donc aux DONNÉES, pas seulement à la saisie
+# (D-010, révisée).
+#
+# Ce plafond est aussi un contrôle d'intégrité de la source. Le fichier
+# data/raw/ods8.json compte 411 430 entrées, alors que l'ODS8 publié par
+# Larousse en compte 402 325. L'écart est exactement les 9 105 formes de 16 à
+# 21 lettres — des conjugaisons générées (CINEMATOGRAPHIASSIONS,
+# REAPPROVISIONNERAIENT) qui ne figurent pas dans l'ODS. Les afficher comme
+# « admises au Scrabble » serait faux. Le patch ODS9 confirme la borne : il ne
+# contient aucune forme de plus de 15 lettres.
 MIN_LENGTH = 2
+MAX_LENGTH = 15
 
-VALID_TERM = re.compile(r"^[A-Z]{%d,}$" % MIN_LENGTH)
+VALID_TERM = re.compile(r"^[A-Z]{%d,%d}$" % (MIN_LENGTH, MAX_LENGTH))
 
 # Valeurs des tuiles françaises, identiques au prototype.
 TILE_SCORES = {
@@ -44,7 +52,7 @@ def normalize(form: str) -> str:
 
 
 def is_valid(normalized: str) -> bool:
-    """Un terme retenu ne contient que des lettres A-Z et fait au moins 2 lettres."""
+    """Un terme retenu ne contient que des A-Z et fait de 2 à 15 lettres."""
     return VALID_TERM.match(normalized) is not None
 
 

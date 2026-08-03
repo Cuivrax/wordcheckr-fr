@@ -49,7 +49,7 @@ Interdits :
 React, Vue, SPA, framework frontend
 police externe, image décorative, animation lourde
 base distante, processus applicatif permanent
-scan complet de la table (~412 000 lignes) au runtime
+scan complet de la table (~838 000 lignes) au runtime
 cache produisant des millions de petits fichiers
 texte SEO artificiellement rallongé
 dépendance ajoutée sans entrée ## D-XXX dans docs/DECISIONS.md
@@ -157,12 +157,14 @@ phase-1-word-page
 ## État Des Données
 
 ```text
-data/raw/ods8.json          411 430 mots, A-Z, distincts — présent
+data/raw/ods8.json          411 430 mots bruts, dont 402 325 ≤ 15 lettres — présent
 data/ods9/                  patch delta, integrity ok — présent
 data/raw/french_dict.db     283 Mo — python scripts/download_french_dictionary.ps1
 data/raw/hbenbel/           5 CSV — python scripts/download_hbenbel.py
-storage/dictionary_fr.sqlite  886 649 termes, 166,6 Mo — construite
+storage/dictionary_fr.sqlite  838 180 termes, 154,5 Mo — construite
 ```
+
+La base ne retient aucune forme de plus de 15 lettres : injouable sur un plateau (D-010).
 
 Empreintes et provenance : `data/raw/PROVENANCE.md`. Vérification : `python scripts/verify_data_pack.py`.
 

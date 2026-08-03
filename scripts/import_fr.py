@@ -34,6 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.normalize import (  # noqa: E402
+    MAX_LENGTH,
     MIN_LENGTH,
     is_valid,
     normalize,
@@ -87,17 +88,43 @@ def rejection_rule(form: str, pos: str | None, normalized: str) -> str | None:
         return "chiffre"
     if len(normalized) < MIN_LENGTH:
         return "moins de %d lettres" % MIN_LENGTH
+    if len(normalized) > MAX_LENGTH:
+        return "plus de %d lettres (injouable sur un plateau)" % MAX_LENGTH
     if not is_valid(normalized):
         return "caractere hors A-Z apres normalisation"
     return None
 
 
-def load_ods8() -> list[str]:
+def load_ods8() -> tuple[list[str], dict[str, int]]:
+    """Charge ODS8 et écarte ce qui ne peut pas être posé sur un plateau.
+
+    Le fichier source n'est pas un ODS8 pur : il compte 411 430 entrées contre
+    402 325 pour l'ODS8 publié. L'écart est exactement les formes de plus de 15
+    lettres, des conjugaisons générées absentes de l'ODS. Les retenir
+    reviendrait à répondre « admis au Scrabble » à tort (D-010).
+
+    Le compte retenu doit donc valoir 402 325 : c'est un contrôle, pas une
+    conséquence subie.
+    """
     with ODS8_PATH.open(encoding="utf-8") as handle:
         words = json.load(handle)["words"]
-    if not all(is_valid(word) for word in words):
-        raise SystemExit("ODS8 contient des formes non conformes a ^[A-Z]{2,}$")
-    return words
+
+    kept: list[str] = []
+    stats = {"ods8_source_rows": len(words), "ods8_dropped_over_15_letters": 0}
+    for word in words:
+        if len(word) > MAX_LENGTH:
+            stats["ods8_dropped_over_15_letters"] += 1
+            continue
+        if not is_valid(word):
+            raise SystemExit("ODS8 : forme non conforme a ^[A-Z]{2,15}$ : %r" % word)
+        kept.append(word)
+
+    if len(kept) != 402_325:
+        raise SystemExit(
+            "ODS8 : %d formes retenues, 402 325 attendues — la source a change"
+            % len(kept)
+        )
+    return kept, stats
 
 
 def load_ods9() -> dict[str, list[str]]:
@@ -118,18 +145,31 @@ def load_ods9() -> dict[str, list[str]]:
         connection.close()
 
 
-def load_kartmaan() -> tuple[dict[str, set[str]], Counter, list[tuple[str, str, str]]]:
-    """Retourne (formes retenues par clé normalisée, compteur de rejets, échantillon).
+def load_kartmaan() -> tuple[
+    dict[str, set[str]], Counter, list[tuple[str, str, str]], dict[str, int]
+]:
+    """Retourne (formes retenues, rejets, échantillon, volumétrie de la source).
 
     Le parcours est trié par (forme, id) pour rester déterministe quel que soit
     l'ordre physique des pages SQLite.
+
+    Attention aux unités : Kartmaan se compte en LIGNES (une ligne par sens),
+    une même forme pouvant en avoir plusieurs. Les rejets renvoyés sont donc des
+    lignes, pas des formes — ils ne sont additionnables avec aucune autre source.
     """
     connection = sqlite3.connect("file:%s?mode=ro" % KARTMAAN_PATH.as_posix(), uri=True)
     kept: dict[str, set[str]] = defaultdict(set)
     rejected: Counter = Counter()
     samples: list[tuple[str, str, str]] = []
     seen_rejected: set[tuple[str, str]] = set()
+    stats = {"source_rows": 0, "source_distinct_forms": 0}
     try:
+        stats["source_rows"] = connection.execute(
+            "SELECT COUNT(*) FROM mots"
+        ).fetchone()[0]
+        stats["source_distinct_forms"] = connection.execute(
+            "SELECT COUNT(DISTINCT forme) FROM mots"
+        ).fetchone()[0]
         query = "SELECT forme, pos FROM mots ORDER BY forme, id"
         for form, pos in connection.execute(query):
             normalized = normalize(form)
@@ -145,10 +185,12 @@ def load_kartmaan() -> tuple[dict[str, set[str]], Counter, list[tuple[str, str, 
     finally:
         connection.close()
     samples.sort()
-    return kept, rejected, samples
+    return kept, rejected, samples, stats
 
 
-def load_hbenbel() -> tuple[dict[str, set[str]], Counter, list[tuple[str, str, str]]]:
+def load_hbenbel() -> tuple[
+    dict[str, set[str]], Counter, list[tuple[str, str, str]], dict[str, int]
+]:
     """Charge le dictionnaire hbenbel (D-014).
 
     hbenbel n'a pas d'étiquette `NP` : ses noms propres et ses sigles sont noyés
@@ -156,6 +198,9 @@ def load_hbenbel() -> tuple[dict[str, set[str]], Counter, list[tuple[str, str, s
     disponible — `Aberdonien`, `Ewok`, `ADN`, `AVC` commencent par une
     majuscule, un nom commun français jamais. Cette règle implémente donc les
     exclusions « noms propres » et « sigles » exigées par docs/03 §5.
+
+    Attention aux unités : hbenbel se compte en FORMES distinctes, Kartmaan en
+    lignes. Les deux compteurs de rejet ne s'additionnent pas.
     """
     forms: dict[str, set[str]] = defaultdict(set)
     rejected: Counter = Counter()
@@ -193,7 +238,11 @@ def load_hbenbel() -> tuple[dict[str, set[str]], Counter, list[tuple[str, str, s
         forms[normalized].add(form)
 
     samples.sort()
-    return forms, rejected, samples
+    stats = {
+        "source_distinct_forms": len(origins),
+        "source_rows": len(origins),
+    }
+    return forms, rejected, samples, stats
 
 
 def build_terms(
@@ -335,10 +384,10 @@ def main() -> int:
         if not path.exists():
             raise SystemExit("source manquante : %s" % path)
 
-    ods8 = load_ods8()
+    ods8, ods8_stats = load_ods8()
     ods9 = load_ods9()
-    kartmaan, rejected, rejected_samples = load_kartmaan()
-    hbenbel, hb_rejected, hb_samples = load_hbenbel()
+    kartmaan, rejected, rejected_samples, km_stats = load_kartmaan()
+    hbenbel, hb_rejected, hb_samples, hb_stats = load_hbenbel()
     terms, effects = build_terms(ods8, ods9, kartmaan, hbenbel)
 
     # Les collisions se calculent sur l'union des formes sources : deux graphies
@@ -366,13 +415,25 @@ def main() -> int:
         else:
             status["french_non_ods"] += 1
 
+    # Champs imposés par docs/03 §6. `french_source_rows` désigne la volumétrie
+    # brute des sources françaises. Kartmaan se compte en lignes (un sens par
+    # ligne), hbenbel en formes distinctes : les deux unités ne sont pas
+    # additionnables, donc le total brut est exposé par source et jamais sommé.
     summary = {
+        "french_source_rows": {
+            "kartmaan_rows": km_stats["source_rows"],
+            "kartmaan_distinct_forms": km_stats["source_distinct_forms"],
+            "hbenbel_distinct_forms": hb_stats["source_distinct_forms"],
+        },
+        "french_rejected": {
+            "kartmaan_rows": sum(rejected.values()),
+            "hbenbel_forms": sum(hb_rejected.values()),
+        },
         "kartmaan_distinct_normalized": len(kartmaan),
-        "kartmaan_rejected": sum(rejected.values()),
         "hbenbel_distinct_normalized": len(hbenbel),
-        "hbenbel_rejected": sum(hb_rejected.values()),
         "french_distinct_normalized": len(merged_forms),
-        "french_rejected": sum(rejected.values()) + sum(hb_rejected.values()),
+        "ods8_source_rows": ods8_stats["ods8_source_rows"],
+        "ods8_dropped_over_15_letters": ods8_stats["ods8_dropped_over_15_letters"],
         "ods8_rows": len(ods8),
         "ods9_additions": len(ods9["additions"]),
         "ods9_removals": len(ods9["removals"]),
@@ -382,6 +443,7 @@ def main() -> int:
         "french_non_ods": status["french_non_ods"],
         "normalization_collisions": len(collisions),
         "terms_total": len(terms),
+        "max_term_length": MAX_LENGTH,
         "merge_effects": effects,
         "rejections_by_rule_kartmaan": dict(sorted(rejected.items())),
         "rejections_by_rule_hbenbel": dict(sorted(hb_rejected.items())),
