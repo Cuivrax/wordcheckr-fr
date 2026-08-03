@@ -1,0 +1,22 @@
+# Données brutes — jamais committées (volume, licences)
+/data/raw/*.json
+!/data/raw/ods8.example.json
+/data/raw/*.db
+/data/raw/*.parquet
+/data/raw/*.sha256
+
+# Bases de production — générées par l'import, jamais versionnées
+/storage/
+
+# Rapports générés
+/reports/*
+!/reports/.gitkeep
+
+# Environnement
+.env
+.DS_Store
+Thumbs.db
+
+# Claude Code — local uniquement
+/.claude/settings.local.json
+/.claude/worktrees/
