@@ -34,16 +34,39 @@ Fourni par l'utilisateur. Les droits d'usage des données ODS relèvent de l'uti
 ## french_dict.db
 
 ```text
-source     https://huggingface.co/datasets/Kartmaan/french-dictionary
-fichier    french_dict.db (~283 Mo)
-licence    CC BY-SA 4.0, dérivé de données Wiktionnaire
-obtention  scripts/download_french_dictionary.ps1 (écrit aussi le .sha256)
+source          https://huggingface.co/datasets/Kartmaan/french-dictionary
+fichier         french_dict.db
+téléchargé le   2026-08-03
+taille          282 763 264 octets
+sha256          ce3ee53429d8d08a6a56c3e25d62f5451a56d99db496cc1fdac9dc427cf721e9
+licence         CC BY-SA 4.0, dérivé de données Wiktionnaire
+obtention       scripts/download_french_dictionary.ps1 (écrit aussi le .sha256)
 ```
 
 L'attribution et la licence doivent être préservées. Ce fichier ne doit jamais être publié
 dans le dossier web ni copié dans la base de production.
 
-Statut : à télécharger.
+Schéma constaté (`PRAGMA quick_check` = ok) :
+
+```sql
+CREATE TABLE mots (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    forme       TEXT NOT NULL,
+    pos         TEXT,
+    definitions TEXT NOT NULL,
+    gender      TEXT DEFAULT NULL
+);
+CREATE INDEX idx_forme ON mots(forme);
+```
+
+```text
+1 000 747 lignes
+  895 090 valeurs distinctes de forme
+```
+
+`pos` porte l'étiquette grammaticale et permet le filtrage : `NP` pour les noms propres,
+`Loc*` et `loc-*` pour les locutions, `flex-*` pour les formes fléchies.
+`definitions` est un JSON de gloses — il n'est jamais copié en production (D-004).
 
 ## data/ods9/
 
