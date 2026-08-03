@@ -42,7 +42,7 @@ reports/query-plans/            plans existants
 ```text
 TTFB chaud p95 sous 250 ms
 moins de 10 requêtes SQLite indexées par fiche mot
-aucun scan complet au runtime sur ~412 000 lignes
+aucun scan complet au runtime sur ~838 000 lignes
 résultat principal dans le HTML initial
 ```
 
@@ -67,7 +67,7 @@ optimisation qui suppose un accès exclusif ou mono-thread au fichier SQLite
 - Tri effectué en PHP alors qu'un index le donnerait gratuitement, ou l'inverse
 
 **Volume et I/O SQLite**
-- Taille des tables de postings rapportée au gain réel : sur 412 000 mots, un index de
+- Taille des tables de postings rapportée au gain réel : sur 838 000 mots, un index de
   sous-chaînes naïf explose en volume et en temps d'import
 - Taille totale de `dictionary_fr.sqlite` — elle conditionne le temps d'upload et le cache disque
 - Nombre de pages SQLite lues par requête, `PRAGMA page_size`, `cache_size`

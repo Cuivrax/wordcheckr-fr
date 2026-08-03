@@ -104,7 +104,7 @@ Raison :
 
 ```text
 les scripts d’import ne tournent jamais en production
-Python est disponible immédiatement et traite 412 000 lignes sans friction
+Python est disponible immédiatement et traite 1,4 million de lignes source sans friction
 le runtime reste strictement conforme à D-001
 ```
 

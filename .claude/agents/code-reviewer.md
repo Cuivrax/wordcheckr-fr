@@ -48,9 +48,9 @@ Plus le document du domaine audité (`docs/03` pour l'import, `docs/05` pour le 
   reste 100 % PHP.
 
 **Requêtes et performance**
-- Aucun scan complet de la table (~412 000 lignes) au runtime. Chaque lookup passe par un index :
+- Aucun scan complet de la table (~838 000 lignes) au runtime. Chaque lookup passe par un index :
   `signature` pour les anagrammes, `normalized` pour les préfixes, `reversed` pour les suffixes,
-  postings précalculés pour les suites et les lettres.
+  postings précalculés pour les suites et les lettres (à partir de la Phase 2/3, cf. D-012).
 - Chaque requête nouvelle ou modifiée a son `EXPLAIN QUERY PLAN` dans `reports/query-plans/`, et
   ce plan montre bien un usage d'index — pas un `SCAN TABLE`.
 - Requêtes préparées uniquement, `LIMIT` strict systématique.

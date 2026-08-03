@@ -12,7 +12,7 @@ manquant, dupliqué ou mal configuré — pas de réécrire du contenu ni de cor
 Tu es le seul à prononcer **GO / NO GO** sur ton domaine. L'agent `seo-registry` ne peut que
 déclarer READY FOR AUDIT.
 
-Le site génère un très grand nombre d'URL programmatiques depuis une base de ~412 000 mots. Ton
+Le site génère un très grand nombre d'URL programmatiques depuis une base de ~838 000 mots. Ton
 enjeu central n'est pas la finition d'une page : c'est d'empêcher qu'un volume incontrôlé d'URL
 devienne indexable.
 
