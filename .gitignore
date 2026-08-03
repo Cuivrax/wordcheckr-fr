@@ -12,6 +12,10 @@
 /reports/*
 !/reports/.gitkeep
 
+# Python
+__pycache__/
+*.py[cod]
+
 # Environnement
 .env
 .DS_Store
