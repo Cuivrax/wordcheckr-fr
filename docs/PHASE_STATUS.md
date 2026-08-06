@@ -3,11 +3,82 @@
 ## Phase Courante
 
 ```text
-Phase 0 — données : corrections du premier NO GO appliquées, en attente de
-  nouvel audit code-reviewer
+Toutes les phases fonctionnelles (1 à 6) sont livrées, plus un enrichissement
+  hors plan (D-018), la refonte de la home (rapprochement du prototype réel),
+  le hub /mots et le correctif F3 (état d'erreur visible). L'audit consolidé
+  final a tourné quatre passes au total (voir reports/phases2-6-after.md pour
+  le détail complet de chacune) :
+    1re passe  code-reviewer NO GO (4 bloquants) / code-optimizer GO
+    2e passe   bloquants de la 1re passe corrigés, C1 (faux négatifs
+               "contenant/avec/sans" sans ancrage) découvert et corrigé
+    3e passe   NO GO sur les deux audits : la correction C1 réintroduisait
+               un parcours quasi complet de la table (CLAUDE.md, Interdits),
+               exposé à tout crawl via ~1,67M liens auto-générés
+    4e passe   corrections appliquées (fusion de requêtes, retrait des liens
+               sans ancrage, fuite de processus dans les tests) --
+               code-reviewer : GO. code-optimizer : GO (gain de la fusion
+               confirmé indépendamment, -20 à -55 %, 0 divergence sur 100+
+               comparaisons total/truncated). Non-bloquants restants listés
+               dans reports/phases2-6-after.md, dont un point Phase 7 réel :
+               RelationsFinder::containingWords() sur /mot/{mot} approche le
+               budget TTFB sous charge concurrente (p95 mesuré 252 ms à 8
+               processus simultanés, hors périmètre de cette passe)
 ```
 
-Mis à jour le 2026-08-03.
+Mis à jour le 2026-08-06.
+
+Décision explicite prise en cours de route (demande utilisateur) : construire
+un site fonctionnel d'abord, un seul audit consolidé groupé avant mise en
+ligne plutôt qu'un audit complet après chaque phase. Les points non bloquants
+relevés par les audits Phase 1 (I2-I8, dédoublement de composants CSS, copy
+provisoire...) n'ont jamais été refermés individuellement — à couvrir par
+l'audit consolidé.
+
+### Récapitulatif des phases livrées
+
+```text
+Phase 1  socle, home, fiche mot            /, /mot/{mot}, /verifier/{mot}
+         GO après correction de 3 bloquants critiques (C1-C3, entrées
+         malformées) et 2 bloquants de contraste (design-consistency-reviewer)
+Phase 2  solveur                            /jouer/{lettres}
+         plafond de sécurité mesuré (signatures candidates), jamais de scan
+Phase 3  contraintes de recherche           /mots/...
+         postings écartés après mesure (355 Mo, toujours trop lent) au profit
+         d'une approche bornée sur les index existants
+Phase 4  fiches riches (relations)          10 catégories sur /mot/{mot}
+         budget mesuré et tenu : 9 requêtes dictionnaire + 1 registre SEO
+         pour un mot admis, 4 + 1 pour un français non admis (< 10 par base,
+         voir D-003 pour la convention de comptage entre les deux bases)
+Phase 5  autocomplétion                     GET /api/suggest, combobox ARIA
+Phase 6  registre SEO                       storage/seo_fr.sqlite, D-017
+         838 248 URL en index,follow (403 060 admis + 435 120 français non
+         admis + 68 pages de structure, dont le hub /mots ajouté après D-017)
+         — décision explicite du propriétaire du produit, contre l'avis
+         initial de l'agent seo-registry (garde-fou de rôle légitime, voir
+         D-017). Rien n'est visible par le vrai Google avant la Phase 7.
+Home     refonte champ unifié (rapprochement du prototype, deux <form>
+         distincts depuis le correctif F1) + liens contextuels vers
+         /mots/... (maillage interne, signalé par seo-registry)
+Hub      /mots (App\Search\ExploreHub) : 66 liens (longueur/commençant/
+         terminant) + outil "Contenant" borné à 3 lettres, comptes
+         précalculés hors ligne (list_counts) après mesure d'un problème de
+         performance réel (~500-1000 ms en GROUP BY live, corrigé)
+D-018    nature grammaticale, genre, liens de conjugaison sur /mot/{mot}
+         (hors plan initial, demande utilisateur) — aucune définition (D-004
+         toujours en vigueur)
+F3       état d'erreur visible (WCAG 3.3.1) sur /verifier, /jouer, /mots :
+         bandeau role="alert" au lieu d'une redirection silencieuse
+C1       correction (audit final, bloquant) : recherches "contenant/avec/
+         sans" sans ancrage renvoyaient des faux négatifs silencieux au-delà
+         des 10 000 premiers mots alphabétiques — voir D-019
+```
+
+Base de production reconstruite (D-018) : 838 180 termes inchangés,
+integrity_check = ok, déterminisme vérifié (reconstruction x2, comparaison
+octet à octet). 17/17 fichiers de tests verts (`php tests/run.php`).
+
+Note : le second passage `code-reviewer` sur la Phase 0 corrigée n'a jamais été
+tracé formellement (historique conservé ci-dessous). Non bloquant pour la suite.
 
 ## Premier Audit — NO GO
 
@@ -36,7 +107,9 @@ scripts/lib/normalize.py          normalisation, score, signature, reversed,
 scripts/import_fr.py              import déterministe et rejouable
 scripts/download_hbenbel.py       seconde source française
 scripts/bench_queries.py          plans de requêtes persistés
-storage/dictionary_fr.sqlite      838 180 termes, 154,5 Mo, integrity ok
+storage/dictionary_fr.sqlite      838 180 termes, 154,5 Mo à la sortie de la Phase 0,
+                                   integrity ok (base reconstruite depuis, D-018 :
+                                   172,6 Mo au 2026-08-06, mêmes 838 180 termes)
 reports/                          rapports + audit BEFORE + rapport AFTER
 reports/query-plans/phase0.md     7 requêtes témoins, plans et timings
 8 agents installés dans .claude/agents/
@@ -94,12 +167,16 @@ le rollout SEO doit être dimensionné sur ~838 000 fiches, pas ~412 000
 ## Prochaine Action
 
 ```text
-relancer l'audit code-reviewer sur la Phase 0 corrigée
-puis ouvrir la Phase 1 — socle PHP, home et fiche mot
+lancer l'audit consolidé avant Phase 7 (Production) :
+  code-reviewer, code-optimizer, design-consistency-reviewer,
+  seo-technical-auditor — un seul NO GO bloque la mise en ligne
 ```
 
 ## GO / NO GO
 
 ```text
-NO GO du premier tour — corrections appliquées, en attente du second verdict
+Phase 0 — GO implicite (données inchangées depuis, jamais retracé formellement)
+Phase 1 — GO (audit formel, 2 tours)
+Phases 2-6, home, D-018 — jamais audités formellement, code fonctionnel et
+  testé (17/17), en attente de l'audit consolidé ci-dessus
 ```

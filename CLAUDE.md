@@ -80,7 +80,10 @@ Aucun quatrième statut sémantique ne doit être inventé.
 ## Séparation Build / Runtime (D-007)
 
 ```text
-scripts/*.py   hors ligne, Python, produisent storage/dictionary_fr.sqlite
+scripts/*     hors ligne (Python pour l'import des sources externes, PHP pour les
+              artefacts dérivés du runtime — registre SEO, sitemaps, comptes
+              précalculés), jamais accessible depuis public/, jamais exécuté au
+              runtime (voir D-007 pour le détail par script)
 app/, public/  runtime, PHP 8.4 uniquement, lecture seule sur SQLite
 ```
 
@@ -161,7 +164,7 @@ data/raw/ods8.json          411 430 mots bruts, dont 402 325 ≤ 15 lettres — 
 data/ods9/                  patch delta, integrity ok — présent
 data/raw/french_dict.db     283 Mo — python scripts/download_french_dictionary.ps1
 data/raw/hbenbel/           5 CSV — python scripts/download_hbenbel.py
-storage/dictionary_fr.sqlite  838 180 termes, 154,5 Mo — construite
+storage/dictionary_fr.sqlite  838 180 termes, 172,6 Mo — construite (reconstruite D-018)
 ```
 
 La base ne retient aucune forme de plus de 15 lettres : injouable sur un plateau (D-010).
