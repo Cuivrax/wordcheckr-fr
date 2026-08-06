@@ -24,6 +24,8 @@ Usage :
 from __future__ import annotations
 
 import argparse
+import ast
+import bisect
 import csv
 import hashlib
 import json
@@ -58,6 +60,61 @@ REPORTS = ROOT / "reports"
 # retenue dès qu'au moins une de ses lignes passe. « école » porte une ligne NP
 # et une ligne N : elle doit être conservée.
 POS_PROPER_NOUN = "NP"
+
+# D-018 — nature grammaticale et genre (Kartmaan) + liens de conjugaison (hbenbel verb.csv).
+#
+# Réduction des 38 valeurs brutes de pos Kartmaan vers un jeu fermé de 9 codes. Les lignes
+# NP et loc* (POS_PROPER_NOUN et tout pos commençant par "loc", insensible à la casse) sont
+# déjà écartées comme pour le filtre d'import français ci-dessus — même règle, appliquée ici
+# à la sélection de la nature grammaticale plutôt qu'à la rétention d'une forme. flex-suf
+# n'a pas besoin d'entrée : ses formes commencent toutes par "-" (suffixes, ex. "-ette"),
+# déjà rejetées par rejection_rule() ("trait d'union"), donc jamais dans `terms`.
+POS_MAP: dict[str, str] = {
+    "N": "N", "flex-nom": "N",
+    "V": "V", "Vaux": "V", "flex-verb": "V",
+    "Adj": "Adj", "adj-num": "Adj", "adj-pos": "Adj", "adj-int": "Adj", "adj-excl": "Adj",
+    "flex-adj": "Adj",
+    "Adv": "Adv", "flex-adv": "Adv",
+    "interj": "Interj", "flex-interj": "Interj",
+    "pronom": "Pronom", "pronom-pers": "Pronom", "pronom-int": "Pronom",
+    "pronom-pos": "Pronom", "pronom-rel": "Pronom", "flex-pronom": "Pronom",
+    "prép": "Prep",
+    "conj": "Conj", "conj-coord": "Conj", "flex-conj": "Conj",
+    "art-part": "Art",
+}
+POS_VALUES = ("N", "V", "Adj", "Adv", "Pronom", "Prep", "Conj", "Interj", "Art")
+GENDER_VALUES = ("m", "f", "e")
+
+HBENBEL_VERB_PATH = HBENBEL_DIR / "verb.csv"
+
+# Association tags hbenbel -> personne, restreinte aux six combinaisons personne/nombre
+# simples. "reflexive" est explicitement exclu de toute classification (voir
+# classify_conjugation()) : les quelques verbes purement pronominaux du fichier source
+# produisent des formes à espace ("se laver"), déjà hors de `terms` par construction.
+TENSE_PERSON_TAGS: dict[frozenset[str], str] = {
+    frozenset({"first-person", "singular"}): "1s",
+    frozenset({"second-person", "singular"}): "2s",
+    frozenset({"third-person", "singular"}): "3s",
+    frozenset({"first-person", "plural"}): "1p",
+    frozenset({"second-person", "plural"}): "2p",
+    frozenset({"third-person", "plural"}): "3p",
+}
+
+# Sélection représentative (pas le paradigme complet, ~50 formes/verbe dans la source) :
+# présent, futur simple, imparfait (indicatif, 6 personnes chacun), participe présent,
+# participe passé (forme de base seule, sans accord — hors périmètre, D-018).
+TENSE_VALUES = ("present", "future", "imperfect", "participle_present", "participle_past")
+
+# Seuil d'exclusion d'un lemme non fiable : nombre de formes s'appariant sur LUI-MÊME par
+# plus-long-préfixe-commun (own_count), tous temps confondus, avant curation. Mesuré sur
+# les 6 697 infinitifs distincts : médiane 50, moyenne 51,1. Les verbes suppletifs (ÊTRE,
+# AVOIR, ALLER, DEVOIR, VALOIR, VOIR, ASSEOIR/RASSEOIR, SEOIR, GÉSIR, FÉRIR, la famille
+# TENIR/VENIR/COURIR/CUIRE à radical alterné...) tombent nettement sous ce plancher (0 à 6
+# formes propres) parce que leurs formes conjuguées ne partagent pas de préfixe long avec
+# leur infinitif — mesure : 281 lemmes exclus sur 6 697 avec ce seuil. Décision D-018 :
+# aucune donnée fausse plutôt qu'un lien de conjugaison erroné, même au prix de priver les
+# verbes les plus courants de cette section dans cette passe.
+VERB_LEMMA_MIN_RELIABLE_FORMS = 20
 
 
 def sha256_of(path: Path) -> str:
@@ -245,6 +302,265 @@ def load_hbenbel() -> tuple[
     return forms, rejected, samples, stats
 
 
+def load_pos_gender(term_keys: set[str]) -> tuple[dict[str, dict], dict[str, int]]:
+    """Nature grammaticale et genre (D-018), depuis Kartmaan, pour les formes déjà
+    retenues dans `terms` (term_keys = clés normalisées de build_terms(), appelé avant
+    cette fonction).
+
+    Parcourt les lignes Kartmaan triées par id (ordre d'insertion source) : c'est la seule
+    trace de "sens primaire probable" disponible dans cette source, exactement la même
+    convention de déterminisme que load_kartmaan() (ORDER BY forme, id). Une ligne NP ou
+    loc* est exclue de la sélection de pos exactement comme elle l'est de la rétention de
+    forme (rejection_rule ci-dessus) — un sens proscrit ne doit pas polluer la nature
+    grammaticale d'un terme retenu par une autre ligne.
+
+    gender est calculé indépendamment de pos/pos_secondary : première ligne (ordre id) où
+    pos == 'N' et gender est une valeur non vide, même si 'N' n'est pas le sens retenu comme
+    primaire ou secondaire (couvre TABLE : pos primaire V venu de "flex-verb", genre f
+    rapporté quand même depuis le sens N).
+    """
+    connection = sqlite3.connect("file:%s?mode=ro" % KARTMAAN_PATH.as_posix(), uri=True)
+    pos_by_term: dict[str, list[str]] = defaultdict(list)
+    gender_by_term: dict[str, str] = {}
+    stats = {"kartmaan_pos_lines_considered": 0, "kartmaan_pos_lines_matched": 0}
+    try:
+        query = "SELECT forme, pos, gender FROM mots ORDER BY id"
+        for form, pos, gender in connection.execute(query):
+            if not pos or pos == POS_PROPER_NOUN or pos.lower().startswith("loc"):
+                continue
+            canonical = POS_MAP.get(pos)
+            if canonical is None:
+                continue
+            stats["kartmaan_pos_lines_considered"] += 1
+            normalized = normalize(form)
+            if normalized not in term_keys:
+                continue
+            stats["kartmaan_pos_lines_matched"] += 1
+            if canonical not in pos_by_term[normalized]:
+                pos_by_term[normalized].append(canonical)
+            if canonical == "N" and gender in GENDER_VALUES and normalized not in gender_by_term:
+                gender_by_term[normalized] = gender
+    finally:
+        connection.close()
+
+    result = {
+        normalized: {
+            "pos": pos_list[0],
+            "pos_secondary": pos_list[1] if len(pos_list) > 1 else None,
+            "gender": gender_by_term.get(normalized),
+        }
+        for normalized, pos_list in pos_by_term.items()
+    }
+
+    stats["terms_with_pos"] = len(result)
+    stats["terms_with_pos_secondary"] = sum(1 for v in result.values() if v["pos_secondary"])
+    stats["terms_with_gender"] = len(gender_by_term)
+    stats["terms_with_gender_by_value"] = dict(sorted(Counter(gender_by_term.values()).items()))
+    return result, stats
+
+
+def classify_conjugation(tags: list[str]) -> tuple[str, str | None] | None:
+    """Réduit une liste de tags hbenbel vers (temps, personne) parmi TENSE_VALUES, ou None
+    si la combinaison ne fait pas partie de la sélection représentative D-018 (voir
+    TENSE_VALUES) ou porte le tag "reflexive" (verbes pronominaux, hors périmètre)."""
+    tag_set = set(tags)
+    if "reflexive" in tag_set:
+        return None
+
+    person = None
+    for combo, code in TENSE_PERSON_TAGS.items():
+        if combo <= tag_set:
+            person = code
+            break
+
+    if "present" in tag_set and "indicative" in tag_set and person is not None:
+        return ("present", person)
+    if "future" in tag_set and "indicative" in tag_set and person is not None:
+        return ("future", person)
+    if "imperfect" in tag_set and "indicative" in tag_set and person is not None:
+        return ("imperfect", person)
+    if "participle" in tag_set and "past" in tag_set and not ({"masculine", "feminine"} & tag_set):
+        return ("participle_past", None)
+    if "participle" in tag_set and "present" in tag_set:
+        return ("participle_present", None)
+    return None
+
+
+# Terminaisons régulières du premier groupe (infinitif en -ER), seul groupe suffisamment
+# mécanique pour être vérifié sans base de connaissance externe (radical + terminaison
+# fixe, D-018). "GER" : les verbes en -ger insèrent un "e" de son avant une terminaison
+# commençant par a/o (mangeons, mangeais, mangeant — jamais mangons/mangais/mangant).
+PRESENT_ER_ENDINGS = {"1s": "E", "2s": "ES", "3s": "E", "1p": "ONS", "2p": "EZ", "3p": "ENT"}
+FUTURE_ENDINGS = {"1s": "AI", "2s": "AS", "3s": "A", "1p": "ONS", "2p": "EZ", "3p": "ONT"}
+IMPERFECT_ENDINGS = {"1s": "AIS", "2s": "AIS", "3s": "AIT", "1p": "IONS", "2p": "IEZ", "3p": "AIENT"}
+
+
+def expected_regular_er_form(lemma: str, tense: str, person: str | None) -> str | None:
+    """Forme régulière attendue pour un verbe du premier groupe (infinitif en -ER), pour
+    les temps/personnes de la sélection D-018. None si le lemme n'est pas un verbe -ER, ou
+    si (tense, person) sort du cadre couvert ici — dans ce cas, aucune validation
+    morphologique supplémentaire n'est appliquée par l'appelant.
+
+    Validation ajoutée AU-DELA du seuil own_count (VERB_LEMMA_MIN_RELIABLE_FORMS) : ce
+    dernier détecte un LEMME entièrement peu fiable (ÊTRE, AVOIR...), mais ne protège pas
+    un lemme par ailleurs fiable contre un appariement PONCTUEL erroné avec une forme d'un
+    AUTRE verbe alphabétiquement proche. Mesuré sur la base réelle : SOMMES (forme de
+    ÊTRE) s'appariait par plus-long-préfixe-commun à SOMMER (verbe -ER régulier, fiable
+    par ailleurs, own_count élevé — jamais exclu par le seuil seul) ; SONT à SONORISER ;
+    VAIS à VAIRONNER — trois cas concrets fermés par cette fonction, puisque "sommes"
+    (attendu : SOMMONS), "sont" (attendu : SONORISENT) et "vais" (attendu : VAIRONNE) ne
+    correspondent à AUCUNE conjugaison régulière possible de ces lemmes.
+
+    Ne peut que RETIRER une ligne déjà candidate (un désaccord renvoie une forme attendue
+    différente de la forme réelle, jamais l'inverse) — jamais ajouter une donnée : échec
+    sûr par construction. Les groupes -IR/-RE/-OIR restent protégés uniquement par le
+    seuil own_count (résidu documenté, voir rapport D-018) : construire un vérificateur
+    couvrant ces groupes, nettement plus irréguliers, est hors périmètre de cette passe.
+    """
+    if not lemma.endswith("ER"):
+        return None
+
+    stem = lemma[:-2]
+    soft_g_insert = "E" if lemma.endswith("GER") else ""
+
+    if tense == "present" and person in PRESENT_ER_ENDINGS:
+        ending = PRESENT_ER_ENDINGS[person]
+        return stem + (soft_g_insert if ending[:1] in ("O", "A") else "") + ending
+    if tense == "future" and person in FUTURE_ENDINGS:
+        return lemma + FUTURE_ENDINGS[person]
+    if tense == "imperfect" and person in IMPERFECT_ENDINGS:
+        ending = IMPERFECT_ENDINGS[person]
+        return stem + (soft_g_insert if ending[:1] in ("O", "A") else "") + ending
+    if tense == "participle_present" and person is None:
+        return stem + soft_g_insert + "ANT"
+    if tense == "participle_past" and person is None:
+        return stem + "E"
+    return None
+
+
+def load_verb_forms(
+    term_keys: set[str],
+) -> tuple[list[tuple[str, str, str, str | None]], dict[str, int], list[str]]:
+    """Liens de conjugaison (D-018), depuis data/raw/hbenbel/verb.csv.
+
+    ATTENTION — correction d'une pré-vérification fausse (voir rapport BEFORE, consigné
+    dans D-018) : ce fichier n'est PAS organisé en blocs contigus par verbe. Vérifié
+    directement : sur les 362 461 lignes, la colonne "form" ne décroît JAMAIS d'une ligne à
+    la suivante — c'est un tri alphabétique global sur "form", toutes formes de tous les
+    verbes mélangées. Un parcours séquentiel avec "lemme courant = dernier marqueur
+    ['infinitive'] vu" aurait mal attribué une fraction significative des formes dès que
+    deux verbes partagent un radical alphabétique proche (ex. POSER/POSITIONNER).
+
+    Reconstruction retenue : pour chaque forme conjuguée, recherche par dichotomie du ou
+    des infinitifs connus partageant le plus long préfixe avec elle (propriété standard :
+    le meilleur candidat par préfixe commun dans une liste triée est toujours le
+    prédécesseur ou le successeur d'insertion). Un lemme dont trop peu de formes s'apparient
+    sur lui-même (own_count < VERB_LEMMA_MIN_RELIABLE_FORMS) est un verbe suppletif détecté
+    automatiquement (ÊTRE, AVOIR, ALLER...) — exclu entièrement plutôt que de risquer un
+    lien faux, voir la constante pour la mesure complète.
+
+    D-010 (plafond 15 lettres) : appliqué automatiquement par le filtre "normalized in
+    term_keys" sur le lemme ET sur la forme — aucune forme ou lemme trop long ne peut être
+    dans `terms`, donc ne peut jamais atteindre ce point.
+    """
+    infinitives_raw: list[str] = []
+    rows: list[tuple[str, list[str]]] = []
+
+    with HBENBEL_VERB_PATH.open(encoding="utf-8", newline="") as handle:
+        reader = csv.reader(handle)
+        next(reader, None)  # en-tête "form,tags"
+        for row in reader:
+            if len(row) < 2:
+                continue
+            form, tags_raw = row[0], row[1]
+            if not tags_raw:
+                continue  # expressions idiomatiques a tags vides ("poser un lapin,")
+            tags = ast.literal_eval(tags_raw)
+            if tags == ["infinitive"]:
+                infinitives_raw.append(form)
+            else:
+                rows.append((form, tags))
+
+    normalized_infinitives = sorted({normalize(f) for f in infinitives_raw})
+
+    def best_match(query: str) -> tuple[list[str], int]:
+        """Infinitif(s) au plus long prefixe commun avec `query`, et la longueur de ce
+        prefixe. best_len <= 0 : aucun prefixe partage. len(best) > 1 : egalite (ambigu,
+        appelant doit ignorer la ligne plutot que deviner)."""
+        i = bisect.bisect_left(normalized_infinitives, query)
+        candidates = []
+        if i < len(normalized_infinitives):
+            candidates.append(normalized_infinitives[i])
+        if i > 0:
+            candidates.append(normalized_infinitives[i - 1])
+
+        best_len = -1
+        best: list[str] = []
+        for candidate in candidates:
+            shared = 0
+            for a, b in zip(query, candidate):
+                if a == b:
+                    shared += 1
+                else:
+                    break
+            if shared > best_len:
+                best_len = shared
+                best = [candidate]
+            elif shared == best_len and candidate not in best:
+                best.append(candidate)
+        return best, best_len
+
+    own_count: Counter = Counter()
+    curated: set[tuple[str, str, str, str | None]] = set()
+
+    for form, tags in rows:
+        normalized_form = normalize(form)
+        if normalized_form not in term_keys:
+            continue
+        best, shared_len = best_match(normalized_form)
+        if shared_len <= 0 or len(best) != 1:
+            continue  # aucun prefixe partage, ou egalite ambigue -- ignore, ne devine pas
+        lemma = best[0]
+        if lemma not in term_keys:
+            continue
+        own_count[lemma] += 1
+        classified = classify_conjugation(tags)
+        if classified is None:
+            continue
+        tense, person = classified
+
+        # Validation morphologique supplementaire (verbes -ER uniquement, voir
+        # expected_regular_er_form()) : ferme les cas concrets SOMMES/SONT/VAIS observes
+        # sur la base reelle (appariement fortuit avec un voisin -ER alphabetiquement
+        # proche mais grammaticalement sans rapport). None => hors cadre couvert, aucune
+        # verification (comportement inchange) ; une valeur qui ne correspond pas a la
+        # forme reelle => ligne rejetee (echec sur, ne peut que retirer une ligne).
+        expected = expected_regular_er_form(lemma, tense, person)
+        if expected is not None and expected != normalized_form:
+            continue
+
+        curated.add((lemma, normalized_form, tense, person))
+
+    excluded_lemmas = sorted(
+        lemma for lemma in normalized_infinitives
+        if own_count.get(lemma, 0) < VERB_LEMMA_MIN_RELIABLE_FORMS
+    )
+    excluded_set = set(excluded_lemmas)
+    kept = sorted(row for row in curated if row[0] not in excluded_set)
+
+    stats = {
+        "hbenbel_verb_infinitive_markers": len(infinitives_raw),
+        "hbenbel_verb_distinct_normalized_infinitives": len(normalized_infinitives),
+        "hbenbel_verb_conjugated_rows_considered": len(rows),
+        "verb_lemma_min_reliable_forms_threshold": VERB_LEMMA_MIN_RELIABLE_FORMS,
+        "verb_lemmas_excluded_unreliable": len(excluded_lemmas),
+        "verb_lemmas_retained": len({row[0] for row in kept}),
+        "verb_forms_rows": len(kept),
+        "verb_forms_distinct_forms": len({row[1] for row in kept}),
+    }
+    return kept, stats, excluded_lemmas
+
+
 def build_terms(
     ods8: list[str],
     ods9: dict[str, list[str]],
@@ -314,7 +630,12 @@ def build_terms(
     return terms, effects
 
 
-def write_database(terms: dict[str, dict], metadata: dict[str, str]) -> None:
+def write_database(
+    terms: dict[str, dict],
+    pos_gender: dict[str, dict],
+    verb_forms: list[tuple[str, str, str, str | None]],
+    metadata: dict[str, str],
+) -> None:
     TARGET_PATH.parent.mkdir(parents=True, exist_ok=True)
     if TARGET_PATH.exists():
         TARGET_PATH.unlink()
@@ -334,14 +655,22 @@ def write_database(terms: dict[str, dict], metadata: dict[str, str]) -> None:
                 len(normalized),
                 signature(normalized),
                 reverse(normalized),
+                pos_gender.get(normalized, {}).get("pos"),
+                pos_gender.get(normalized, {}).get("pos_secondary"),
+                pos_gender.get(normalized, {}).get("gender"),
             )
             for index, (normalized, entry) in enumerate(sorted(terms.items()), start=1)
         )
         connection.executemany(
             "INSERT INTO terms (id, display_term, normalized, is_french, is_ods8,"
-            " is_ods9, score, length, signature, reversed)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " is_ods9, score, length, signature, reversed, pos, pos_secondary, gender)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             rows,
+        )
+        connection.executemany(
+            "INSERT INTO verb_forms (lemma_normalized, form_normalized, tense, person)"
+            " VALUES (?, ?, ?, ?)",
+            verb_forms,
         )
         connection.executemany(
             "INSERT INTO build_metadata (key, value) VALUES (?, ?)",
@@ -378,7 +707,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    required = [ODS8_PATH, KARTMAAN_PATH, ODS9_PATH, SCHEMA_PATH]
+    required = [ODS8_PATH, KARTMAAN_PATH, ODS9_PATH, SCHEMA_PATH, HBENBEL_VERB_PATH]
     required += [HBENBEL_DIR / name for name in HBENBEL_FILES]
     for path in required:
         if not path.exists():
@@ -389,6 +718,13 @@ def main() -> int:
     kartmaan, rejected, rejected_samples, km_stats = load_kartmaan()
     hbenbel, hb_rejected, hb_samples, hb_stats = load_hbenbel()
     terms, effects = build_terms(ods8, ods9, kartmaan, hbenbel)
+
+    # D-018 — nature grammaticale, genre, liens de conjugaison. Appelé APRES build_terms() :
+    # les deux fonctions filtrent leurs sources contre les clés normalisées déjà retenues
+    # (term_keys), jamais l'inverse — ni pos/gender ni verb_forms ne peuvent créer un terme.
+    term_keys = set(terms.keys())
+    pos_gender, pos_stats = load_pos_gender(term_keys)
+    verb_forms, verb_stats, verb_excluded_lemmas = load_verb_forms(term_keys)
 
     # Les collisions se calculent sur l'union des formes sources : deux graphies
     # venues de sources différentes qui se rejoignent après normalisation sont
@@ -447,6 +783,9 @@ def main() -> int:
         "merge_effects": effects,
         "rejections_by_rule_kartmaan": dict(sorted(rejected.items())),
         "rejections_by_rule_hbenbel": dict(sorted(hb_rejected.items())),
+        # D-018 — nature grammaticale, genre, liens de conjugaison.
+        "pos_gender": dict(sorted(pos_stats.items())),
+        "verb_forms": dict(sorted(verb_stats.items())),
     }
 
     if args.dry_run:
@@ -456,17 +795,18 @@ def main() -> int:
 
     metadata = {
         "language": "fr",
-        "schema": "terms v1",
+        "schema": "terms v2 (D-018 : pos, pos_secondary, gender, verb_forms)",
         "source_ods8_sha256": sha256_of(ODS8_PATH),
         "source_ods9_sha256": sha256_of(ODS9_PATH),
         "source_kartmaan_sha256": sha256_of(KARTMAAN_PATH),
         "terms_total": str(len(terms)),
+        "verb_forms_total": str(len(verb_forms)),
     }
     for name in HBENBEL_FILES:
         metadata["source_hbenbel_%s_sha256" % Path(name).stem] = sha256_of(
             HBENBEL_DIR / name
         )
-    write_database(terms, metadata)
+    write_database(terms, pos_gender, verb_forms, metadata)
 
     REPORTS.mkdir(parents=True, exist_ok=True)
     write_json(REPORTS / "import-summary.json", summary)
@@ -505,6 +845,11 @@ def main() -> int:
             (normalized, normalized, " | ".join(forms))
             for normalized, forms in sorted(collisions.items())
         ),
+    )
+    write_csv(
+        REPORTS / "verb-lemmas-excluded.csv",
+        ["lemma_normalized"],
+        ((lemma,) for lemma in verb_excluded_lemmas),
     )
 
     connection = sqlite3.connect("file:%s?mode=ro" % TARGET_PATH.as_posix(), uri=True)
