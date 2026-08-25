@@ -9,11 +9,16 @@ use App\Database\Connection;
 /**
  * Recherche d'un terme exact, mot precedent, mot suivant (Phase 1, docs/08).
  *
- * Budget : au plus 3 requetes SQLite par appel a find(), toutes avec LIMIT 1, toutes
+ * Budget : au plus 2 requetes SQLite par appel a find() (lookupRow() + neighbours()
+ * fusionnee, D-043 -- mot precedent ET suivant en UNE requete UNION ALL, plutot que
+ * deux requetes separees comme avant D-043), toutes avec LIMIT 1 par cote, toutes
  * servies par l'index UNIQUE sur normalized (sqlite_autoindex_terms_1) -- aucun scan,
- * voir reports/query-plans/phase1.md pour les plans et chronometrages. Une forme
- * d'entree invalide n'engendre aucune requete : find() renvoie null avant toute
- * ouverture de curseur.
+ * voir reports/query-plans/phase1.md pour les plans d'origine et
+ * reports/query-plans/d043-neighbour-merge.md pour la fusion. Correctif necessaire
+ * par App\Search\SenseLookup (D-043, +1 requete) pour rester sous le plafond "moins
+ * de 10" (CLAUDE.md) : 3+1(neighbours fusionnees en 1)+5(relations)+1(conjugaison)+
+ * 1(sens) = 9 pour un mot admis, pas 10. Une forme d'entree invalide n'engendre
+ * aucune requete : find() renvoie null avant toute ouverture de curseur.
  *
  * Les relations (anagrammes, sous-mots, rallonges...) sont hors perimetre de la
  * Phase 1 (Phase 4) ; les recherches liees statiques (longueur, prefixe...) egalement
@@ -61,6 +66,7 @@ final class TermLookup
         $letters = $this->tiles($normalized);
         $score = $found ? (int) $row['score'] : Normalizer::score($normalized, $this->tileScores);
         $length = $found ? (int) $row['length'] : strlen($normalized);
+        [$previousWord, $nextWord] = $this->neighbours($normalized);
 
         return new TermPage(
             normalized: $normalized,
@@ -72,8 +78,8 @@ final class TermLookup
             isOds8: $isOds8,
             isOds9: $isOds9,
             letters: $letters,
-            previousWord: $this->neighbour($normalized, previous: true),
-            nextWord: $this->neighbour($normalized, previous: false),
+            previousWord: $previousWord,
+            nextWord: $nextWord,
             // D-018 : uniquement pour un terme trouve -- $row est null sinon, ces trois
             // champs restent a leur defaut TermPage (null), jamais une fiche "inconnu"
             // avec une nature grammaticale.
@@ -103,17 +109,39 @@ final class TermLookup
         return $row === false ? null : $row;
     }
 
-    private function neighbour(string $normalized, bool $previous): ?string
+    /**
+     * Mot precedent et suivant en UNE SEULE requete (D-043, fusion -- deux SELECT bornes
+     * chacun par leur propre ORDER BY/LIMIT, combines par UNION ALL). Chaque cote reste
+     * servi par l'index unique sur normalized, exactement comme les deux requetes
+     * separees qu'elle remplace (verifie par EXPLAIN QUERY PLAN, reports/query-plans/
+     * d043-neighbour-merge.md) -- aucune ligne ne peut jamais satisfaire les deux
+     * conditions a la fois (< et > au meme normalized), donc aucune ambiguite a
+     * departager entre les 0, 1 ou 2 lignes renvoyees : normalized < $normalized est
+     * toujours le precedent, normalized > $normalized est toujours le suivant.
+     *
+     * @return array{0: ?string, 1: ?string} [previousWord, nextWord]
+     */
+    private function neighbours(string $normalized): array
     {
-        $sql = $previous
-            ? 'SELECT normalized FROM terms WHERE normalized < ? ORDER BY normalized DESC LIMIT 1'
-            : 'SELECT normalized FROM terms WHERE normalized > ? ORDER BY normalized ASC LIMIT 1';
+        $statement = $this->connection->pdo()->prepare(
+            'SELECT normalized FROM (SELECT normalized FROM terms WHERE normalized < ? ORDER BY normalized DESC LIMIT 1)'
+            . ' UNION ALL '
+            . 'SELECT normalized FROM (SELECT normalized FROM terms WHERE normalized > ? ORDER BY normalized ASC LIMIT 1)'
+        );
+        $statement->execute([$normalized, $normalized]);
 
-        $statement = $this->connection->pdo()->prepare($sql);
-        $statement->execute([$normalized]);
-        $row = $statement->fetch();
+        $previousWord = null;
+        $nextWord = null;
 
-        return $row === false ? null : $row['normalized'];
+        foreach ($statement->fetchAll() as $row) {
+            if ($row['normalized'] < $normalized) {
+                $previousWord = $row['normalized'];
+            } else {
+                $nextWord = $row['normalized'];
+            }
+        }
+
+        return [$previousWord, $nextWord];
     }
 
     /**

@@ -1,8 +1,10 @@
 /*
- * Amelioration progressive uniquement (docs/04_UI_PAGES.md) : affiche un apercu de
- * tuiles au-dessus du champ de saisie. L'input HTML texte reste la source de verite
- * et le formulaire fonctionne deja sans ce script (soumission GET native vers
- * /verifier). Ce fichier est charge en "defer" et ne bloque jamais le rendu.
+ * Amelioration progressive uniquement (docs/04_UI_PAGES.md) : affiche les tuiles
+ * directement dans le champ de saisie, a la place du texte tape (voir la classe
+ * "tiles-active" ci-dessous et les regles correspondantes dans site.css). L'input
+ * HTML texte reste la source de verite et le formulaire fonctionne deja sans ce
+ * script (soumission GET native vers /verifier). Ce fichier est charge en "defer"
+ * et ne bloque jamais le rendu.
  */
 (function () {
   "use strict";
@@ -57,6 +59,19 @@
       if (!input || !tilesBox) {
         return;
       }
+
+      // Pose la classe AVANT de brancher l'ecouteur : c'est elle qui active en CSS le
+      // recouvrement du champ par les tuiles (site.css, .rack-wrap.tiles-active). Sans
+      // cette classe (script absent ou desactive), .rack reste le champ texte normal,
+      // visible et fonctionnel -- aucune regression sans JavaScript.
+      wrap.classList.add("tiles-active");
+
+      // Rendu immediat : une valeur deja presente au moment de l'init (restauration
+      // d'historique/bfcache, autofill malgre autocomplete="off", ou simplement une
+      // valeur non vide cote serveur) ne declenche aucun evenement "input" -- sans cet
+      // appel, .rack serait deja transparent (classe posee ci-dessus) alors qu'aucune
+      // tuile n'a ete dessinee pour ce texte, rendant le champ visuellement vide.
+      renderTiles(input, tilesBox);
 
       input.addEventListener("input", function () {
         renderTiles(input, tilesBox);

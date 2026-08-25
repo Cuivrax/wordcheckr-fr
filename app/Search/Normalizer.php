@@ -29,7 +29,7 @@ final class Normalizer
      * explicite, "oeil", "boeuf" et "noeud" seraient rejetes comme hors A-Z alors
      * qu'OEIL, BOEUF et OEUF sont des mots admis a l'ODS8.
      */
-    private const array LIGATURES = [
+    private const LIGATURES = [
         "\u{0153}" => 'oe', // œ
         "\u{0152}" => 'OE', // Œ
         "\u{00e6}" => 'ae', // æ
@@ -40,13 +40,13 @@ final class Normalizer
      * Le plateau fait 15 cases : un mot de plus de 15 lettres ne peut jamais etre pose.
      * Plafond applique aux donnees, pas seulement a la saisie (D-010, revisee).
      */
-    public const int MIN_LENGTH = 2;
-    public const int MAX_LENGTH = 15;
+    public const MIN_LENGTH = 2;
+    public const MAX_LENGTH = 15;
 
     // \z (pas $) : $ accepte un \n final en PCRE, ce qui admettrait a tort
     // "POSER\n" comme terme valide (audit Phase 1, C2). \z ancre strictement la fin
     // de la chaine, sans exception pour un saut de ligne terminal.
-    private const string VALID_PATTERN = '/^[A-Z]{' . self::MIN_LENGTH . ',' . self::MAX_LENGTH . '}\z/';
+    private const VALID_PATTERN = '/^[A-Z]{' . self::MIN_LENGTH . ',' . self::MAX_LENGTH . '}\z/';
 
     /**
      * Ligatures, puis NFD, puis retrait des diacritiques (categorie Unicode Mn), puis

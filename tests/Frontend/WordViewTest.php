@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Search\Conjugation;
 use App\Search\TermPage;
 use App\Search\TermRelations;
+use App\Search\WordSenses;
 use Tests\Support\Assert;
 
 /**
@@ -35,16 +36,21 @@ use Tests\Support\Assert;
 return function (): void {
     require __DIR__ . '/../../app/bootstrap.php';
 
-    $render = static function (TermPage $page, ?TermRelations $relations, Conjugation $conjugation): string {
+    $render = static function (TermPage $page, ?TermRelations $relations, Conjugation $conjugation, WordSenses $senses): string {
         $seo = \App\Seo\SeoMeta::noindex('https://exemple.fr/mot/' . $page->slug);
 
         ob_start();
-        (static function (TermPage $page, ?TermRelations $relations, Conjugation $conjugation, \App\Seo\SeoMeta $seo): void {
+        (static function (TermPage $page, ?TermRelations $relations, Conjugation $conjugation, WordSenses $senses, \App\Seo\SeoMeta $seo): void {
             require __DIR__ . '/../../app/View/word.php';
-        })($page, $relations, $conjugation, $seo);
+        })($page, $relations, $conjugation, $senses, $seo);
 
         return (string) ob_get_clean();
     };
+
+    // Aucun sens genere (D-0XX, pilote partiel) : reutilise pour toutes les fixtures --
+    // ce fichier couvre D-018 (pos/genre/conjugaison), pas le rendu des cartes de
+    // definition (couvert par un test dedie a app/Search/SenseLookup).
+    $noSenses = new WordSenses(senses: [], queryCount: 0);
 
     // Conjugaison vide (mot ni verbe ni forme conjuguee -- l'immense majorite des mots) :
     // reutilisee pour toutes les fixtures qui ne portent pas sur D-018 specifiquement.
@@ -121,7 +127,7 @@ return function (): void {
         queryCount: 5,
     );
 
-    $htmlAa = $render($aaPage, $aaRelations, $noConjugation);
+    $htmlAa = $render($aaPage, $aaRelations, $noConjugation, $noSenses);
 
     Assert::true(str_contains($htmlAa, 'Jouer Autour De AA'), 'AA : titre de section relations attendu');
 
@@ -156,9 +162,9 @@ return function (): void {
 
     // Recherches liees.
     Assert::true(str_contains($htmlAa, 'Recherches Liées'), 'AA : section recherches liees attendue');
-    Assert::true(str_contains($htmlAa, '>Mots de 2 lettres<'), 'AA : libelle "length" attendu');
-    Assert::true(str_contains($htmlAa, '>Commençant par A<'), 'AA : libelle "startsWith" attendu');
-    Assert::true(str_contains($htmlAa, '>Jouer avec AA<'), 'AA : libelle "play" attendu');
+    Assert::true(str_contains($htmlAa, '>Mots De 2 Lettres<'), 'AA : libelle "length" attendu');
+    Assert::true(str_contains($htmlAa, '>Commençant Par A<'), 'AA : libelle "startsWith" attendu');
+    Assert::true(str_contains($htmlAa, '>Jouer Avec AA<'), 'AA : libelle "play" attendu');
 
     // -------------------------------------------------------------------
     // ABANDONNATRICES -- quinze lettres (borne haute, D-010). insertOneLetter,
@@ -201,7 +207,7 @@ return function (): void {
         queryCount: 5,
     );
 
-    $htmlLong = $render($longPage, $longRelations, $noConjugation);
+    $htmlLong = $render($longPage, $longRelations, $noConjugation, $noSenses);
 
     Assert::true(str_contains($htmlLong, 'Jouer Autour De ABANDONNATRICES'), 'ABANDONNATRICES : titre de section relations attendu');
     Assert::true(!str_contains($htmlLong, '<span>Insérer Une Lettre</span>'), 'ABANDONNATRICES : inserer une lettre structurellement vide (D-010)');
@@ -231,7 +237,7 @@ return function (): void {
         // explicitement "un mot francais non admis avec pos renseigne".
         pos: 'V',
     );
-    $htmlNotAdmitted = $render($notAdmittedPage, null, $noConjugation);
+    $htmlNotAdmitted = $render($notAdmittedPage, null, $noConjugation, $noSenses);
     Assert::true(!str_contains($htmlNotAdmitted, 'class="relations"'), 'GHOSTER : francais non admis, aucune section relations');
     Assert::true(!str_contains($htmlNotAdmitted, 'Recherches Liées'), 'GHOSTER : francais non admis, aucune recherche liee');
     Assert::true(str_contains($htmlNotAdmitted, '<p class="pos-line">Verbe</p>'), 'GHOSTER : pos renseigne malgre le statut non admis, ligne attendue');
@@ -250,7 +256,7 @@ return function (): void {
         previousWord: 'ZYZZYVAS',
         nextWord: null,
     );
-    $htmlUnknown = $render($unknownPage, null, $noConjugation);
+    $htmlUnknown = $render($unknownPage, null, $noConjugation, $noSenses);
     Assert::true(!str_contains($htmlUnknown, 'class="relations"'), 'ZZZQQQXXX : inconnu, aucune section relations');
     Assert::true(!str_contains($htmlUnknown, 'Recherches Liées'), 'ZZZQQQXXX : inconnu, aucune recherche liee');
     Assert::true(!str_contains($htmlUnknown, 'class="pos-line"'), 'ZZZQQQXXX : pos absent (terme inconnu), aucune ligne nature grammaticale');
@@ -295,7 +301,7 @@ return function (): void {
         asForm: [],
         queryCount: 1,
     );
-    $htmlPoser = $render($poserPage, null, $poserConjugation);
+    $htmlPoser = $render($poserPage, null, $poserConjugation, $noSenses);
     Assert::true(str_contains($htmlPoser, '<p class="pos-line">Verbe</p>'), 'POSER : ligne "Verbe" attendue');
     Assert::true(str_contains($htmlPoser, '<h2>Se Conjugue</h2>'), 'POSER : titre "Se Conjugue" attendu (asLemma non vide)');
     Assert::true(!str_contains($htmlPoser, '<h2>Conjugaison</h2>'), 'POSER : pas le titre generique "Conjugaison" (asLemma non vide)');
@@ -337,7 +343,7 @@ return function (): void {
         asForm: [['lemma' => 'POSER', 'slug' => 'poser', 'tense' => 'future', 'person' => '3s']],
         queryCount: 1,
     );
-    $htmlPosera = $render($poseraPage, null, $poseraConjugation);
+    $htmlPosera = $render($poseraPage, null, $poseraConjugation, $noSenses);
     Assert::true(str_contains($htmlPosera, '<h2>Conjugaison</h2>'), 'POSERA : titre generique "Conjugaison" attendu (asLemma vide)');
     Assert::true(!str_contains($htmlPosera, '<h2>Se Conjugue</h2>'), 'POSERA : pas "Se Conjugue", POSERA n\'est pas un infinitif');
     Assert::true(
@@ -372,7 +378,7 @@ return function (): void {
         ],
         queryCount: 1,
     );
-    $htmlTable = $render($tablePage, null, $tableConjugation);
+    $htmlTable = $render($tablePage, null, $tableConjugation, $noSenses);
     Assert::true(str_contains($htmlTable, '<p class="pos-line">Nom féminin, aussi verbe</p>'), 'TABLE : ligne "Nom féminin, aussi verbe" attendue');
     Assert::true(str_contains($htmlTable, 'Forme conjuguée de <a href="/mot/tabler">TABLER</a> (participe passé).'), 'TABLE : phrase participe passe attendue');
     Assert::true(str_contains($htmlTable, 'Forme conjuguée de <a href="/mot/tabler">TABLER</a> (présent, 1re pers. sing.).'), 'TABLE : phrase present 1s attendue');
@@ -394,7 +400,7 @@ return function (): void {
         pos: 'N',
         gender: 'm',
     );
-    $htmlChat = $render($chatPage, null, $noConjugation);
+    $htmlChat = $render($chatPage, null, $noConjugation, $noSenses);
     Assert::true(str_contains($htmlChat, '<p class="pos-line">Nom masculin</p>'), 'CHAT : ligne "Nom masculin" attendue');
     Assert::true(!str_contains($htmlChat, 'class="conjugation"'), 'CHAT : aucune donnee de conjugaison, aucune section');
 
@@ -416,7 +422,7 @@ return function (): void {
         posSecondary: 'N',
         gender: 'm',
     );
-    $htmlEtre = $render($etrePage, null, $noConjugation);
+    $htmlEtre = $render($etrePage, null, $noConjugation, $noSenses);
     Assert::true(str_contains($htmlEtre, '<p class="pos-line">Verbe, aussi nom masculin</p>'), 'ETRE : ligne "Verbe, aussi nom masculin" attendue');
     Assert::true(!str_contains($htmlEtre, 'class="conjugation"'), 'ETRE : verbe supplétif exclu, aucune section conjugaison malgre pos=V');
 
@@ -440,7 +446,7 @@ return function (): void {
         asForm: [['lemma' => 'ABADER', 'slug' => 'abader', 'tense' => 'imperfect', 'person' => '3p']],
         queryCount: 1,
     );
-    $htmlFormOnlyNotAdmitted = $render($formOnlyNotAdmittedPage, null, $formOnlyConjugation);
+    $htmlFormOnlyNotAdmitted = $render($formOnlyNotAdmittedPage, null, $formOnlyConjugation, $noSenses);
     Assert::true(!str_contains($htmlFormOnlyNotAdmitted, 'class="pos-line"'), 'ABADAIENT : pos absent, aucune ligne nature grammaticale');
     Assert::true(
         str_contains($htmlFormOnlyNotAdmitted, 'Forme conjuguée de <a href="/mot/abader">ABADER</a> (imparfait, 3e pers. plur.).'),

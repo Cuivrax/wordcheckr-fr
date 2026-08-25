@@ -30,18 +30,24 @@ use App\Search\ExploreHub;
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="<?= e($seo->robots) ?>">
-<title>Explorer Tous Les Mots &middot; Mot Direct</title>
+<title>Explorer Tous Les Mots | WORD CHECKR</title>
 <meta name="description" content="Parcourez les mots du Scrabble par longueur, par lettre de début ou de fin, ou cherchez les mots contenant une suite de lettres précise.">
 <?php if ($seo->canonicalUrl !== null): ?>
 <link rel="canonical" href="<?= e($seo->canonicalUrl) ?>">
 <?php endif; ?>
+<link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="shortcut icon" href="/favicon.ico">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="WordCheckr">
+<link rel="manifest" href="/site.webmanifest">
 <link rel="stylesheet" href="/assets/css/site.css">
 </head>
 <body>
 <a class="skip-link" href="#main">Aller au contenu</a>
 <header class="header">
   <div class="site header-row">
-    <a class="logo" href="/">MOT DIRECT</a>
+    <a class="logo" href="/"><img class="logo-mark" src="/assets/img/logo.png" alt="" width="32" height="32">WORD CHECKR</a>
     <nav class="nav" aria-label="Navigation principale"><a href="/">Nouvelle recherche</a></nav>
   </div>
 </header>
@@ -62,7 +68,7 @@ use App\Search\ExploreHub;
       <h2>Par Longueur</h2>
       <div class="related-links">
 <?php foreach ($hub->byLength as $entry): ?>
-        <a href="<?= e($entry['url']) ?>"><?= e($entry['length']) ?> lettres <span class="explore-count"><?= e(number_format($entry['count'], 0, ',', ' ')) ?></span></a>
+        <a href="<?= e($entry['url']) ?>"><span class="explore-label"><?= e($entry['length']) ?> lettres</span> <span class="explore-count">(<?= e(number_format($entry['count'], 0, ',', ' ')) ?>)</span></a>
 <?php endforeach; ?>
       </div>
     </section>
@@ -71,7 +77,7 @@ use App\Search\ExploreHub;
       <h2>Commençant Par</h2>
       <div class="related-links">
 <?php foreach ($hub->byStart as $entry): ?>
-        <a href="<?= e($entry['url']) ?>"><?= e($entry['letter']) ?> <span class="explore-count"><?= e(number_format($entry['count'], 0, ',', ' ')) ?></span></a>
+        <a href="<?= e($entry['url']) ?>"><span class="explore-label"><?= e($entry['letter']) ?></span> <span class="explore-count">(<?= e(number_format($entry['count'], 0, ',', ' ')) ?>)</span></a>
 <?php endforeach; ?>
       </div>
     </section>
@@ -80,7 +86,7 @@ use App\Search\ExploreHub;
       <h2>Terminant Par</h2>
       <div class="related-links">
 <?php foreach ($hub->byEnd as $entry): ?>
-        <a href="<?= e($entry['url']) ?>"><?= e($entry['letter']) ?> <span class="explore-count"><?= e(number_format($entry['count'], 0, ',', ' ')) ?></span></a>
+        <a href="<?= e($entry['url']) ?>"><span class="explore-label"><?= e($entry['letter']) ?></span> <span class="explore-count">(<?= e(number_format($entry['count'], 0, ',', ' ')) ?>)</span></a>
 <?php endforeach; ?>
       </div>
     </section>
@@ -106,6 +112,7 @@ use App\Search\ExploreHub;
 <footer class="footer">
   <div class="word-shell footer-row">
     <span>Outil indépendant d’aide aux jeux de lettres.</span>
+    <span class="footer-links"><a href="/mentions-legales">Mentions Légales</a> · <a href="/confidentialite">Confidentialité</a> · <a href="/contact">Contact</a></span>
   </div>
 </footer>
 </body>

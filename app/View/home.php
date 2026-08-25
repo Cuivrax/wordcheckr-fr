@@ -75,9 +75,9 @@ use App\Search\WordListFilters;
 // avec leurs comptes reels -- la home n'a plus besoin de dupliquer une selection partielle,
 // juste d'illustrer puis de renvoyer vers le hub complet.
 $contextLinkSpecs = [
-    ['path' => '7-lettres', 'label' => 'Mots de 7 lettres'],
-    ['path' => 'commencant/a', 'label' => 'Commençant par A'],
-    ['path' => 'terminant/s', 'label' => 'Terminant par S'],
+    ['path' => '7-lettres', 'label' => 'Mots De 7 Lettres'],
+    ['path' => 'commencant/a', 'label' => 'Commençant Par A'],
+    ['path' => 'terminant/s', 'label' => 'Terminant Par S'],
 ];
 
 $contextLinks = [];
@@ -88,6 +88,27 @@ foreach ($contextLinkSpecs as $spec) {
         $contextLinks[] = ['url' => $url, 'label' => $spec['label']];
     }
 }
+
+// Liens dans la phrase d'aide (retour utilisateur, 2026-08-09) : chaque type de contrainte
+// mentionne dans le paragraphe pointe vers un exemple reel plutot que de rester du texte plat
+// -- meme discipline que $contextLinks ci-dessus (WordListFilters::fromPath()->canonicalUrl(),
+// jamais une URL construite a la main). Un aller-retour a ete fait vers un lien unique "/mots"
+// pour les huit (retour utilisateur : "n'a aucun sens", huit ancres de texte vers la meme URL
+// n'apporte rien) -- revenu a des exemples concrets differencies : "longueur"/"debut"/"fin" ont
+// une vraie grille dans le hub /mots, mais contenant/avec/sans/position n'en ont AUCUNE par
+// conception (D-012, combinaisons non bornees) -- un exemple reel reste le seul moyen concret
+// de les montrer. Question posee et tranchee au meme moment : un hub dedie "choisir la lettre
+// de debut PUIS la lettre de fin" (grille 26x26) n'apporterait rien au-dela d'eviter les pages
+// orphelines, deja resolu autrement (D-024, maillage /mots -> /mots/commencant/{X} ->
+// /mots/commencant/{X}/terminant/{Y}) -- pas construit, juste redondant avec ce cheminement en
+// deux etapes deja en place. Un mot-cle sans URL valide (ne devrait jamais arriver ici, tous
+// ces chemins sont des contraintes de base deja couvertes par les tests WordListFiltersTest)
+// reste du texte simple plutot que d'interrompre le rendu.
+$phraseLink = static function (string $path, string $label): string {
+    $url = WordListFilters::fromPath($path)?->canonicalUrl();
+
+    return $url !== null ? '<a href="' . e($url) . '">' . e($label) . '</a>' : e($label);
+};
 ?>
 <!doctype html>
 <html lang="fr">
@@ -95,18 +116,24 @@ foreach ($contextLinkSpecs as $spec) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="<?= e($seo->robots) ?>">
-<title>Quel Mot Pouvez-Vous Jouer&nbsp;? &middot; Mot Direct</title>
-<meta name="description" content="Vérifiez si un mot est admis au Scrabble (ODS8, ODS9) ou trouvez les mots jouables avec vos lettres, avec le score de chacun.">
+<title>Quel Mot Pouvez-Vous Jouer&nbsp;? | WORD CHECKR</title>
+<meta name="description" content="Vérifiez si un mot est admis dans les dictionnaires officiels du Scrabble ou trouvez les mots jouables avec vos lettres, avec le score de chacun.">
 <?php if ($seo->canonicalUrl !== null): ?>
 <link rel="canonical" href="<?= e($seo->canonicalUrl) ?>">
 <?php endif; ?>
+<link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="shortcut icon" href="/favicon.ico">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="WordCheckr">
+<link rel="manifest" href="/site.webmanifest">
 <link rel="stylesheet" href="/assets/css/site.css">
 </head>
 <body>
 <a class="skip-link" href="#main">Aller au contenu</a>
 <header class="header">
   <div class="site header-row">
-    <a class="logo" href="/">MOT DIRECT</a>
+    <a class="logo" href="/"><img class="logo-mark" src="/assets/img/logo.png" alt="" width="32" height="32">WORD CHECKR</a>
   </div>
 </header>
 
@@ -158,7 +185,7 @@ foreach ($contextLinkSpecs as $spec) {
            adapte a la grammaire d'URL reelle du site plutot que copiee telle quelle. -->
       <form action="/mots" method="get">
         <details class="constraint-builder">
-          <summary class="constraint-toggle">+ Ajouter une contrainte</summary>
+          <summary class="constraint-toggle">+ Ajouter Une Contrainte</summary>
           <p class="constraint-panel-intro">Recherche indépendante du champ ci-dessus : parcourt tous les mots correspondant aux contraintes choisies.</p>
           <div class="constraint-panel">
             <div class="constraint-field">
@@ -171,27 +198,27 @@ foreach ($contextLinkSpecs as $spec) {
               </select>
             </div>
             <div class="constraint-field">
-              <label class="label" for="commencant">Commence par</label>
+              <label class="label" for="commencant">Commence Par</label>
               <input class="field" type="text" id="commencant" name="commencant" maxlength="5" placeholder="CH" autocomplete="off" spellcheck="false">
             </div>
             <div class="constraint-field">
-              <label class="label" for="terminant">Termine par</label>
+              <label class="label" for="terminant">Termine Par</label>
               <input class="field" type="text" id="terminant" name="terminant" maxlength="5" placeholder="TION" autocomplete="off" spellcheck="false">
             </div>
             <div class="constraint-field">
-              <label class="label" for="contenant">Contient la suite</label>
+              <label class="label" for="contenant">Contient La Suite</label>
               <input class="field" type="text" id="contenant" name="contenant" maxlength="5" placeholder="CHE" autocomplete="off" spellcheck="false">
             </div>
             <div class="constraint-field">
-              <label class="label" for="avec">Lettres obligatoires</label>
+              <label class="label" for="avec">Lettres Obligatoires</label>
               <input class="field" type="text" id="avec" name="avec" maxlength="8" placeholder="AAR" autocomplete="off" spellcheck="false">
             </div>
             <div class="constraint-field">
-              <label class="label" for="sans">Sans les lettres</label>
+              <label class="label" for="sans">Sans Les Lettres</label>
               <input class="field" type="text" id="sans" name="sans" maxlength="8" placeholder="XZ" autocomplete="off" spellcheck="false">
             </div>
             <div class="constraint-field constraint-field-wide">
-              <label class="label" for="motif">Cases connues</label>
+              <label class="label" for="motif">Cases Connues</label>
               <input class="field" type="text" id="motif" name="motif" maxlength="15" placeholder="C--E-" autocomplete="off" spellcheck="false">
               <p class="help">Un tiret représente une case inconnue.</p>
             </div>
@@ -204,7 +231,7 @@ foreach ($contextLinkSpecs as $spec) {
 <?php foreach ($contextLinks as $link): ?>
         <a href="<?= e($link['url']) ?>"><?= e($link['label']) ?></a>
 <?php endforeach; ?>
-        <a href="/mots">Explorer tous les mots →</a>
+        <a href="/mots">Explorer Tous Les Mots →</a>
       </div>
 <?php endif; ?>
     </div>
@@ -213,13 +240,24 @@ foreach ($contextLinkSpecs as $spec) {
   <section class="context-copy">
     <h2>Une Aide Rapide Pour Les Jeux De Lettres</h2>
     <p>Utilisez cet outil pour le Scrabble, les mots croisés, les mots fléchés et les autres jeux de lettres. Vérifiez si un mot est admis, recherchez ses anagrammes ou trouvez les meilleurs mots jouables avec votre tirage.</p>
-    <p>Vous pouvez aussi préciser une longueur, un début, une fin, une suite de lettres ou des lettres obligatoires afin d’obtenir une réponse plus précise.</p>
+    <p>
+      Vous pouvez aussi préciser <?= $phraseLink('9-lettres', 'une longueur') ?>,
+      <?= $phraseLink('commencant/a', 'un début') ?>,
+      <?= $phraseLink('terminant/s', 'une fin') ?>,
+      <?= $phraseLink('commencant/a/terminant/e', 'un début et une fin combinés') ?>,
+      <?= $phraseLink('contenant/ch', 'une suite de lettres') ?>,
+      <?= $phraseLink('avec/e', 'des lettres obligatoires') ?>,
+      <?= $phraseLink('sans/e', 'des lettres à exclure') ?>
+      ou même <?= $phraseLink('9-lettres/position/3/a', 'une lettre à une position précise') ?>
+      dans le mot, afin d’obtenir une réponse plus précise.
+    </p>
   </section>
 </main>
 
 <footer class="footer">
   <div class="site footer-row">
     <span>Outil indépendant d’aide aux jeux de lettres.</span>
+    <span class="footer-links"><a href="/mentions-legales">Mentions Légales</a> · <a href="/confidentialite">Confidentialité</a> · <a href="/contact">Contact</a></span>
   </div>
 </footer>
 <script src="/assets/js/tiles.js" defer></script>

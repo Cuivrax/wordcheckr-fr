@@ -24,20 +24,18 @@
   var MIN_LENGTH = 2;
   var DEBOUNCE_MS = 160;
 
-  /** Quatre libelles exacts (docs/08, Phase 5), composes depuis isOds8/isOds9/status --
-   * ces trois champs sont les seules donnees exposees par l'API, le libelle est un choix de
-   * rendu (app/Search/Suggester.php, doc de tete de toItems()). */
+  /** Deux libelles exacts (ajustement UI post-Phase 5, demande directe du
+   * coordinateur) : la distinction ODS8/ODS9 n'est plus affichee dans les
+   * suggestions -- un mot admis (isOds8 ou isOds9 vrai) affiche simplement "Admis",
+   * un mot non admis affiche "Non Admis" (meme casse, sans prefixe "Français ·").
+   * isOds8/isOds9/status restent inchanges cote donnees (App\Search\Suggester) ; seul
+   * ce rendu change. Ne pas confondre avec .edition-badge (app/View/word.php) ou
+   * app/View/play.php, qui continuent de distinguer ODS8/ODS9. */
   function statusLabel(item) {
-    if (item.isOds8 && item.isOds9) {
-      return "Admis ODS8 · ODS9";
+    if (item.isOds8 || item.isOds9) {
+      return "Admis";
     }
-    if (item.isOds8) {
-      return "Admis ODS8";
-    }
-    if (item.isOds9) {
-      return "Admis ODS9";
-    }
-    return "Français · Non admis";
+    return "Non Admis";
   }
 
   /** Reutilise .status-badge tel quel (public/assets/css/site.css), meme modificateur que

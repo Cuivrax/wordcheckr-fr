@@ -15,22 +15,22 @@ namespace App;
  * actif se choisit via la variable d'environnement SCRABBLE_SITE (reglable au niveau de
  * l'hebergement), "fr" par defaut.
  */
-final readonly class Config
+final class Config
 {
     /**
      * @param array<int, array{column: string, badge: string}> $lexicons
      * @param array<string, int> $tileScores
      */
     public function __construct(
-        public string $language,
-        public string $dictionaryPath,
-        public string $seoPath,
-        public array $lexicons,
-        public string $generalLanguageColumn,
-        public array $tileScores,
-        public int $minTermLength,
-        public int $maxTermLength,
-        public string $canonicalBaseUrl,
+        public readonly string $language,
+        public readonly string $dictionaryPath,
+        public readonly string $seoPath,
+        public readonly array $lexicons,
+        public readonly string $generalLanguageColumn,
+        public readonly array $tileScores,
+        public readonly int $minTermLength,
+        public readonly int $maxTermLength,
+        public readonly string $canonicalBaseUrl,
     ) {
     }
 

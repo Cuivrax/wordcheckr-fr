@@ -131,11 +131,20 @@ select:focus-visible {
 }
 
 .logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-weight: 800;
   letter-spacing: 0.02em;
   text-decoration: none;
   font-size: 1.08rem;
   color: var(--ink);
+}
+
+.logo-mark {
+  display: block;
+  width: 32px;
+  height: 32px;
 }
 
 .nav {
@@ -164,6 +173,16 @@ select:focus-visible {
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.footer a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.footer a:hover {
+  color: var(--ink);
+  text-decoration: underline;
 }
 
 /* Home -- ordre impose (docs/04) : header, badge, H1, formulaire, contexte, footer. */
@@ -251,6 +270,39 @@ select:focus-visible {
 .tiles:empty {
   display: none;
   margin-top: 0;
+}
+
+/* Tuiles affichees DANS le champ (ajustement UI post-Phase 5), pas en apercu en
+   dessous : une fois tiles.js initialise -- le script pose cette classe sur
+   .rack-wrap AVANT de brancher l'ecouteur "input" -- .tiles reste dans le flux
+   normal et donne desormais sa hauteur au bloc (y compris a vide, min-height
+   pour ne pas s'effondrer avant la premiere frappe) ; .rack se superpose en
+   position absolue par-dessus, texte rendu transparent (le curseur reste
+   visible via caret-color) puisque chaque lettre est deja dessinee par une
+   tuile en dessous. Sans cette classe (JavaScript desactive ou script non
+   charge), .rack reste le champ texte normal d'origine, sans aucune
+   regression (docs/04_UI_PAGES.md : "le formulaire doit fonctionner sans
+   JavaScript"). Mots jusqu'a 15 lettres (config/sites/fr.php) : les tuiles
+   passent a la ligne plutot que de defiler horizontalement (flex-wrap deja
+   pose ci-dessus) -- plus simple a maintenir que le defilement, et .rack en
+   inset:0 suit alors la hauteur totale du bloc, tuiles multi-lignes comprises. */
+.rack-wrap.tiles-active .tiles {
+  display: flex;
+  min-height: 42px;
+  margin-top: 0;
+}
+
+.rack-wrap.tiles-active .rack {
+  position: absolute;
+  inset: 0;
+  color: transparent;
+  caret-color: var(--ink);
+}
+
+/* ::placeholder ne suit pas color:transparent du champ (pseudo-element distinct) --
+   force explicitement pour rester visible tant que le champ est vide. */
+.rack-wrap.tiles-active .rack::placeholder {
+  color: var(--muted);
 }
 
 .tile {
@@ -537,6 +589,14 @@ select:focus-visible {
   font-weight: 700;
 }
 
+/* Badge principal (un seul par page, dans .word-answer -- fiche mot, /jouer, /mots/...) :
+   majuscules pour marquer le statut le plus important de la page. Les badges repetes dans
+   une liste de resultats (jusqu'a 50 par page) restent en Title Case -- des majuscules
+   repetees 50 fois par page auraient ete plus difficiles a lire, pas seulement esthetiques. */
+.word-answer .status-badge {
+  text-transform: uppercase;
+}
+
 .status-badge--admitted {
   background: var(--ink);
   color: var(--page);
@@ -693,6 +753,49 @@ select:focus-visible {
   font-size: 0.9rem;
 }
 
+.direct p + p {
+  margin-top: 8px;
+}
+
+/* Pages legales (/mentions-legales, /confidentialite) : sommaire ancre et listes a puces,
+   meme typographie que .direct p -- pas de nouveau motif visuel, juste une liste plutot
+   qu'un paragraphe la ou une enumeration est plus lisible. */
+.legal-toc,
+.legal-list {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
+  line-height: 1.6;
+  font-size: 0.9rem;
+}
+
+.legal-toc {
+  columns: 2;
+  column-gap: 24px;
+}
+
+.legal-toc li {
+  break-inside: avoid;
+}
+
+.legal-toc a {
+  color: var(--muted);
+}
+
+.legal-toc a:hover {
+  color: var(--ink);
+}
+
+.legal-list li + li {
+  margin-top: 4px;
+}
+
+@media (max-width: 520px) {
+  .legal-toc {
+    columns: 1;
+  }
+}
+
 /* Nature grammaticale + genre (D-018) -- ligne discrete, une seule, dans le bloc
    "Reponse directe". */
 .pos-line {
@@ -700,6 +803,59 @@ select:focus-visible {
   font-weight: 600;
   color: var(--ink);
   font-size: 0.86rem;
+}
+
+/* Definitions (D-0XX) -- une carte par sens, meme discipline "pas de section vide" que le
+   reste de la fiche (app/View/word.php n'imprime cette section que si $senseCards !== []).
+   .word-senses reprend le gabarit de section deja etabli (padding 20px 24px, border-bottom,
+   comme .conjugation ci-dessous) ; .sense-card reprend le ton "carte plus douce dans une
+   carte" deja utilise par .word-answer (background: var(--page) sur fond var(--paper) du
+   .word-card parent) plutot qu'importer une palette bleu-gris etrangere au systeme visuel
+   creme/bois. .sense-label reprend exactement la typographie deja etablie par
+   .rack-result-head (uppercase, letter-spacing, 0.68rem, 700, muted) -- coherence
+   intentionnelle avec un motif deja en production, pas une nouvelle convention. */
+.word-senses {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sense-card {
+  background: var(--page);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.sense-meta {
+  margin: 0 0 6px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sense-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sense-pos {
+  font-size: 0.82rem;
+  font-style: italic;
+  color: var(--accent);
+}
+
+.sense-text {
+  margin: 0;
+  color: var(--ink);
+  line-height: 1.55;
+  font-size: 0.94rem;
 }
 
 /* Conjugaison (D-018) -- meme gabarit que .related (h2 + contenu, une seule bordure). */
@@ -828,10 +984,20 @@ select:focus-visible {
   font-size: clamp(1.7rem, 6vw, 2.6rem);
 }
 
+/* Libelle (lettre/longueur) vs compte (nombre de mots) : le libelle porte le sens de la
+   puce et doit rester lisible en premier, le compte est une metadonnee secondaire --
+   distingues par poids, taille et parentheses plutot que par une simple juxtaposition
+   (retour utilisateur : illisible sur mobile quand les deux ont un poids visuel proche). */
+.explore-label {
+  font-weight: 600;
+  color: var(--ink);
+}
+
 .explore-count {
   color: var(--muted);
-  font-size: 0.7rem;
-  margin-left: 2px;
+  font-size: 0.66rem;
+  font-weight: 400;
+  margin-left: 1px;
 }
 
 .explore-group .related-links a {
@@ -874,6 +1040,51 @@ select:focus-visible {
   color: var(--ink);
 }
 
+/* Sous-groupes repliables (par position de lettre, commencant/terminant par -- hub /mots) :
+   <details>/<summary> natif comme .constraint-toggle (zero JavaScript), meme convention
+   visuelle -- marqueur natif du navigateur masque, remplace par le meme lien texte accent/gras
+   (repere retour utilisateur : la fleche par defaut du navigateur ne correspond a aucun autre
+   pattern du site, y compris .constraint-toggle plus haut sur la page qui masque deja la
+   sienne). */
+.explore-subgroup + .explore-subgroup {
+  margin-top: 14px;
+}
+
+.explore-subgroup summary {
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  list-style: none;
+}
+
+.explore-subgroup summary::-webkit-details-marker {
+  display: none;
+}
+
+.explore-subgroup summary:hover {
+  text-decoration: underline;
+}
+
+.explore-subgroup .related-links {
+  margin-top: 8px;
+}
+
+/* Toggles statut/tri (D-022, .refine-toggles) : la variante active du groupe reutilise le
+   meme langage visuel que .edition-badge.active.ods8 (fond plein --ink) -- indique quelle
+   option est deja appliquee sans dependre de la couleur seule (aria-current="page" porte
+   aussi le sens pour les lecteurs d'ecran). */
+.related-links a[aria-current="page"] {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--page);
+}
+
+.related-links a[aria-current="page"]:hover {
+  background: var(--ink);
+  color: var(--page);
+}
+
 .word-nav {
   display: flex;
   align-items: center;
@@ -913,6 +1124,23 @@ select:focus-visible {
   box-shadow: 0 0 0 3px rgba(138, 90, 31, 0.12);
 }
 
+textarea.field {
+  padding: 10px 12px;
+  height: auto;
+  resize: vertical;
+  font: inherit;
+}
+
+/* Piege a bots du formulaire de contact (public/index.php) : hors du flux visuel plutot que
+   display:none -- certains robots ignorent les champs display:none mais remplissent quand
+   meme un champ positionne hors ecran. aria-hidden sur le conteneur + tabindex="-1" sur le
+   champ retirent aussi le piege du parcours clavier/lecteur d'ecran d'un visiteur humain. */
+.hp-field {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+}
+
 /* Page jouer (/jouer/{lettres}) -- meme gabarit que la fiche mot (.word-card),
    liste de resultats en plus. Chaque ligne reutilise .edition-badge tel quel
    (pas de variante), voir app/View/play.php. */
@@ -928,7 +1156,14 @@ select:focus-visible {
 .rack-result-head,
 .rack-result-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto 50px 44px;
+  /* Colonne 2 en largeur fixe, pas "auto" : .rack-result-head et chaque .rack-result-row
+     sont des grilles INDEPENDANTES (un display:grid par element, pas une grille partagee) --
+     "auto" y calculait une largeur differente par ligne selon le contenu (badge "Admis" vs
+     "Non Admis" plus large, "Statut" vs le contenu reel), desalignant l'en-tete et chaque
+     ligne entre eux. 108px accueille confortablement le badge le plus large
+     (.status-badge--not-admitted, "Non Admis") et les deux badges .edition-badges (play.php,
+     "ODS8"+"ODS9", min-width 54px chacun) sans repli sur mobile. */
+  grid-template-columns: minmax(0, 1fr) 108px 50px 44px;
   align-items: center;
   gap: 10px;
   padding: 10px 24px;
@@ -949,6 +1184,35 @@ select:focus-visible {
   /* Pas de border-top ici : .direct (juste au-dessus dans le DOM, play.php et
      word-list.php) porte deja un border-bottom -- deux filets adjacents
      produisaient un trait double (audit final, M3). */
+}
+
+/* Centre le badge de statut dans sa colonne desormais a largeur fixe (108px), comme l'en-tete
+   "Statut" -- .status-badge est inline-block, ne s'etire donc pas jusqu'au bord de sa cellule
+   de grille par defaut (contrairement a .edition-badges, deja centre en interne par son propre
+   display:flex + justify-content:center, voir ci-dessus). */
+.rack-result-row .status-badge {
+  justify-self: center;
+}
+
+/* En-tetes de colonne : alignement pur, sans reprendre .rack-result-points/.rack-result-length
+   (qui portent aussi font-weight/color/font-size propres a la DONNEE, pas a l'en-tete -- les
+   reutiliser sur l'en-tete produisait une typographie incoherente entre colonnes, ex. "Lettres"
+   affiche a une taille differente de "Statut"/"Points"). Les 4 spans de .rack-result-head
+   heritent deja de sa typographie uniforme (color/text-transform/font-size/font-weight
+   ci-dessus) par heritage CSS normal -- ces deux classes n'ajoutent que l'alignement. */
+.rack-result-head-center {
+  text-align: center;
+}
+
+.rack-result-head-right {
+  text-align: right;
+}
+
+/* Classe separee de .rack-result-head-right (plutot qu'une simple 3e utilisation) pour
+   pouvoir la cibler seule dans la regle mobile ci-dessous, aux cotes de .rack-result-length,
+   sans masquer aussi l'en-tete "Points". */
+.rack-result-head-length {
+  text-align: right;
 }
 
 .rack-result-row {
@@ -1037,10 +1301,11 @@ select:focus-visible {
 
   .rack-result-head,
   .rack-result-row {
-    grid-template-columns: minmax(0, 1fr) auto 40px;
+    grid-template-columns: minmax(0, 1fr) 108px 40px;
   }
 
-  .rack-result-length {
+  .rack-result-length,
+  .rack-result-head-length {
     display: none;
   }
 }

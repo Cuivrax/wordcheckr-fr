@@ -18,12 +18,12 @@ namespace App\Seo;
  * route qui n'existe pas) — la vue omet alors la balise <link rel="canonical"> plutôt que
  * d'en émettre une vide ou trompeuse.
  */
-final readonly class SeoMeta
+final class SeoMeta
 {
     public function __construct(
-        public string $robots,
-        public ?string $canonicalUrl,
-        public bool $inSitemap,
+        public readonly string $robots,
+        public readonly ?string $canonicalUrl,
+        public readonly bool $inSitemap,
     ) {
     }
 

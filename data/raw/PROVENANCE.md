@@ -98,6 +98,24 @@ Cette source n'a **pas** d'étiquette `NP` : ses noms propres et ses sigles se t
 `noun.csv`. La casse de la forme d'origine est le seul marqueur disponible et sert de filtre
 (D-014).
 
+## kaikki_fr/ — extrait Wiktionnaire français (palier 2 des définitions, D-0XX)
+
+```text
+source          https://kaikki.org/frwiktionary/Français/ (extraction du Wiktionnaire
+                FRANÇAIS -- PAS "kaikki.org/dictionary/French/", qui documente le
+                vocabulaire français avec des gloses en ANGLAIS, vérifié par
+                échantillonnage avant de choisir cette source)
+fichier         kaikki-dictionary-francais.jsonl.gz
+téléchargé le   2026-08-24
+taille          384 016 438 octets (~366 Mo)
+sha256          7bfa7b73bca5759bbbc2feb6171659f8872879268db9ae9e7bb5b51b048076a4
+obtention       python scripts/download_kaikki_french.py (écrit aussi le .sha256)
+```
+
+Sert de référence de secours (palier 2, `scripts/lib/reference_definitions.py`) pour les
+termes non couverts par `french_dict.db` (palier 1) — jamais affiché tel quel, uniquement du
+grounding pour la reformulation LLM (D-015 reste en vigueur).
+
 ## data/ods9/
 
 Livré avec le pack de lancement, empreintes dans `data/ods9/manifest.json`.

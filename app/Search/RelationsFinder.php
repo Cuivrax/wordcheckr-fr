@@ -89,7 +89,7 @@ use App\Database\Connection;
  */
 final class RelationsFinder
 {
-    private const array ALPHABET = [
+    private const ALPHABET = [
         'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q',
         'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
     ];
@@ -98,7 +98,7 @@ final class RelationsFinder
      * plus, conforme au plafond "environ 160 liens de mots" (docs/01, docs/08). Les listes
      * naturellement plus courtes (retirer une lettre, sous-mots -- bornees par N) n'atteignent
      * de toute facon jamais ce plafond pour la plupart des mots. */
-    public const int DISPLAY_LIMIT_PER_CATEGORY = 16;
+    public const DISPLAY_LIMIT_PER_CATEGORY = 16;
 
     /**
      * Plafond de CORRESPONDANCES trouvees pour les categories 6/7/8 (rallonges, mot contenu)
@@ -116,10 +116,10 @@ final class RelationsFinder
      * assume (jusqu'a 68 ms dans le pire cas mesure, "EH", toujours sous le budget TTFB p95 de
      * 250 ms).
      */
-    public const int EXTENSION_ROW_CEILING = 1_000;
+    public const EXTENSION_ROW_CEILING = 1_000;
 
     /** Nombre maximum de recherches liees (docs/01, docs/08). */
-    public const int MAX_RELATED_SEARCHES = 12;
+    public const MAX_RELATED_SEARCHES = 12;
 
     public function __construct(
         private readonly Connection $connection,

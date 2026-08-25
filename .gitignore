@@ -8,6 +8,12 @@
 # Bases de production — générées par l'import, jamais versionnées
 /storage/
 
+# Cache de generation word_senses (D-043) — artefact de build cher a regenerer
+# (appels API + verification + corrections manuelles), meme regime que /storage/ :
+# jamais versionne (volume, ~140 Mo), jamais publie dans public/. Fusionne dans
+# storage/dictionary_fr.sqlite par scripts/import_fr.py, seul artefact deploye.
+/data/generated/
+
 # Rapports générés
 /reports/*
 !/reports/.gitkeep

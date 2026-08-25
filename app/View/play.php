@@ -56,7 +56,7 @@ $tilesAriaLabel = implode(' + ', $tileLabelParts);
 $statusMeta = match (true) {
     $page->capped => [
         'modifier' => 'not-admitted',
-        'badge' => 'Trop de possibilités',
+        'badge' => 'Trop De Possibilités',
         'subtitle' => 'Précisez votre tirage.',
         'direct' => sprintf(
             'Le tirage %s propose trop de combinaisons pour être calculé ici. Réduisez le nombre de lettres ou de jokers pour obtenir une réponse.',
@@ -65,7 +65,7 @@ $statusMeta = match (true) {
     ],
     $page->matches === [] => [
         'modifier' => 'unknown',
-        'badge' => 'Aucun mot',
+        'badge' => 'Aucun Mot',
         'subtitle' => 'Aucun mot jouable trouvé.',
         'direct' => sprintf(
             'Aucun mot admis au Scrabble ne peut être formé avec %s.',
@@ -74,13 +74,13 @@ $statusMeta = match (true) {
     ],
     $page->totalMatches === 1 => [
         'modifier' => 'admitted',
-        'badge' => 'Mot trouvé',
+        'badge' => 'Mot Trouvé',
         'subtitle' => 'Vous pouvez le jouer.',
         'direct' => sprintf('Avec %s, 1 mot admis au Scrabble est possible.', $rackDisplay),
     ],
     default => [
         'modifier' => 'admitted',
-        'badge' => 'Mots trouvés',
+        'badge' => 'Mots Trouvés',
         'subtitle' => 'Vous pouvez les jouer.',
         'direct' => sprintf(
             'Avec %s, %d mots admis au Scrabble sont possibles.',
@@ -96,18 +96,24 @@ $statusMeta = match (true) {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="<?= e($seo->robots) ?>">
-<title>Jouer <?= e($rackDisplay) ?> &middot; Mot Direct</title>
+<title>Jouer <?= e($rackDisplay) ?> | WORD CHECKR</title>
 <meta name="description" content="<?= e($statusMeta['direct']) ?>">
 <?php if ($seo->canonicalUrl !== null): ?>
 <link rel="canonical" href="<?= e($seo->canonicalUrl) ?>">
 <?php endif; ?>
+<link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="shortcut icon" href="/favicon.ico">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="WordCheckr">
+<link rel="manifest" href="/site.webmanifest">
 <link rel="stylesheet" href="/assets/css/site.css">
 </head>
 <body>
 <a class="skip-link" href="#main">Aller au contenu</a>
 <header class="header">
   <div class="site header-row">
-    <a class="logo" href="/">MOT DIRECT</a>
+    <a class="logo" href="/"><img class="logo-mark" src="/assets/img/logo.png" alt="" width="32" height="32">WORD CHECKR</a>
     <nav class="nav" aria-label="Navigation principale"><a href="/">Nouvelle recherche</a></nav>
   </div>
 </header>
@@ -125,11 +131,11 @@ $statusMeta = match (true) {
     <section class="facts">
       <div class="fact">
         <strong><?= $page->totalMatches !== null ? e($page->totalMatches) : '—' ?></strong>
-        <span>mots trouvés</span>
+        <span>Mots Trouvés</span>
       </div>
       <div class="fact">
         <strong><?= e($rackTileCount) ?></strong>
-        <span>lettres au chevalet</span>
+        <span>Lettres Au Chevalet</span>
       </div>
       <div class="fact fact-letters">
         <div class="letter-tiles" role="img" aria-label="<?= e($tilesAriaLabel) ?>">
@@ -142,7 +148,7 @@ $statusMeta = match (true) {
           <span class="letter-tile" aria-hidden="true">?<small>0</small></span>
 <?php endfor; ?>
         </div>
-        <span>chevalet utilisé</span>
+        <span>Chevalet Utilisé</span>
       </div>
     </section>
 
@@ -157,7 +163,7 @@ $statusMeta = match (true) {
       <p class="help rack-results-note">Meilleurs <?= e($page->displayLimit) ?> mots affichés, sur <?= e($page->totalMatches) ?> au total.</p>
 <?php endif; ?>
       <div class="rack-result-head" aria-hidden="true">
-        <span>Mot</span><span>Éditions</span><span>Points</span><span class="rack-result-length">Lettres</span>
+        <span>Mot</span><span class="rack-result-head-center">Éditions</span><span class="rack-result-head-right">Points</span><span class="rack-result-head-length">Lettres</span>
       </div>
       <ul class="rack-result-list">
 <?php foreach ($page->matches as $match): ?>
@@ -186,6 +192,7 @@ $statusMeta = match (true) {
 <footer class="footer">
   <div class="word-shell footer-row">
     <span>Outil indépendant d’aide aux jeux de lettres.</span>
+    <span class="footer-links"><a href="/mentions-legales">Mentions Légales</a> · <a href="/confidentialite">Confidentialité</a> · <a href="/contact">Contact</a></span>
   </div>
 </footer>
 </body>

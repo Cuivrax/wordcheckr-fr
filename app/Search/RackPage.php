@@ -22,7 +22,7 @@ namespace App\Search;
  * admises. Le modele a trois statuts reste ferme (CLAUDE.md) ; aucun champ "status"
  * n'est necessaire ici puisque la seule valeur possible serait toujours "admitted".
  */
-final readonly class RackPage
+final class RackPage
 {
     /**
      * @param array<string, int> $letterCounts lettres connues et leur multiplicite
@@ -31,16 +31,16 @@ final readonly class RackPage
      *        decroissante puis ordre alphabetique
      */
     public function __construct(
-        public string $slug,
-        public array $letterCounts,
-        public int $jokerCount,
-        public bool $capped,
-        public array $matches,
-        public ?int $totalMatches,
-        public bool $truncated,
-        public int $displayLimit,
-        public int $candidateSignatureCount,
-        public int $queryCount,
+        public readonly string $slug,
+        public readonly array $letterCounts,
+        public readonly int $jokerCount,
+        public readonly bool $capped,
+        public readonly array $matches,
+        public readonly ?int $totalMatches,
+        public readonly bool $truncated,
+        public readonly int $displayLimit,
+        public readonly int $candidateSignatureCount,
+        public readonly int $queryCount,
     ) {
     }
 }

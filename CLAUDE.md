@@ -164,7 +164,7 @@ data/raw/ods8.json          411 430 mots bruts, dont 402 325 ≤ 15 lettres — 
 data/ods9/                  patch delta, integrity ok — présent
 data/raw/french_dict.db     283 Mo — python scripts/download_french_dictionary.ps1
 data/raw/hbenbel/           5 CSV — python scripts/download_hbenbel.py
-storage/dictionary_fr.sqlite  838 180 termes, 172,6 Mo — construite (reconstruite D-018)
+storage/dictionary_fr.sqlite  838 180 termes, 236,5 Mo — construite (reconstruite D-022)
 ```
 
 La base ne retient aucune forme de plus de 15 lettres : injouable sur un plateau (D-010).

@@ -28,7 +28,15 @@ declare(strict_types=1);
  * vide" que le reste de la fiche. $conjugation n'est jamais null pour un mot TROUVE (admis
  * ou francais non admis), mais ses deux listes ($asLemma, $asForm) le sont le plus souvent
  * simultanement (mot ni verbe ni forme conjuguee) : la section conjugaison entiere est alors
- * absente. Aucune definition, aucune glose (D-004 reste en vigueur).
+ * absente.
+ *
+ * Definitions (D-0XX, pilote 100 mots -- revise D-004, voir reports/definitions-nature-
+ * feasibility-audit.md) : $senses n'est jamais null pour un mot TROUVE, mais $senses->senses
+ * est vide pour la tres grande majorite des termes tant que le lot reste un pilote partiel --
+ * aucune section rendue dans ce cas, meme convention que le reste de la fiche. Des qu'au moins
+ * un sens existe, la ligne $posLine (une phrase compacte) devient redondante avec les cartes
+ * de sens (qui portent deja pos/genre chacune) -- $posLine n'est alors PAS rendue, evite de
+ * dire deux fois la meme chose de deux facons differentes sur la meme page.
  */
 
 require __DIR__ . '/helpers.php';
@@ -36,43 +44,45 @@ require __DIR__ . '/helpers.php';
 use App\Search\Conjugation;
 use App\Search\TermPage;
 use App\Search\WordListFilters;
+use App\Search\WordSenses;
 
 /** @var TermPage $page */
 /** @var \App\Seo\SeoMeta $seo */
 /** @var \App\Search\TermRelations|null $relations */
 /** @var Conjugation $conjugation */
+/** @var WordSenses $senses */
 
 $statusMeta = match ($page->status) {
     TermPage::STATUS_ADMITTED => [
         'modifier' => 'admitted',
-        'badge' => 'Oui, mot admis',
+        'badge' => 'Oui, Mot Admis',
         'subtitle' => 'Vous pouvez le jouer.',
         'direct' => sprintf(
             '%s est valide dans le dictionnaire officiel du Scrabble. Son score brut est de %d points, hors bonus de plateau.',
             $page->normalized,
             $page->score,
         ),
-        'title' => sprintf('Oui, %s est admis au Scrabble (%d points)', $page->normalized, $page->score),
+        'title' => sprintf('Oui, %s Est Admis Au Scrabble (%d Points)', $page->normalized, $page->score),
     ],
     TermPage::STATUS_FRENCH_NOT_ADMITTED => [
         'modifier' => 'not-admitted',
-        'badge' => 'Non admis',
+        'badge' => 'Non Admis',
         'subtitle' => 'Vous ne pouvez pas le jouer.',
         'direct' => sprintf(
-            '%s existe en français, mais n’est admis ni dans l’ODS8 ni dans l’ODS9. Il ne peut pas être joué comme un mot unique.',
+            '%s existe en français, mais ce mot n’est pas admis dans le dictionnaire officiel du Scrabble.',
             $page->normalized,
         ),
-        'title' => sprintf('Non, %s n’est pas admis au Scrabble', $page->normalized),
+        'title' => sprintf('Non, %s N’est Pas Admis Au Scrabble', $page->normalized),
     ],
     default => [
         'modifier' => 'unknown',
-        'badge' => 'Terme inconnu',
+        'badge' => 'Terme Inconnu',
         'subtitle' => 'Absent de la base.',
         'direct' => sprintf(
             '%s n’a pas été trouvé dans la base du site. Il ne peut pas être vérifié comme mot valide au Scrabble.',
             $page->normalized,
         ),
-        'title' => sprintf('%s : terme inconnu', $page->normalized),
+        'title' => sprintf('%s : Terme Inconnu', $page->normalized),
     ],
 };
 
@@ -223,11 +233,11 @@ if ($relations !== null) {
     // pour son propre titre) -- jamais de concatenation manuelle de chaine metier.
     $relatedLabel = static function (array $link, string $pivot): string {
         if ($link['type'] === 'play') {
-            return 'Jouer avec ' . $pivot;
+            return 'Jouer Avec ' . $pivot;
         }
 
         if ($link['type'] === 'exploreAll') {
-            return 'Explorer tous les mots';
+            return 'Explorer Tous Les Mots';
         }
 
         $rawPath = preg_replace('#^/mots/#', '', $link['url']) ?? $link['url'];
@@ -244,15 +254,15 @@ if ($relations !== null) {
                 ? implode(', ', array_slice($letters, 0, -1)) . ' et ' . $letters[$count - 1]
                 : $letters[0];
 
-            return sprintf('%d lettre%s avec %s', $filters->length, $filters->length > 1 ? 's' : '', $joined);
+            return sprintf('%d Lettre%s Avec %s', $filters->length, $filters->length > 1 ? 's' : '', $joined);
         }
 
         if ($filters->prefix !== null) {
-            return 'Commençant par ' . $filters->prefix;
+            return 'Commençant Par ' . $filters->prefix;
         }
 
         if ($filters->suffix !== null) {
-            return 'Terminant par ' . $filters->suffix;
+            return 'Terminant Par ' . $filters->suffix;
         }
 
         if ($filters->contains !== null) {
@@ -260,7 +270,7 @@ if ($relations !== null) {
         }
 
         if ($filters->length !== null) {
-            return sprintf('Mots de %d lettre%s', $filters->length, $filters->length > 1 ? 's' : '');
+            return sprintf('Mots De %d Lettre%s', $filters->length, $filters->length > 1 ? 's' : '');
         }
 
         return $pivot;
@@ -283,8 +293,11 @@ $posLabels = [
 ];
 $genderLabels = ['m' => 'masculin', 'f' => 'féminin', 'e' => 'épicène'];
 
+// $posLine reste le repli quand aucune definition n'existe encore pour ce terme (lot
+// partiel, D-0XX) -- des qu'au moins un sens existe, chaque carte de sens porte deja son
+// propre pos/genre : $posLine deviendrait une redite, elle n'est alors pas construite.
 $posLine = null;
-if ($page->pos !== null && isset($posLabels[$page->pos])) {
+if ($senses->senses === [] && $page->pos !== null && isset($posLabels[$page->pos])) {
     $posLine = $posLabels[$page->pos];
 
     if ($page->pos === 'N' && $page->gender !== null && isset($genderLabels[$page->gender])) {
@@ -300,6 +313,21 @@ if ($page->pos !== null && isset($posLabels[$page->pos])) {
 
         $posLine .= ', aussi ' . $secondary;
     }
+}
+
+// Cartes de definition (D-0XX) : une par sens, pos + genre (si nom) en etiquette, phrase de
+// definition en dessous. $senses->senses est deja borne (SenseLookup::ROW_LIMIT), aucune
+// pagination necessaire ici.
+$senseCards = [];
+foreach ($senses->senses as $sense) {
+    $label = $posLabels[$sense['pos']] ?? $sense['pos'];
+    if ($sense['pos'] === 'N' && $sense['gender'] !== null && isset($genderLabels[$sense['gender']])) {
+        $label = mb_strtolower($label) . ' ' . $genderLabels[$sense['gender']];
+    } else {
+        $label = mb_strtolower($label);
+    }
+
+    $senseCards[] = ['pos_label' => $label, 'definition' => $sense['definition']];
 }
 
 // Conjugaison (D-018) : temps/personne traduits en francais lisible, jamais de tag anglais
@@ -371,18 +399,24 @@ $conjugationHeading = $conjugation->asLemma !== [] ? 'Se Conjugue' : 'Conjugaiso
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="<?= e($seo->robots) ?>">
-<title><?= e($statusMeta['title']) ?> &middot; Mot Direct</title>
+<title><?= e($statusMeta['title']) ?> | WORD CHECKR</title>
 <meta name="description" content="<?= e($statusMeta['direct']) ?>">
 <?php if ($seo->canonicalUrl !== null): ?>
 <link rel="canonical" href="<?= e($seo->canonicalUrl) ?>">
 <?php endif; ?>
+<link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="shortcut icon" href="/favicon.ico">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="WordCheckr">
+<link rel="manifest" href="/site.webmanifest">
 <link rel="stylesheet" href="/assets/css/site.css">
 </head>
 <body>
 <a class="skip-link" href="#main">Aller au contenu</a>
 <header class="header">
   <div class="site header-row">
-    <a class="logo" href="/">MOT DIRECT</a>
+    <a class="logo" href="/"><img class="logo-mark" src="/assets/img/logo.png" alt="" width="32" height="32">WORD CHECKR</a>
     <nav class="nav" aria-label="Navigation principale"><a href="/">Nouvelle recherche</a></nav>
   </div>
 </header>
@@ -404,11 +438,11 @@ $conjugationHeading = $conjugation->asLemma !== [] ? 'Se Conjugue' : 'Conjugaiso
     <section class="facts">
       <div class="fact">
         <strong><?= e($page->score) ?></strong>
-        <span>points hors bonus</span>
+        <span>Points Hors Bonus</span>
       </div>
       <div class="fact">
         <strong><?= e($page->length) ?></strong>
-        <span>lettres</span>
+        <span>Lettres</span>
       </div>
       <div class="fact fact-letters">
         <div class="letter-tiles" role="img" aria-label="<?= e($tilesAriaLabel) ?>">
@@ -416,7 +450,7 @@ $conjugationHeading = $conjugation->asLemma !== [] ? 'Se Conjugue' : 'Conjugaiso
           <span class="letter-tile" aria-hidden="true"><?= e($tile['letter']) ?><small><?= e($tile['value']) ?></small></span>
 <?php endforeach; ?>
         </div>
-        <span>lettres utilisées</span>
+        <span>Lettres Utilisées</span>
       </div>
     </section>
 
@@ -427,6 +461,18 @@ $conjugationHeading = $conjugation->asLemma !== [] ? 'Se Conjugue' : 'Conjugaiso
       <p class="pos-line"><?= e($posLine) ?></p>
 <?php endif; ?>
     </section>
+
+<?php if ($senseCards !== []): ?>
+    <section class="word-senses">
+      <h2 class="sr-only">Définition</h2>
+<?php foreach ($senseCards as $card): ?>
+      <div class="sense-card">
+        <p class="sense-meta"><span class="sense-label">Définition</span> <span class="sense-pos"><?= e($card['pos_label']) ?></span></p>
+        <p class="sense-text"><?= e($card['definition']) ?></p>
+      </div>
+<?php endforeach; ?>
+    </section>
+<?php endif; ?>
 
 <?php if ($conjugation->asLemma !== [] || $conjugation->asForm !== []): ?>
     <section class="conjugation">
@@ -505,6 +551,7 @@ $conjugationHeading = $conjugation->asLemma !== [] ? 'Se Conjugue' : 'Conjugaiso
 <footer class="footer">
   <div class="word-shell footer-row">
     <span>Outil indépendant d’aide aux jeux de lettres.</span>
+    <span class="footer-links"><a href="/mentions-legales">Mentions Légales</a> · <a href="/confidentialite">Confidentialité</a> · <a href="/contact">Contact</a></span>
   </div>
 </footer>
 </body>

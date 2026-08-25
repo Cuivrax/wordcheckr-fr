@@ -24,21 +24,21 @@ namespace App\Search;
  * (docs/01_MASTER_BRIEF.md : "? et * valent joker"), mais toute forme canonique (slug,
  * redirection 301) utilise exclusivement '*'.
  */
-final readonly class Rack
+final class Rack
 {
     /** Le sac de Scrabble francais ne contient que deux jetons blancs. */
-    public const int MAX_JOKERS = 2;
+    public const MAX_JOKERS = 2;
 
-    public const int MIN_TILES = 1;
+    public const MIN_TILES = 1;
 
     /**
      * @param array<string, int> $letterCounts lettres A-Z connues avec leur
      *        multiplicite, triees par cle (ordre alphabetique, SORT_STRING)
      */
     private function __construct(
-        public array $letterCounts,
-        public int $jokerCount,
-        public string $slug,
+        public readonly array $letterCounts,
+        public readonly int $jokerCount,
+        public readonly string $slug,
     ) {
     }
 

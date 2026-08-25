@@ -561,6 +561,65 @@ def load_verb_forms(
     return kept, stats, excluded_lemmas
 
 
+WORD_SENSES_CACHE_PATH = ROOT / "data" / "generated" / "word_senses_cache.jsonl"
+
+
+def load_word_senses(
+    term_keys: set[str],
+) -> tuple[list[tuple[str, int, str, str | None, str, str]], dict[str, int]]:
+    """Definitions lexicales (D-0XX, pilote 100 mots -- voir reports/definitions-nature-
+    feasibility-audit.md et scripts/generate_word_senses.py pour le pipeline de generation).
+
+    Lit data/generated/word_senses_cache.jsonl -- un fichier VERSIONNE (pas storage/,
+    entierement gitignore), produit hors ligne par un appel LLM payant et NON deterministe.
+    import_fr.py lui-meme reste deterministe : il ne fait AUCUN appel reseau/API ici, il ne
+    fait QUE lire ce fichier deja stable, exactement comme il lit ods8.json/hbenbel/Kartmaan.
+
+    Optionnel, contrairement aux autres sources (pas dans `required` de main()) : ce cache est
+    actuellement un pilote partiel (99 mots sur 838 180), pas encore un lot complet -- une
+    reconstruction sans ce fichier doit rester possible (table word_senses simplement vide),
+    le rollout complet est une decision separee (voir le rapport d'audit, section 12).
+
+    Meme garde d'integrite que verb_forms : toute ligne dont le terme n'est PAS dans term_keys
+    est ecartee plutot que d'etre inseree en base (aucune reference vers un terme absent de
+    `terms`, D-010 applique automatiquement).
+    """
+    stats = {
+        "word_senses_cache_present": 0,
+        "word_senses_terms_in_cache": 0,
+        "word_senses_terms_matched": 0,
+        "word_senses_rows": 0,
+    }
+    if not WORD_SENSES_CACHE_PATH.exists():
+        return [], stats
+
+    stats["word_senses_cache_present"] = 1
+    rows: list[tuple[str, int, str, str | None, str, str]] = []
+    with WORD_SENSES_CACHE_PATH.open(encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            entry = json.loads(line)
+            stats["word_senses_terms_in_cache"] += 1
+            term = entry["term"]
+            if term not in term_keys:
+                continue
+            stats["word_senses_terms_matched"] += 1
+            for rank, sense in enumerate(entry["senses"], start=1):
+                rows.append((
+                    term,
+                    rank,
+                    sense["pos"],
+                    sense.get("gender"),
+                    sense["definition"],
+                    sense["source"],
+                ))
+
+    stats["word_senses_rows"] = len(rows)
+    return sorted(rows), stats
+
+
 def build_terms(
     ods8: list[str],
     ods9: dict[str, list[str]],
@@ -634,6 +693,7 @@ def write_database(
     terms: dict[str, dict],
     pos_gender: dict[str, dict],
     verb_forms: list[tuple[str, str, str, str | None]],
+    word_senses: list[tuple[str, int, str, str | None, str, str]],
     metadata: dict[str, str],
 ) -> None:
     TARGET_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -651,6 +711,10 @@ def write_database(
                 entry["is_french"],
                 entry["is_ods8"],
                 entry["is_ods9"],
+                # is_admitted (D-022) : colonne derivee, jamais une source de verite
+                # independante -- precalculee ici pour que le filtre "admis seulement" des
+                # listes /mots/... reste indexable (voir schema.sql pour la mesure complete).
+                1 if (entry["is_ods8"] or entry["is_ods9"]) else 0,
                 score(normalized),
                 len(normalized),
                 signature(normalized),
@@ -663,14 +727,19 @@ def write_database(
         )
         connection.executemany(
             "INSERT INTO terms (id, display_term, normalized, is_french, is_ods8,"
-            " is_ods9, score, length, signature, reversed, pos, pos_secondary, gender)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " is_ods9, is_admitted, score, length, signature, reversed, pos, pos_secondary, gender)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             rows,
         )
         connection.executemany(
             "INSERT INTO verb_forms (lemma_normalized, form_normalized, tense, person)"
             " VALUES (?, ?, ?, ?)",
             verb_forms,
+        )
+        connection.executemany(
+            "INSERT INTO word_senses (term_normalized, sense_rank, pos, gender, definition, source)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            word_senses,
         )
         connection.executemany(
             "INSERT INTO build_metadata (key, value) VALUES (?, ?)",
@@ -725,6 +794,7 @@ def main() -> int:
     term_keys = set(terms.keys())
     pos_gender, pos_stats = load_pos_gender(term_keys)
     verb_forms, verb_stats, verb_excluded_lemmas = load_verb_forms(term_keys)
+    word_senses, word_senses_stats = load_word_senses(term_keys)
 
     # Les collisions se calculent sur l'union des formes sources : deux graphies
     # venues de sources différentes qui se rejoignent après normalisation sont
@@ -786,6 +856,7 @@ def main() -> int:
         # D-018 — nature grammaticale, genre, liens de conjugaison.
         "pos_gender": dict(sorted(pos_stats.items())),
         "verb_forms": dict(sorted(verb_stats.items())),
+        "word_senses": dict(sorted(word_senses_stats.items())),
     }
 
     if args.dry_run:
@@ -795,18 +866,19 @@ def main() -> int:
 
     metadata = {
         "language": "fr",
-        "schema": "terms v2 (D-018 : pos, pos_secondary, gender, verb_forms)",
+        "schema": "terms v3 (D-018 : pos, pos_secondary, gender, verb_forms ; D-0XX : word_senses)",
         "source_ods8_sha256": sha256_of(ODS8_PATH),
         "source_ods9_sha256": sha256_of(ODS9_PATH),
         "source_kartmaan_sha256": sha256_of(KARTMAAN_PATH),
         "terms_total": str(len(terms)),
         "verb_forms_total": str(len(verb_forms)),
+        "word_senses_rows_total": str(len(word_senses)),
     }
     for name in HBENBEL_FILES:
         metadata["source_hbenbel_%s_sha256" % Path(name).stem] = sha256_of(
             HBENBEL_DIR / name
         )
-    write_database(terms, pos_gender, verb_forms, metadata)
+    write_database(terms, pos_gender, verb_forms, word_senses, metadata)
 
     REPORTS.mkdir(parents=True, exist_ok=True)
     write_json(REPORTS / "import-summary.json", summary)

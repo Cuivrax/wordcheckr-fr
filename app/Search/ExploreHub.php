@@ -16,7 +16,7 @@ namespace App\Search;
  * champ de recherche borne (au plus 3 lettres, decision produit) qui soumet vers
  * /mots/contenant/{lettres} -- un outil, pas une liste de pages pre-generees.
  */
-final readonly class ExploreHub
+final class ExploreHub
 {
     /**
      * @param list<array{length: int, url: string, count: int}> $byLength
@@ -24,10 +24,10 @@ final readonly class ExploreHub
      * @param list<array{letter: string, url: string, count: int}> $byEnd
      */
     public function __construct(
-        public array $byLength,
-        public array $byStart,
-        public array $byEnd,
-        public int $queryCount,
+        public readonly array $byLength,
+        public readonly array $byStart,
+        public readonly array $byEnd,
+        public readonly int $queryCount,
     ) {
     }
 }

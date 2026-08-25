@@ -27,11 +27,11 @@ namespace App\Search;
  * (epicene -- meme forme aux deux genres, ex. ENFANT, ELEVE), jamais associe a un pos
  * autre que N.
  */
-final readonly class TermPage
+final class TermPage
 {
-    public const string STATUS_ADMITTED = 'admitted';
-    public const string STATUS_FRENCH_NOT_ADMITTED = 'french_not_admitted';
-    public const string STATUS_UNKNOWN = 'unknown';
+    public const STATUS_ADMITTED = 'admitted';
+    public const STATUS_FRENCH_NOT_ADMITTED = 'french_not_admitted';
+    public const STATUS_UNKNOWN = 'unknown';
 
     /**
      * @param list<array{letter: string, value: int}> $letters lettre et valeur de
@@ -47,20 +47,20 @@ final readonly class TermPage
      * @param string|null $gender 'm', 'f' ou 'e', null si non applicable ou non couvert
      */
     public function __construct(
-        public string $normalized,
-        public string $slug,
-        public bool $found,
-        public string $status,
-        public int $score,
-        public int $length,
-        public bool $isOds8,
-        public bool $isOds9,
-        public array $letters,
-        public ?string $previousWord,
-        public ?string $nextWord,
-        public ?string $pos = null,
-        public ?string $posSecondary = null,
-        public ?string $gender = null,
+        public readonly string $normalized,
+        public readonly string $slug,
+        public readonly bool $found,
+        public readonly string $status,
+        public readonly int $score,
+        public readonly int $length,
+        public readonly bool $isOds8,
+        public readonly bool $isOds9,
+        public readonly array $letters,
+        public readonly ?string $previousWord,
+        public readonly ?string $nextWord,
+        public readonly ?string $pos = null,
+        public readonly ?string $posSecondary = null,
+        public readonly ?string $gender = null,
     ) {
     }
 }

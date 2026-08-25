@@ -10,12 +10,47 @@ namespace App\Search;
  * Ordre canonique impose partout -- URL, cles, canonicals (docs/05_URL_SEO_INDEXATION.md) :
  *
  *   longueur -> commencant -> contenant -> terminant -> position -> avec -> sans -> motif
+ *   -> statut -> tri
  *
- * "position" reste hors perimetre de cette phase : absent de la liste des contraintes a
- * couvrir (docs/08), absent de tous les exemples de route. Un segment "position" rencontre
- * dans une URL est traite comme un mot-cle inconnu -> fromPath() renvoie null -> 404, pas un
- * 301 vers une forme corrigee. La place lui reste reservee dans l'ordre documente ci-dessus
- * pour que canonicalPath() reste correct si la contrainte est ajoutee plus tard.
+ * "position" (D-023, ajoutee a la place reservee dans l'ordre ci-dessus) : une lettre connue
+ * a UNE position precise, ex. "9-lettres/position/3/a" = mots de 9 lettres avec A en 3e
+ * position. Exige TOUJOURS une longueur explicite (comme "tri", meme raison : sans longueur,
+ * "position 3" n'a pas de sens borne). Espace de combinaisons volontairement restreint par
+ * rapport a "motif" general (une seule lettre connue, jamais plusieurs simultanement) --
+ * ~2 366 combinaisons reelles au total (26 lettres x positions 2 a longueur-1 x 14 longueurs),
+ * largement borne, contrairement a "motif" (2^15 combinaisons par longueur, jamais indexable
+ * -- D-012/NEVER_SITEMAP). position/1/{lettre} et position/{longueur}/{lettre} (premiere et
+ * derniere lettre) sont des cas degeneres deja couverts par "commencant"/"terminant" -- pour
+ * eviter le contenu duplique constate sur "motif" (un "motif/a----" et un "commencant/a"
+ * produisant la meme liste sous deux URL canoniques distinctes, jamais rapproche), fromPath()
+ * les COLLAPSE silencieusement vers prefix/suffix (meme mecanisme que la correction de
+ * longueur derivee du motif ci-dessous) -- $position/$positionLetter ne portent jamais les
+ * positions 1 ou longueur, canonicalPath() n'emet donc jamais "position/1/..." ni
+ * "position/{longueur}/...".
+ *
+ * "avec/X" redondant avec un "commencant/X"/"terminant/X" d'UNE SEULE LETTRE (D-032) : meme
+ * mecanisme de collapse silencieux que "position" ci-dessus, applique cette fois a "avec".
+ * "commencant/X/avec/X" (minCount = 1, l'occurrence unique par defaut) est logiquement toujours
+ * vrai des que le mot commence deja par X -- garder cette entree withLetters ferait basculer a
+ * tort needsUnindexedPredicates() en regime BORNE plafonne (ROW_EXAMINATION_CEILING) pour une
+ * contrainte qui n'exclut jamais aucune ligne, produisant un total tronque et trompeur au lieu
+ * du vrai total (regime EXACT, sans plafond) deja disponible via "commencant/X" seul. fromPath()
+ * retire alors cette entree $withLetters plutot que de traiter le cas dans WordListSolver --
+ * canonicalPath() n'emet donc plus jamais "avec/X" a cote de "commencant"/"terminant/X" pour la
+ * meme lettre X, le routeur redirige en 301. Seule la forme mono-lettre est concernee (minCount
+ * strictement egal a 1) : un "avec/X/X" (minCount = 2, un DEUXIEME X) reste un vrai predicat,
+ * jamais garanti par le seul prefixe/suffixe. Mesure : reports/query-plans/
+ * commencant-avec-no-length-full-sweep.md section 5 (17/26 cas affectes, jusqu'a 224 205 pour R).
+ *
+ * "statut" et "tri" (D-022) sont des RAFFINEMENTS d'affichage, pas des contraintes de
+ * recherche a proprement parler -- places en derniere position de l'ordre canonique, apres
+ * toutes les contraintes de contenu. "statut/admis" ou "statut/non-admis" filtre sur
+ * is_admitted (colonne precalculee, voir schema.sql). "tri/points" ou "tri/points-desc"
+ * trie par score plutot que par ordre alphabetique -- EXIGE une longueur explicite (readSort()
+ * refuse sinon, 404) : seul ce sous-ensemble (longueur seule, longueur+prefixe, longueur+
+ * suffixe) a ete mesure sur comme couvrant tout le budget TTFB (reports/query-plans/
+ * status-filter-admitted.md) ; trier sans aucun ancrage de longueur retomberait dans le meme
+ * cout qu'un parcours large non borne, jamais mesure, donc jamais propose.
  *
  * Cette classe ne fait AUCUN acces base : parsing et validation syntaxique pures, meme
  * discipline que Rack::fromInput(). WordListSolver traduit ensuite ces filtres en requetes.
@@ -26,10 +61,16 @@ namespace App\Search;
  * convention que TermPage::$slug et RackPage::$slug -- et redirige en 301 si différent
  * ("toute autre permutation redirige en 301", docs/05).
  */
-final readonly class WordListFilters
+final class WordListFilters
 {
-    /** Mots-cles reconnus, dans l'ordre canonique. "position" volontairement absent (hors perimetre). */
-    private const array KEYWORDS = ['commencant', 'contenant', 'terminant', 'avec', 'sans', 'motif'];
+    /** Mots-cles reconnus, dans l'ordre canonique (D-023 : "position" ajoutee). */
+    private const KEYWORDS = ['commencant', 'contenant', 'terminant', 'position', 'avec', 'sans', 'motif', 'statut', 'tri'];
+
+    /** Valeurs acceptees pour le segment "statut" (D-022). */
+    private const STATUS_VALUES = ['admis', 'non-admis'];
+
+    /** Valeurs acceptees pour le segment "tri" (D-022). */
+    private const SORT_VALUES = ['points', 'points-desc'];
 
     /**
      * @param int|null $length longueur exacte demandee, 2 a 15
@@ -42,17 +83,29 @@ final readonly class WordListFilters
      *        triees, sans doublon
      * @param string|null $pattern motif de cases connues : A-Z pour une lettre connue, '-'
      *        pour une case inconnue ; longueur du motif = longueur du mot (2 a 15)
+     * @param int|null $position position 1-based d'une lettre connue (D-023), jamais 1 ni
+     *        $length (voir collapse vers prefix/suffix, docblock de classe) -- toujours
+     *        accompagne d'une longueur explicite et de $positionLetter
+     * @param string|null $positionLetter lettre normalisee (A-Z) a $position, null ssi
+     *        $position est null
+     * @param string|null $status 'admis'|'non-admis' (D-022), null = aucun filtre de statut
+     * @param string|null $sort 'points'|'points-desc' (D-022), null = ordre alphabetique
+     *        (par defaut). Toujours accompagne d'une longueur explicite -- voir readSort().
      * @param int $page page demandee, >= 1 (1 = premiere page, jamais reflete dans l'URL)
      */
     private function __construct(
-        public ?int $length,
-        public ?string $prefix,
-        public ?string $suffix,
-        public ?string $contains,
-        public array $withLetters,
-        public array $withoutLetters,
-        public ?string $pattern,
-        public int $page,
+        public readonly ?int $length,
+        public readonly ?string $prefix,
+        public readonly ?string $suffix,
+        public readonly ?string $contains,
+        public readonly array $withLetters,
+        public readonly array $withoutLetters,
+        public readonly ?string $pattern,
+        public readonly ?int $position,
+        public readonly ?string $positionLetter,
+        public readonly ?string $status,
+        public readonly ?string $sort,
+        public readonly int $page,
     ) {
     }
 
@@ -60,9 +113,10 @@ final readonly class WordListFilters
      * Construit les filtres a partir du chemin brut recu par le routeur (deja debarrasse du
      * prefixe "/mots", ex. "/7-lettres/commencant/ch" ou "" pour /mots seul).
      *
-     * Renvoie null pour toute forme non exploitable : mot-cle inconnu (dont "position", hors
-     * perimetre), mot-cle duplique, valeur manquante ou invalide, "avec"/"sans" sans lettre,
-     * longueur hors bornes, motif hors bornes ou incoherent. Aucune exception ne remonte --
+     * Renvoie null pour toute forme non exploitable : mot-cle inconnu, mot-cle duplique,
+     * valeur manquante ou invalide, "avec"/"sans" sans lettre, longueur hors bornes, motif
+     * hors bornes ou incoherent, "position" sans longueur ou hors bornes (D-023). Aucune
+     * exception ne remonte --
      * meme discipline que Normalizer::normalize() et Rack::fromInput() : une entree
      * utilisateur ne doit jamais faire planter le flux HTTP normal. C'est une erreur de
      * saisie/routage, pas un resultat de recherche -- au routeur de traduire null en 404.
@@ -84,6 +138,10 @@ final readonly class WordListFilters
         $withLetters = [];
         $withoutLetters = [];
         $pattern = null;
+        $position = null;
+        $positionLetter = null;
+        $status = null;
+        $sort = null;
         $seenKeywords = [];
 
         $i = 0;
@@ -106,7 +164,7 @@ final readonly class WordListFilters
 
             if (!in_array($keyword, self::KEYWORDS, true)) {
                 // Inclut le cas "{N}-lettres" hors premiere position, et tout mot-cle
-                // inconnu (dont "position", hors perimetre de cette phase) : 404, jamais 301.
+                // inconnu : 404, jamais 301.
                 return null;
             }
 
@@ -139,6 +197,13 @@ final readonly class WordListFilters
                     }
                     break;
 
+                case 'position':
+                    [$position, $positionLetter, $i] = self::readPosition($segments, $i, $count);
+                    if ($position === null) {
+                        return null;
+                    }
+                    break;
+
                 case 'avec':
                     [$withLetters, $i] = self::readLetterMultiset($segments, $i, $count);
                     if ($withLetters === null) {
@@ -159,6 +224,20 @@ final readonly class WordListFilters
                         return null;
                     }
                     break;
+
+                case 'statut':
+                    [$status, $i] = self::readEnumValue($segments, $i, $count, self::STATUS_VALUES);
+                    if ($status === null) {
+                        return null;
+                    }
+                    break;
+
+                case 'tri':
+                    [$sort, $i] = self::readEnumValue($segments, $i, $count, self::SORT_VALUES);
+                    if ($sort === null) {
+                        return null;
+                    }
+                    break;
             }
         }
 
@@ -170,6 +249,73 @@ final readonly class WordListFilters
             $length = strlen($pattern);
         }
 
+        // "position" (D-023) exige une longueur explicite, quel que soit l'ordre de saisie
+        // des segments -- meme raison que "tri" ci-dessous : sans longueur, "position 3" ne
+        // borne rien. Incompatible avec "motif" : deux vocabulaires distincts pour le meme
+        // concept (une lettre connue a une position) ne doivent jamais coexister dans la
+        // meme URL.
+        if ($position !== null) {
+            if ($length === null || $pattern !== null || $position > $length) {
+                return null;
+            }
+
+            // Positions degenerees (premiere/derniere lettre) : collapse silencieux vers
+            // prefix/suffix plutot que de servir une seconde URL canonique pour la meme
+            // liste de mots -- evite le contenu duplique deja constate sur "motif" (voir
+            // docblock de classe). Un conflit avec un "commencant"/"terminant" explicite
+            // portant une lettre DIFFERENTE reste une contrainte contradictoire -> 404.
+            if ($position === 1) {
+                if ($prefix !== null && $prefix !== $positionLetter) {
+                    return null;
+                }
+                $prefix = $positionLetter;
+                $position = null;
+                $positionLetter = null;
+            } elseif ($position === $length) {
+                if ($suffix !== null && $suffix !== $positionLetter) {
+                    return null;
+                }
+                $suffix = $positionLetter;
+                $position = null;
+                $positionLetter = null;
+            }
+        }
+
+        // "avec" redondant avec un prefixe/suffixe D'UNE SEULE LETTRE (D-032) : "commencant/X/
+        // avec/X" (minCount === 1) est TOUJOURS vrai des que "commence par X" l'est deja --
+        // conserver cette entree withLetters ferait basculer a tort needsUnindexedPredicates()
+        // en regime BORNE plafonne (ROW_EXAMINATION_CEILING) pour une contrainte qui n'exclut
+        // jamais aucune ligne, produisant un total tronque et trompeur au lieu du vrai total
+        // deja disponible sans plafond via le regime EXACT de "commencant/X" seul (mesure :
+        // reports/query-plans/commencant-avec-no-length-full-sweep.md section 5 -- 17 des 26
+        // combinaisons commencant/X/avec/X affichaient un total plafonne a 10 000 au lieu du
+        // vrai total, jusqu'a 224 205 pour R). Retire silencieusement cette entree plutot que de
+        // traiter le cas dans WordListSolver -- meme principe que le collapse "position"
+        // degeneree ci-dessus (D-023) : canonicalPath() n'emet alors plus jamais "avec/X" a cote
+        // de "commencant"/"terminant/X", le routeur redirige en 301 vers la forme simplifiee.
+        // Ne retire QUE l'entree strictement redondante : minCount === 1 exactement -- un
+        // minCount >= 2 (ex. avec/x/x, "commencant/x/avec/x/x") exige un DEUXIEME X, jamais
+        // garanti par le seul prefixe/suffixe d'une lettre, donc jamais retire ici. Un prefixe/
+        // suffixe de PLUSIEURS lettres n'est volontairement pas traite (hors perimetre mesure de
+        // cette correction, voir le rapport cite) : seule la forme mono-lettre l'est.
+        if ($prefix !== null && strlen($prefix) === 1 && isset($withLetters[$prefix]) && $withLetters[$prefix] === 1) {
+            unset($withLetters[$prefix]);
+        }
+
+        if ($suffix !== null && strlen($suffix) === 1 && isset($withLetters[$suffix]) && $withLetters[$suffix] === 1) {
+            unset($withLetters[$suffix]);
+        }
+
+        // "tri" (D-022) exige une longueur explicite, quel que soit l'ordre de saisie des
+        // segments -- verifie ici, apres la longueur derivee du motif ci-dessus, plutot que
+        // dans le case 'tri' du switch (une saisie non canonique pourrait sinon placer "tri"
+        // avant "motif"/le token positionnel "{N}-lettres" dans les segments recus). Mesure
+        // (schema.sql, idx_terms_length_score_normalized) : seul le sous-ensemble ancre sur une
+        // longueur reste dans le budget TTFB pour un tri par points.
+        if ($sort !== null && $length === null) {
+            return null;
+        }
+
         // Aucune contrainte du tout ($length === null && ... && $pattern === null) reste un
         // etat valide : /mots seul = parcours complet, pagine (voir isEmpty()). Ce n'est pas
         // une route annoncee par docs/05 -- le routeur decide s'il l'expose.
@@ -177,7 +323,7 @@ final readonly class WordListFilters
         ksort($withLetters, SORT_STRING);
         sort($withoutLetters, SORT_STRING);
 
-        return new self($length, $prefix, $suffix, $contains, $withLetters, $withoutLetters, $pattern, $page);
+        return new self($length, $prefix, $suffix, $contains, $withLetters, $withoutLetters, $pattern, $position, $positionLetter, $status, $sort, $page);
     }
 
     /**
@@ -200,6 +346,49 @@ final readonly class WordListFilters
         }
 
         return [$normalized, $i + 1];
+    }
+
+    /**
+     * Deux segments consecutifs : une position 1-based (entier decimal, jamais 0 ni negatif)
+     * puis une lettre unique (D-023). Renvoie [null, null, $i] si l'un des deux est absent,
+     * vide ou invalide -- la borne superieure (position <= longueur) est verifiee par
+     * l'appelant, une fois la longueur connue (voir fromPath()).
+     *
+     * @param list<string> $segments
+     * @return array{0: int|null, 1: string|null, 2: int}
+     */
+    private static function readPosition(array $segments, int $i, int $count): array
+    {
+        if ($i >= $count || preg_match('/^[1-9]\d?\z/', $segments[$i]) !== 1) {
+            return [null, null, $i];
+        }
+
+        $position = (int) $segments[$i];
+
+        [$letter, $next] = self::readSingleLetterRun($segments, $i + 1, $count);
+
+        if ($letter === null || strlen($letter) !== 1) {
+            return [null, null, $i];
+        }
+
+        return [$position, $letter, $next];
+    }
+
+    /**
+     * Un seul segment dont la valeur doit appartenir a $allowed (statut, tri -- D-022).
+     * Renvoie [null, $i] si absent ou hors de la liste fermee -- jamais de valeur inventee.
+     *
+     * @param list<string> $segments
+     * @param list<string> $allowed
+     * @return array{0: string|null, 1: int}
+     */
+    private static function readEnumValue(array $segments, int $i, int $count, array $allowed): array
+    {
+        if ($i >= $count || !in_array($segments[$i], $allowed, true)) {
+            return [null, $i];
+        }
+
+        return [$segments[$i], $i + 1];
     }
 
     /**
@@ -363,6 +552,12 @@ final readonly class WordListFilters
             $segments[] = strtolower($this->suffix);
         }
 
+        if ($this->position !== null) {
+            $segments[] = 'position';
+            $segments[] = (string) $this->position;
+            $segments[] = strtolower($this->positionLetter);
+        }
+
         if ($this->withLetters !== []) {
             $segments[] = 'avec';
             foreach ($this->withLetters as $letter => $times) {
@@ -384,6 +579,16 @@ final readonly class WordListFilters
             $segments[] = strtolower($this->pattern);
         }
 
+        if ($this->status !== null) {
+            $segments[] = 'statut';
+            $segments[] = $this->status;
+        }
+
+        if ($this->sort !== null) {
+            $segments[] = 'tri';
+            $segments[] = $this->sort;
+        }
+
         return implode('/', $segments);
     }
 
@@ -395,23 +600,28 @@ final readonly class WordListFilters
         return $this->page > 1 ? $base . '/page/' . $this->page : $base;
     }
 
-    /** true si le filtre ne pose aucune contrainte (parcours complet de la base). */
+    /**
+     * true si le filtre ne pose aucune contrainte (parcours complet de la base). "tri" seul
+     * ne peut jamais rendre ce test faux a lui seul (il exige toujours une longueur, voir
+     * fromPath()) ; "statut" le peut (ex. /mots/statut/admis, sans autre contrainte) -- une
+     * vraie restriction du panier, pas un parcours complet.
+     */
     public function isEmpty(): bool
     {
         return $this->length === null && $this->prefix === null && $this->suffix === null
             && $this->contains === null && $this->withLetters === [] && $this->withoutLetters === []
-            && $this->pattern === null;
+            && $this->pattern === null && $this->position === null && $this->status === null;
     }
 
     /**
      * true si des predicats non couverts par un index dedie sont necessaires (contenant,
-     * avec, sans, ou motif avec une case connue au-dela du prefixe initial). Determine si
-     * WordListSolver doit appliquer WordListSolver::ROW_EXAMINATION_CEILING (voir sa
-     * documentation pour le detail des mesures qui justifient ce plafond).
+     * avec, sans, position (D-023), ou motif avec une case connue au-dela du prefixe initial).
+     * Determine si WordListSolver doit appliquer WordListSolver::ROW_EXAMINATION_CEILING (voir
+     * sa documentation pour le detail des mesures qui justifient ce plafond).
      */
     public function needsUnindexedPredicates(): bool
     {
-        if ($this->contains !== null || $this->withLetters !== [] || $this->withoutLetters !== []) {
+        if ($this->contains !== null || $this->withLetters !== [] || $this->withoutLetters !== [] || $this->position !== null) {
             return true;
         }
 

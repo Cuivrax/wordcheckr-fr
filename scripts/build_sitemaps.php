@@ -47,8 +47,72 @@ const FAMILY_FRAGMENT_PREFIXES = [
     'word_list_commencant' => 'starts',
     'word_list_terminant' => 'ends',
     'word_list_contenant' => 'contains',
-    // word_list_avec, word_list_sans, word_list_motif, word_list_combined, rack : absents
-    // volontairement -- App\Seo\Family::NEVER_SITEMAP, jamais de prefixe de fragment.
+    // word_list_combined (D-024 correctif, D-025) : retiree de NEVER_SITEMAP le 2026-08-09,
+    // espace borne (26x26 ou 14x26x26), pas une combinaison infinie -- prefixe 'combined',
+    // ajoute a docs/05_URL_SEO_INDEXATION.md (section Sitemaps) dans le meme lot.
+    'word_list_combined' => 'combined',
+    // word_list_position (D-023, jamais dans NEVER_SITEMAP) : une seule lettre connue a une
+    // seule position, espace borne par construction (2 366 combinaisons reelles au total,
+    // WordListFilters::readPosition() n'accepte qu'un seul couple position/lettre) -- prefixe
+    // 'position', ajoute a docs/05_URL_SEO_INDEXATION.md (section Sitemaps) dans le meme lot.
+    // Balayage complet des 2 366 combinaisons : 0 au-dessus du budget TTFB, voir
+    // reports/query-plans/position-full-sweep.md.
+    'word_list_position' => 'position',
+    // word_list_avec_single_letter (demande produit du 2026-08-17, jamais dans NEVER_SITEMAP) :
+    // PALIER 1 de l'ouverture en entonnoir de "avec" -- longueur explicite ET exactement une
+    // lettre "avec" (occurrence unique), 14 x 26 = 364 combinaisons au plus, borne de la famille
+    // elle-meme sur ce perimetre precis -- distincte en permanence de word_list_avec (multiensemble
+    // general, ci-dessous, NEVER_SITEMAP) et de tout futur palier (2 lettres, 3 lettres...), qui
+    // devra recevoir sa PROPRE constante Family et son propre prefixe, jamais celui-ci. Prefixe
+    // 'avec-single', ajoute a docs/05_URL_SEO_INDEXATION.md (section Sitemaps) dans le meme lot.
+    // Balayage complet des 364 combinaisons : 0 au-dessus du budget TTFB, voir
+    // reports/query-plans/avec-length-1-letter-full-sweep.md et app/Seo/Family.php.
+    'word_list_avec_single_letter' => 'avec-single',
+    // word_list_avec_two_letters (demande produit du 2026-08-17, jamais dans NEVER_SITEMAP) :
+    // PALIER 2 de l'ouverture en entonnoir de "avec" -- longueur explicite ET exactement deux
+    // lettres "avec" DISTINCTES (occurrence unique chacune), 14 x C(26,2) = 4 550 combinaisons au
+    // plus, borne de la famille elle-meme sur ce perimetre precis -- distincte en permanence de
+    // word_list_avec_single_letter (palier 1, ci-dessus) et de word_list_avec (multiensemble
+    // general, ci-dessous, NEVER_SITEMAP). Prefixe 'avec-pair', ajoute a
+    // docs/05_URL_SEO_INDEXATION.md (section Sitemaps) dans le meme lot. Balayage complet des
+    // 4 550 combinaisons (agent data-engine, 3 runs) : voir reports/query-plans/
+    // avec-length-2-letters-full-sweep.md et app/Seo/Family.php pour le detail complet, dont la
+    // re-verification independante effectuee par l'agent seo-registry avant application.
+    'word_list_avec_two_letters' => 'avec-pair',
+    // word_list_avec_three_letters (demande produit du 2026-08-18, jamais dans NEVER_SITEMAP) :
+    // PALIER 3 de l'ouverture en entonnoir de "avec" -- longueur explicite ET exactement trois
+    // lettres "avec" DISTINCTES (occurrence unique chacune), 14 x C(26,3) = 36 400 combinaisons au
+    // plus, borne de la famille elle-meme sur ce perimetre precis -- distincte en permanence de
+    // word_list_avec_single_letter (palier 1), word_list_avec_two_letters (palier 2, ci-dessus) et
+    // de word_list_avec (multiensemble general, ci-dessous, NEVER_SITEMAP). Prefixe 'avec-triple',
+    // ajoute a docs/05_URL_SEO_INDEXATION.md (section Sitemaps) dans le meme lot. Balayage complet
+    // des 36 400 combinaisons (agent data-engine, un seul passage) : 28 827 a >= 1 resultat, voir
+    // reports/query-plans/avec-length-3-letters-full-sweep.md et app/Seo/Family.php pour le detail
+    // complet, dont l'investigation d'un pic de latence isole juge non structurel.
+    'word_list_avec_three_letters' => 'avec-triple',
+    // word_list_combined_with_letter (demande produit du 2026-08-18, jamais dans NEVER_SITEMAP,
+    // D-033) : NOUVELLE classification, DISTINCTE de word_list_combined -- prefixe ET suffixe
+    // chacun d'une seule lettre, SANS longueur, PLUS une lettre "avec" d'occurrence unique,
+    // 611 paires commencant+terminant reelles x 26 lettres = 15 886 combinaisons candidates au
+    // plus, borne de la famille elle-meme sur ce perimetre precis. Prefixe 'combined-with',
+    // ajoute a docs/05_URL_SEO_INDEXATION.md (section Sitemaps) dans le meme lot. Balayage
+    // complet des 15 886 combinaisons : 0 au-dessus du budget TTFB, voir reports/query-plans/
+    // commencant-terminant-avec-full-sweep.md et app/Seo/Family.php.
+    'word_list_combined_with_letter' => 'combined-with',
+    // word_list_commencant_with_letter (demande produit du 2026-08-18, dernier des quatre axes
+    // commencant/terminant/avec travailles ce jour, jamais dans NEVER_SITEMAP, D-032) : NOUVELLE
+    // classification, distincte de word_list_commencant (prefixe seul) ET de
+    // word_list_combined_with_letter (ci-dessus, prefixe+terminant+avec) -- prefixe d'une seule
+    // lettre, SANS longueur, SANS terminant, PLUS une lettre "avec" d'occurrence unique, 26
+    // prefixes reels x 26 lettres = 676 combinaisons brutes au plus, borne de la famille
+    // elle-meme sur ce perimetre precis. Prefixe 'commencant-avec', ajoute a
+    // docs/05_URL_SEO_INDEXATION.md (section Sitemaps) dans le meme lot. Balayage complet des
+    // 650 combinaisons non degenerees : 0 au-dessus du budget TTFB, voir reports/query-plans/
+    // commencant-avec-no-length-full-sweep.md, reports/query-plans/commencant-avec-maillage.md
+    // et app/Seo/Family.php.
+    'word_list_commencant_with_letter' => 'commencant-avec',
+    // word_list_avec, word_list_sans, word_list_motif, rack : absents volontairement --
+    // App\Seo\Family::NEVER_SITEMAP, jamais de prefixe de fragment.
 ];
 
 $baseUrl = null;

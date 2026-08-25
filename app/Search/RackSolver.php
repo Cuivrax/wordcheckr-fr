@@ -46,7 +46,7 @@ final class RackSolver
      * (reports/query-plans/phase2.md : 74 requetes a 500 ou 8 requetes a 5000 prennent
      * le meme temps total, ~110-120 ms, pour le meme pire cas).
      */
-    public const int CHUNK_SIZE = 5000;
+    public const CHUNK_SIZE = 5000;
 
     /**
      * Valide explicitement par le coordinateur : confortablement au-dessus du pire cas
@@ -57,10 +57,10 @@ final class RackSolver
      * compte reel -- un chevalet refuse ne declenche donc jamais la generation qu'il
      * est cense eviter.
      */
-    public const int SIGNATURE_CEILING = 50_000;
+    public const SIGNATURE_CEILING = 50_000;
 
     /** Limite d'affichage validee par le coordinateur. */
-    public const int DISPLAY_LIMIT = 300;
+    public const DISPLAY_LIMIT = 300;
 
     public function __construct(
         private readonly Connection $connection,

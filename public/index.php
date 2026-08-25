@@ -77,13 +77,25 @@ require __DIR__ . '/../app/bootstrap.php';
 
 use App\Config;
 use App\Database\Connection;
+use App\Search\AvecSansLengthLinksBuilder;
+use App\Search\AvecThreeLettersLinksBuilder;
+use App\Search\AvecTwoLettersLinksBuilder;
 use App\Search\ConjugationLookup;
 use App\Search\ExploreHubBuilder;
+use App\Search\LengthCombinedLinksBuilder;
+use App\Search\LengthLinksBuilder;
+use App\Search\LetterCombinedLinksBuilder;
 use App\Search\Normalizer;
+use App\Search\PositionLinksBuilder;
+use App\Search\PrefixAvecLinksBuilder;
+use App\Search\PrefixExtensionLinksBuilder;
 use App\Search\Rack;
 use App\Search\RackSolver;
 use App\Search\RelationsFinder;
+use App\Search\SenseLookup;
+use App\Search\StartEndWithLinksBuilder;
 use App\Search\Suggester;
+use App\Search\SuffixExtensionLinksBuilder;
 use App\Search\TermLookup;
 use App\Search\TermPage;
 use App\Search\WordListFilters;
@@ -102,9 +114,22 @@ header('Content-Type: text/html; charset=utf-8');
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
-if (!in_array($method, ['GET', 'HEAD'], true)) {
+$path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
+$path = rawurldecode($path);
+
+if ($path !== '/' && str_ends_with($path, '/')) {
+    $path = rtrim($path, '/');
+}
+
+// POST autorise UNIQUEMENT sur /contact (formulaire de contact, D-025ter) -- premiere et
+// seule route du site qui accepte une soumission (toutes les autres restent GET, D-007 :
+// aucune ecriture sur la base au runtime, ce formulaire n'y touche pas non plus, il envoie
+// un email via mail() native PHP). Toute autre methode sur toute autre route reste refusee.
+$allowedMethods = $path === '/contact' ? ['GET', 'HEAD', 'POST'] : ['GET', 'HEAD'];
+
+if (!in_array($method, $allowedMethods, true)) {
     http_response_code(405);
-    header('Allow: GET, HEAD');
+    header('Allow: ' . implode(', ', $allowedMethods));
     echo '405 Methode non autorisee';
 
     return;
@@ -112,13 +137,6 @@ if (!in_array($method, ['GET', 'HEAD'], true)) {
 
 $config = Config::load(getenv('SCRABBLE_SITE') ?: 'fr');
 $seoRegistry = new Registry($config->seoPath, $config->canonicalBaseUrl);
-
-$path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?? '/';
-$path = rawurldecode($path);
-
-if ($path !== '/' && str_ends_with($path, '/')) {
-    $path = rtrim($path, '/');
-}
 
 /**
  * Rend une vue via app/View/{name}.php, ou un message d'attente si elle n'existe pas
@@ -226,9 +244,16 @@ if (preg_match('#^/mot/([^/]+)$#u', $path, $matches) === 1) {
     // D-018). Jamais pour "inconnu" ($page est toujours trouve a ce point du routeur).
     $conjugation = (new ConjugationLookup($connection))->find($page->normalized);
 
+    // Definitions (D-043) : 1 requete indexee supplementaire (App\Search\SenseLookup), meme
+    // perimetre que ConjugationLookup ci-dessus -- tout mot TROUVE, admis ou non. Compensee
+    // par la fusion des requetes "mot precedent"/"mot suivant" de TermLookup (D-043) : budget
+    // dictionnaire reste a 9 requetes pour un mot admis, sous le plafond "moins de 10"
+    // (CLAUDE.md) -- voir App\Search\SenseLookup, docblock de budget.
+    $senses = (new SenseLookup($connection))->find($page->normalized);
+
     $render(
         'word',
-        ['page' => $page, 'relations' => $relations, 'conjugation' => $conjugation],
+        ['page' => $page, 'relations' => $relations, 'conjugation' => $conjugation, 'senses' => $senses],
         200,
         '/mot/' . $page->slug,
     );
@@ -422,7 +447,133 @@ if ($path === '/mots' || preg_match('#^/mots(/.*)$#u', $path, $matches) === 1) {
         return;
     }
 
-    $render('word-list', ['page' => $page], 200, $canonical);
+    // Maillage interne precalcule (D-022/D-023bis/D-024/D-024bis/D-027/D-029/D-030/D-031/
+    // D-033/D-034) : chaque *LinksBuilder lit list_counts (1 requete triviale), jamais un
+    // calcul sur `terms`. $filters est garanti non-null : $page->canonicalPath vient de
+    // WordListFilters::canonicalPath(), sa reanalyse par fromPath() reussit toujours.
+    $filters = WordListFilters::fromPath($page->canonicalPath);
+
+    $hasNoOtherConstraint = static function (WordListFilters $f, array $ignore = []): bool {
+        $active = [
+            'length' => $f->length !== null,
+            'prefix' => $f->prefix !== null,
+            'suffix' => $f->suffix !== null,
+            'contains' => $f->contains !== null,
+            'withLetters' => $f->withLetters !== [],
+            'withoutLetters' => $f->withoutLetters !== [],
+            'pattern' => $f->pattern !== null,
+            'position' => $f->position !== null || $f->positionLetter !== null,
+            'status' => $f->status !== null,
+            'sort' => $f->sort !== null,
+        ];
+
+        foreach ($ignore as $key) {
+            unset($active[$key]);
+        }
+
+        return !in_array(true, $active, true);
+    };
+
+    $isBareSingleLetterPrefix = $filters->prefix !== null && strlen($filters->prefix) === 1
+        && $hasNoOtherConstraint($filters, ['prefix']);
+    $isBareSingleLetterSuffix = $filters->suffix !== null && strlen($filters->suffix) === 1
+        && $hasNoOtherConstraint($filters, ['suffix']);
+    $isBarePrefixOnly = $filters->prefix !== null && $hasNoOtherConstraint($filters, ['prefix']);
+    $isBareSuffixOnly = $filters->suffix !== null && $hasNoOtherConstraint($filters, ['suffix']);
+    $isBarePrefixSuffixPair = $filters->prefix !== null && strlen($filters->prefix) === 1
+        && $filters->suffix !== null && strlen($filters->suffix) === 1
+        && $hasNoOtherConstraint($filters, ['prefix', 'suffix']);
+    $isLengthPlusSinglePrefixOnly = $filters->length !== null && $filters->prefix !== null
+        && strlen($filters->prefix) === 1 && $hasNoOtherConstraint($filters, ['length', 'prefix']);
+    $isLengthPlusSingleSuffixOnly = $filters->length !== null && $filters->suffix !== null
+        && strlen($filters->suffix) === 1 && $hasNoOtherConstraint($filters, ['length', 'suffix']);
+
+    $singleAvecLetter = null;
+    if (count($filters->withLetters) === 1) {
+        $onlyLetter = array_key_first($filters->withLetters);
+        if ($filters->withLetters[$onlyLetter] === 1) {
+            $singleAvecLetter = $onlyLetter;
+        }
+    }
+
+    $twoAvecLetters = null;
+    if (count($filters->withLetters) === 2) {
+        $letters = array_keys($filters->withLetters);
+        if ($filters->withLetters[$letters[0]] === 1 && $filters->withLetters[$letters[1]] === 1) {
+            $twoAvecLetters = $letters;
+        }
+    }
+
+    $isLengthPlusSingleAvecOnly = $filters->length !== null && $singleAvecLetter !== null
+        && $hasNoOtherConstraint($filters, ['length', 'withLetters']);
+    $isLengthPlusTwoAvecOnly = $filters->length !== null && $twoAvecLetters !== null
+        && $hasNoOtherConstraint($filters, ['length', 'withLetters']);
+    $isAvecSansOnlyNoLength = $filters->length === null && $singleAvecLetter !== null
+        && count($filters->withoutLetters) === 1
+        && $hasNoOtherConstraint($filters, ['withLetters', 'withoutLetters']);
+
+    $lengthLinks = $filters->length !== null
+        ? (new LengthLinksBuilder($connection))->build($filters->length)
+        : null;
+
+    $letterCombinedLinks = match (true) {
+        $isBareSingleLetterPrefix => (new LetterCombinedLinksBuilder($connection))->buildForStart($filters->prefix),
+        $isBareSingleLetterSuffix => (new LetterCombinedLinksBuilder($connection))->buildForEnd($filters->suffix),
+        default => null,
+    };
+
+    $prefixAvecLinks = $isBareSingleLetterPrefix
+        ? (new PrefixAvecLinksBuilder($connection))->build($filters->prefix)
+        : null;
+
+    $prefixExtensionLinks = $isBarePrefixOnly
+        ? (new PrefixExtensionLinksBuilder($connection))->build($filters->prefix)
+        : null;
+
+    $suffixExtensionLinks = $isBareSuffixOnly
+        ? (new SuffixExtensionLinksBuilder($connection))->build($filters->suffix)
+        : null;
+
+    $lengthCombinedLinks = match (true) {
+        $isLengthPlusSinglePrefixOnly => (new LengthCombinedLinksBuilder($connection))->buildForStart($filters->length, $filters->prefix),
+        $isLengthPlusSingleSuffixOnly => (new LengthCombinedLinksBuilder($connection))->buildForEnd($filters->length, $filters->suffix),
+        default => null,
+    };
+
+    $startEndWithLinks = $isBarePrefixSuffixPair
+        ? (new StartEndWithLinksBuilder($connection))->build($filters->prefix, $filters->suffix)
+        : null;
+
+    $positionLinks = $isLengthPlusSingleAvecOnly
+        ? (new PositionLinksBuilder($connection))->build($filters->length, $singleAvecLetter)
+        : null;
+
+    $avecTwoLettersLinks = $isLengthPlusSingleAvecOnly
+        ? (new AvecTwoLettersLinksBuilder($connection))->build($filters->length, $singleAvecLetter)
+        : null;
+
+    $avecThreeLettersLinks = $isLengthPlusTwoAvecOnly
+        ? (new AvecThreeLettersLinksBuilder($connection))->build($filters->length, $twoAvecLetters[0], $twoAvecLetters[1])
+        : null;
+
+    $avecSansLengthLinks = $isAvecSansOnlyNoLength
+        ? (new AvecSansLengthLinksBuilder($connection))->build($singleAvecLetter, $filters->withoutLetters[0])
+        : null;
+
+    $render('word-list', [
+        'page' => $page,
+        'lengthLinks' => $lengthLinks,
+        'letterCombinedLinks' => $letterCombinedLinks,
+        'prefixAvecLinks' => $prefixAvecLinks,
+        'prefixExtensionLinks' => $prefixExtensionLinks,
+        'suffixExtensionLinks' => $suffixExtensionLinks,
+        'lengthCombinedLinks' => $lengthCombinedLinks,
+        'startEndWithLinks' => $startEndWithLinks,
+        'positionLinks' => $positionLinks,
+        'avecTwoLettersLinks' => $avecTwoLettersLinks,
+        'avecThreeLettersLinks' => $avecThreeLettersLinks,
+        'avecSansLengthLinks' => $avecSansLengthLinks,
+    ], 200, $canonical);
 
     return;
 }
@@ -450,6 +601,70 @@ if ($path === '/verifier' || preg_match('#^/verifier/([^/]*)$#u', $path, $matche
     }
 
     $redirect('/mot/' . strtolower($normalized), 302);
+
+    return;
+}
+
+// Pages legales (D-025ter) : /mentions-legales, /confidentialite, /contact -- volontairement
+// non indexees par defaut (D-026, aucune ligne au registre SEO pour elles), $render() avec
+// leur propre chemin en canonicalPath suffit (App\Seo\Registry::resolve() renvoie
+// noindex,follow par defaut en l'absence de ligne, exactement l'etat voulu ici).
+if ($path === '/contact') {
+    if ($method === 'POST') {
+        // Piege a bots (D-025ter) : champ cache hors du flux visuel/tabulation cote vue --
+        // un bot qui le remplit recoit une fausse confirmation, aucun mail envoye.
+        $honeypot = is_string($_POST['site_web'] ?? null) ? trim($_POST['site_web']) : '';
+
+        if ($honeypot !== '') {
+            $redirect('/contact?envoye=1', 302);
+
+            return;
+        }
+
+        $rawEmail = is_string($_POST['email'] ?? null) ? trim($_POST['email']) : '';
+        $rawEmail = str_replace(["\r", "\n"], '', $rawEmail);
+        $email = filter_var($rawEmail, FILTER_VALIDATE_EMAIL);
+
+        $name = is_string($_POST['nom'] ?? null) ? mb_substr(trim($_POST['nom']), 0, 100) : '';
+        $message = is_string($_POST['message'] ?? null) ? trim($_POST['message']) : '';
+
+        // Adresse jamais versee au depot (demande anti-spam explicite, D-025ter) -- lue
+        // exclusivement via l'environnement, meme convention que SCRABBLE_SITE ci-dessus ; a
+        // definir cote hebergement (cPanel / o2switch : "Environment Variables"), jamais dans
+        // un fichier .php ni .env commite.
+        $contactEmail = getenv('SCRABBLE_CONTACT_EMAIL');
+
+        if ($email === false || $message === '' || mb_strlen($message) > 5000 || $contactEmail === false || $contactEmail === '') {
+            $redirect('/contact?erreur=1', 302);
+
+            return;
+        }
+
+        $subject = 'Nouveau message via WORD CHECKR';
+        $body = ($name !== '' ? "Nom : {$name}\n" : '') . "Email : {$email}\n\n{$message}\n";
+        $sent = @mail($contactEmail, $subject, $body, 'Reply-To: ' . $email);
+
+        $redirect($sent ? '/contact?envoye=1' : '/contact?erreur=1', 302);
+
+        return;
+    }
+
+    $render('contact', [
+        'error' => isset($_GET['erreur']),
+        'success' => isset($_GET['envoye']),
+    ], 200, '/contact');
+
+    return;
+}
+
+if ($path === '/mentions-legales') {
+    $render('mentions-legales', [], 200, '/mentions-legales');
+
+    return;
+}
+
+if ($path === '/confidentialite') {
+    $render('confidentialite', [], 200, '/confidentialite');
 
     return;
 }

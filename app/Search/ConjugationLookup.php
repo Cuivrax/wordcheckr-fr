@@ -32,7 +32,7 @@ final class ConjugationLookup
      * verbes, jamais observe sur la base construite). Genereux mais borne -- meme discipline
      * que RelationsFinder::DISPLAY_LIMIT_PER_CATEGORY.
      */
-    public const int ROW_LIMIT = 40;
+    public const ROW_LIMIT = 40;
 
     public function __construct(
         private readonly Connection $connection,

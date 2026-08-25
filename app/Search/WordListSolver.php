@@ -84,12 +84,12 @@ final class WordListSolver
      * Verite terrain, pas une estimation combinatoire comme RackSolver::SIGNATURE_CEILING : le
      * plafond est directement applique via LIMIT CEILING + 1 sur la requete elle-meme.
      */
-    public const int ROW_EXAMINATION_CEILING = 10_000;
+    public const ROW_EXAMINATION_CEILING = 10_000;
 
     /** Taille de page des listes /mots/.... Aucune convention documentee ailleurs : valeur
      * choisie pour rester tres en-dessous de ROW_EXAMINATION_CEILING (200 pages disponibles
      * au plafond) tout en restant une page web raisonnable. */
-    public const int PAGE_SIZE = 50;
+    public const PAGE_SIZE = 50;
 
     public function __construct(
         private readonly Connection $connection,
@@ -149,9 +149,20 @@ final class WordListSolver
 
         $offset = (($filters->page) - 1) * self::PAGE_SIZE;
 
+        // Tri par points (D-022) : "normalized" reste toujours le departage secondaire (ordre
+        // d'affichage stable entre deux mots de meme score), meme quand $filters->sort trie
+        // par score en premier. fromPath() garantit deja $filters->length !== null des que
+        // $filters->sort est fourni -- seul ce sous-ensemble beneficie d'un index couvrant
+        // pour ce tri (idx_terms_length_score_normalized, voir schema.sql).
+        $orderBy = match ($filters->sort) {
+            'points' => 'score ASC, normalized',
+            'points-desc' => 'score DESC, normalized',
+            default => 'normalized',
+        };
+
         $pageStatement = $pdo->prepare(
             'SELECT normalized, score, length, is_ods8, is_ods9 FROM terms '
-            . "$whereSql ORDER BY normalized LIMIT ? OFFSET ?"
+            . "$whereSql ORDER BY $orderBy LIMIT ? OFFSET ?"
         );
         $pageStatement->execute([...$params, self::PAGE_SIZE, $offset]);
         $rows = $pageStatement->fetchAll();
@@ -207,6 +218,15 @@ final class WordListSolver
             $params[] = $filters->length;
         }
 
+        if ($filters->status !== null) {
+            // is_admitted (D-022) : colonne precalculee, jamais (is_ods8 = 1 OR is_ods9 = 1)
+            // en ligne -- un OR sur deux colonnes distinctes empeche tout index couvrant pour
+            // le COUNT() exact ci-dessous (mesure : ~750 ms sans cette colonne, 3 ms avec,
+            // voir schema.sql et reports/query-plans/status-filter-admitted.md).
+            $conditions[] = 'is_admitted = ?';
+            $params[] = $filters->status === 'admis' ? 1 : 0;
+        }
+
         return [implode(' AND ', $conditions), $params];
     }
 
@@ -239,8 +259,8 @@ final class WordListSolver
     {
         $pdo = $this->connection->pdo();
 
-        [$anchorWhere, $anchorParams, $anchorOrder] = $this->anchorClause($filters);
-        [$extraWhere, $extraParams] = $this->extraPredicates($filters);
+        [$anchorWhere, $anchorParams, $anchorOrder, $anchorType, $frequencyQueryCount] = $this->anchorClause($filters);
+        [$extraWhere, $extraParams] = $this->extraPredicates($filters, $anchorType);
 
         $conditions = array_values(array_filter([$anchorWhere, $extraWhere], static fn (string $c): bool => $c !== ''));
         $whereSql = $conditions === [] ? '' : 'WHERE ' . implode(' AND ', $conditions);
@@ -263,7 +283,7 @@ final class WordListSolver
                 array_pop($rows);
             }
 
-            $queryCount = 1;
+            $queryCount = 1 + $frequencyQueryCount;
         } else {
             // Ancrage 'reversed' (suffixe seul ou combine sans prefixe) : 2 requetes, voir
             // l'entete de la methode pour la raison de ne pas fusionner ce chemin.
@@ -283,7 +303,18 @@ final class WordListSolver
             $fetchStatement->execute([...$params, self::ROW_EXAMINATION_CEILING]);
             $rows = $fetchStatement->fetchAll();
 
-            $queryCount = 2;
+            $queryCount = 2 + $frequencyQueryCount;
+        }
+
+        // Tri par points (D-022) : le panier est deja borne par ROW_EXAMINATION_CEILING a ce
+        // stade (au plus 10 000 lignes) -- un tri PHP sur ce panier reste dans le budget TTFB
+        // (mesure : 173 ms au pire cas rencontre, 10 000 lignes ; largement moins pour un
+        // panier plus modeste). Stable : normalized reste le departage entre deux memes scores
+        // (usort() de PHP est stable depuis PHP 8.0). fromPath() garantit que $filters->sort
+        // n'est jamais fourni sans $filters->length -- pas de restriction supplementaire ici.
+        if ($filters->sort !== null) {
+            $direction = $filters->sort === 'points-desc' ? -1 : 1;
+            usort($rows, static fn (array $a, array $b): int => $direction * ((int) $a['score'] <=> (int) $b['score']));
         }
 
         $total = count($rows);
@@ -312,17 +343,75 @@ final class WordListSolver
      * supplementaire necessaire) ; suffixe seul ou combine s'ancre sur reversed (necessite le
      * tri explicite par normalized applique dans solveBounded()).
      *
-     * @return array{0: string, 1: list<int|string>, 2: string}
+     * Regression corrigee en DEUX temps (D-025bis, 2026-08-09) : quand prefixe ET suffixe
+     * sont TOUS DEUX explicites (ex. commencant/r/terminant/h), l'ancien code ancrait
+     * TOUJOURS sur le prefixe, laissant le suffixe en predicat residuel non indexe --
+     * catastrophique quand le prefixe est frequent (jusqu'a 1 211 ms mesure, commencant/p/
+     * terminant/h, decouvert par l'audit du lot D-025, 611 pages commencant+terminant
+     * venant d'etre ouvertes a l'indexation). Une premiere iteration (choisir dynamiquement
+     * le cote le moins frequent comme ancrage, comptes list_counts) a ramene ce cas a 17 ms,
+     * mais un balayage complet des 611 combinaisons du lot a revele 53 cas encore au-dessus
+     * du budget des que les DEUX lettres sont frequentes (jusqu'a 6 675 ms). Corrige en
+     * profondeur par idx_terms_startletter_endletter_normalized (schema.sql) pour le cas ou
+     * prefixe et suffixe sont chacun d'une seule lettre -- voir le bloc ci-dessous, prioritaire
+     * sur le choix par frequence qui ne sert plus que les prefixes/suffixes multi-lettres (hors
+     * du lot D-025, jamais mesures problematiques). Mesures completes :
+     * reports/query-plans/prefix-suffix-anchor-fix.md.
+     *
+     * CORRECTIF (audit 2e passe, D-025, constat sur la portee) : ce bloc s'applique QUE la
+     * longueur soit presente ou non -- une premiere version de ce docblock annoncait a tort
+     * "portee exacte du lot D-025" (sans longueur) comme si le code l'excluait explicitement,
+     * jamais verifie contre le code reel (aucune condition sur $filters->length ci-dessous).
+     * Seule la variante SANS longueur est effectivement ouverte a l'indexation a ce jour
+     * (D-025) ; la variante AVEC longueur beneficie du meme index sans effort supplementaire
+     * (mesure : 57,9 ms sur 9-lettres/commencant/r/terminant/e) mais reste noindex par omission.
+     *
+     * @return array{0: string, 1: list<int|string>, 2: string, 3: string, 4: int}
      */
     private function anchorClause(WordListFilters $filters): array
     {
         $conditions = [];
         $params = [];
         $order = 'normalized';
+        $anchorType = 'none';
+        $frequencyQueryCount = 0;
+
+        // Prefixe ET suffixe D'UNE SEULE LETTRE CHACUN, avec ou sans longueur : egalite sur les
+        // deux expressions substr() a la fois, servie par
+        // idx_terms_startletter_endletter_normalized -- ni l'un ni l'autre ne devient un
+        // predicat residuel, les deux sont couverts par l'index. Une longueur, si fournie,
+        // s'ajoute en predicat supplementaire sur le petit panier deja isole par l'egalite (pas
+        // dans cet index, mais bon marche a ce stade). Toujours prioritaire sur le choix par
+        // frequence ci-dessous.
+        if ($filters->prefix !== null && strlen($filters->prefix) === 1 && $filters->suffix !== null && strlen($filters->suffix) === 1) {
+            $conditions[] = 'substr(normalized, 1, 1) = ?';
+            $params[] = $filters->prefix;
+            $conditions[] = 'substr(reversed, 1, 1) = ?';
+            $params[] = $filters->suffix;
+
+            if ($filters->length !== null) {
+                $conditions[] = 'length = ?';
+                $params[] = $filters->length;
+            }
+
+            return [implode(' AND ', $conditions), $params, 'normalized', 'prefix_suffix_pair', 0];
+        }
 
         $prefix = $filters->prefix ?? ($filters->pattern !== null ? self::patternLeadingPrefix($filters->pattern) : null);
 
-        if ($prefix !== null && $prefix !== '') {
+        $preferSuffixAnchor = false;
+
+        if ($filters->prefix !== null && $filters->suffix !== null) {
+            // Prefixe et suffixe explicites mais PAS tous deux d'une seule lettre (ex.
+            // commencant/ch/terminant/tion) : hors de la portee mesuree problematique du lot
+            // D-025 (jamais lie ni indexe aujourd'hui) -- choix par frequence en repli, une
+            // amelioration reelle sur l'ancien "toujours le prefixe" sans necessiter un index
+            // dedie a ce cas plus rare.
+            $preferSuffixAnchor = $this->suffixLetterIsRarer($filters->prefix[0], $filters->suffix[strlen($filters->suffix) - 1]);
+            $frequencyQueryCount = 1;
+        }
+
+        if ($prefix !== null && $prefix !== '' && !$preferSuffixAnchor) {
             [$lower, $upper] = self::rangeBounds($prefix);
             $conditions[] = 'normalized >= ?';
             $params[] = $lower;
@@ -336,6 +425,8 @@ final class WordListSolver
                 $conditions[] = 'length = ?';
                 $params[] = $filters->length;
             }
+
+            $anchorType = 'prefix';
         } elseif ($filters->suffix !== null) {
             $order = 'reversed';
             [$lower, $upper] = self::rangeBounds(Normalizer::reverse($filters->suffix));
@@ -351,9 +442,12 @@ final class WordListSolver
                 $conditions[] = 'length = ?';
                 $params[] = $filters->length;
             }
+
+            $anchorType = 'suffix';
         } elseif ($filters->length !== null) {
             $conditions[] = 'length = ?';
             $params[] = $filters->length;
+            $anchorType = 'length';
         }
         // Aucune des trois : ancrage sur l'ordre normalized complet, SANS aucune clause WHERE
         // indexee (cas "avec"/"contenant"/"sans" seuls, sans longueur ni prefixe ni suffixe) --
@@ -362,7 +456,48 @@ final class WordListSolver
         // trouver : sans index sur les predicats non indexes, ce cas peut visiter la table
         // entiere (voir extraPredicates() ci-dessous et docs/DECISIONS.md D-019).
 
-        return [implode(' AND ', $conditions), $params, $order];
+        return [implode(' AND ', $conditions), $params, $order, $anchorType, $frequencyQueryCount];
+    }
+
+    /**
+     * true si la lettre de fin est strictement moins frequente que la lettre de debut --
+     * decide quel cote ancrer quand prefixe et suffixe sont tous deux explicites mais PAS tous
+     * deux d'une seule lettre (voir anchorClause() : ce cas mono-lettre est traite par
+     * idx_terms_startletter_endletter_normalized, pas par cette heuristique). Comptes
+     * precalcules (list_counts, list_type 'start'/'end', D-017), jamais un GROUP BY sur `terms`
+     * : 1 requete triviale sur une table de 1 731 lignes. Absence improbable (les 26 lettres
+     * ont toujours un compte, meme 0 exclu par R5 n'existe pas ici -- 'start'/'end' couvrent la
+     * base entiere) traitee en faveur du comportement historique (prefixe ancre) plutot que de
+     * risquer une erreur.
+     *
+     * HEURISTIQUE, pas un choix optimal (constat de l'audit 2e passe, D-025) : compare
+     * uniquement la PREMIERE lettre du prefixe a la DERNIERE lettre du suffixe, jamais la
+     * selectivite reelle de la plage multi-lettres complete (ex. "CH" contre "TION" -- cette
+     * fonction ne regarde que C contre N). Peut donc choisir le cote le moins bon dans certains
+     * cas multi-lettres. Cette famille (prefixe/suffixe multi-lettres) reste hors du lot D-025,
+     * jamais mesuree problematique a ce jour -- si un futur lot l'expose, cette heuristique
+     * devra etre revue avant, pas supposee suffisante par analogie avec le cas mono-lettre.
+     */
+    private function suffixLetterIsRarer(string $prefixLetter, string $suffixLetter): bool
+    {
+        $statement = $this->connection->pdo()->prepare(
+            "SELECT list_type, count FROM list_counts"
+            . " WHERE (list_type = 'start' AND list_key = ?) OR (list_type = 'end' AND list_key = ?)"
+        );
+        $statement->execute([$prefixLetter, $suffixLetter]);
+
+        $prefixCount = PHP_INT_MAX;
+        $suffixCount = PHP_INT_MAX;
+
+        foreach ($statement as $row) {
+            if ($row['list_type'] === 'start') {
+                $prefixCount = (int) $row['count'];
+            } else {
+                $suffixCount = (int) $row['count'];
+            }
+        }
+
+        return $suffixCount < $prefixCount;
     }
 
     /**
@@ -376,16 +511,45 @@ final class WordListSolver
      * quand aucun ancrage indexe n'existe (voir le docblock de anchorClause() ci-dessus et le
      * docblock de classe).
      *
+     * @param string $anchorType 'prefix'|'suffix'|'length'|'none', decide par anchorClause() --
+     *        determine lequel de prefixe/suffixe doit redevenir un predicat residuel ici
+     *        (celui qui N'A PAS ete choisi comme ancrage, D-025bis).
      * @return array{0: string, 1: list<int|string>}
      */
-    private function extraPredicates(WordListFilters $filters): array
+    private function extraPredicates(WordListFilters $filters, string $anchorType): array
     {
         $conditions = [];
         $params = [];
 
-        // Le suffixe redevient un predicat explicite uniquement quand le prefixe a deja pris
-        // la place d'ancrage (sinon il est deja integre a anchorClause()).
-        if ($filters->suffix !== null && ($filters->prefix !== null || ($filters->pattern !== null && self::patternLeadingPrefix($filters->pattern) !== ''))) {
+        if ($filters->status !== null) {
+            // is_admitted (D-022) : le regime BORNE est deja protege par LIMIT
+            // (ROW_EXAMINATION_CEILING), ce predicat s'ajoute au meme cout que n'importe quel
+            // autre -- mesure : 7 a 45 ms selon le panier, jamais besoin d'index dedie ici
+            // (contrairement au regime EXACT, voir exactWhereClause()).
+            $conditions[] = 'is_admitted = ?';
+            $params[] = $filters->status === 'admis' ? 1 : 0;
+        }
+
+        // Prefixe residuel (D-025bis) : uniquement quand un prefixe explicite existe mais n'a
+        // PAS ete choisi comme ancrage -- soit choix par frequence (anchorType === 'suffix'),
+        // soit deja couvert par l'egalite combinee (anchorType === 'prefix_suffix_pair', voir
+        // anchorClause()) auquel cas AUCUN residuel n'est necessaire pour le prefixe.
+        if ($filters->prefix !== null && $anchorType !== 'prefix' && $anchorType !== 'prefix_suffix_pair') {
+            [$lower, $upper] = self::rangeBounds($filters->prefix);
+            $conditions[] = 'normalized >= ?';
+            $params[] = $lower;
+
+            if ($upper !== null) {
+                $conditions[] = 'normalized < ?';
+                $params[] = $upper;
+            }
+        }
+
+        // Le suffixe redevient un predicat explicite uniquement quand il n'a pas ete choisi
+        // comme ancrage (prefixe choisi a sa place -- cas historique -- ou motif avec prefixe
+        // initial non vide, deja integre a anchorClause() dans ce dernier cas) ET qu'il n'est
+        // pas deja couvert par l'egalite combinee (D-025bis, anchorType === 'prefix_suffix_pair').
+        if ($filters->suffix !== null && $anchorType !== 'suffix' && $anchorType !== 'prefix_suffix_pair') {
             [$lower, $upper] = self::rangeBounds(Normalizer::reverse($filters->suffix));
             $conditions[] = 'reversed >= ?';
             $params[] = $lower;
@@ -399,6 +563,18 @@ final class WordListSolver
         if ($filters->contains !== null) {
             $conditions[] = 'instr(normalized, ?) > 0';
             $params[] = $filters->contains;
+        }
+
+        if ($filters->position !== null) {
+            // Position (D-023) : meme predicat substr() que les cases connues residuelles du
+            // motif (patternResidualPredicates() ci-dessous) -- reutilise volontairement la
+            // meme expression plutot qu'une nouvelle, deja mesuree sans surcout notable sur un
+            // panier ancre par longueur (voir reports/query-plans/position-family.md). CAST
+            // necessaire pour la meme raison que patternResidualPredicates() : substr()'s
+            // deuxieme argument n'a pas d'affinite de colonne declaree.
+            $conditions[] = 'substr(normalized, CAST(? AS INTEGER), 1) = ?';
+            $params[] = $filters->position;
+            $params[] = $filters->positionLetter;
         }
 
         foreach ($filters->withLetters as $letter => $minCount) {

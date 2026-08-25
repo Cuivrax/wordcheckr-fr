@@ -16,7 +16,4 @@
 User-agent: *
 Allow: /
 
-# Sitemap: <a URL absolue a completer une fois le domaine de production fixe et
-# scripts/build_sitemaps.php --base-url=... execute -- voir le rapport AFTER de l'agent
-# seo-registry (Phase 6) pour le contrat exact. Ne jamais publier une URL de sitemap sur un
-# domaine hypothetique ou local.
+Sitemap: https://www.wordcheckr.fr/sitemap-index.xml

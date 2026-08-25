@@ -41,7 +41,7 @@ use App\Database\Connection;
 final class Suggester
 {
     /** Huit suggestions au plus (docs/08, Phase 5). */
-    public const int MAX_RESULTS = 8;
+    public const MAX_RESULTS = 8;
 
     public function __construct(
         private readonly Connection $connection,

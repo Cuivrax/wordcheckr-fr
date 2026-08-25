@@ -25,16 +25,16 @@ namespace App\Search;
  * TABLE : pos secondaire V, $asLemma vide puisque TABLE n'est pas lui-meme un infinitif connu,
  * mais $asForm non vide puisque TABLE EST une forme conjuguee de TABLER).
  */
-final readonly class Conjugation
+final class Conjugation
 {
     /**
      * @param list<array{form: string, slug: string, tense: string, person: string|null}> $asLemma
      * @param list<array{lemma: string, slug: string, tense: string, person: string|null}> $asForm
      */
     public function __construct(
-        public array $asLemma,
-        public array $asForm,
-        public int $queryCount,
+        public readonly array $asLemma,
+        public readonly array $asForm,
+        public readonly int $queryCount,
     ) {
     }
 }

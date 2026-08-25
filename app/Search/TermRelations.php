@@ -39,7 +39,7 @@ namespace App\Search;
  * (ZERO requete SQLite supplementaire, RelationsFinder::relatedSearches() ne fait que de la
  * construction d'URL via WordListFilters::canonicalUrl() et Rack::fromInput()).
  */
-final readonly class TermRelations
+final class TermRelations
 {
     /**
      * @param list<array{normalized: string, slug: string, score: int, length: int, isOds8: bool, isOds9: bool}> $anagrams
@@ -56,24 +56,24 @@ final readonly class TermRelations
      * @param list<array{type: string, url: string}> $relatedSearches jusqu'a 12 entrees
      */
     public function __construct(
-        public array $anagrams,
-        public array $changeOneLetter,
-        public array $removeOneLetter,
-        public array $insertOneLetter,
-        public array $substrings,
-        public array $rightExtensions,
-        public int $rightExtensionsTotal,
-        public bool $rightExtensionsTruncated,
-        public array $leftExtensions,
-        public int $leftExtensionsTotal,
-        public bool $leftExtensionsTruncated,
-        public array $containingWords,
-        public int $containingWordsTotal,
-        public bool $containingWordsTruncated,
-        public array $anagramsPlusOne,
-        public array $anagramsMinusOne,
-        public array $relatedSearches,
-        public int $queryCount,
+        public readonly array $anagrams,
+        public readonly array $changeOneLetter,
+        public readonly array $removeOneLetter,
+        public readonly array $insertOneLetter,
+        public readonly array $substrings,
+        public readonly array $rightExtensions,
+        public readonly int $rightExtensionsTotal,
+        public readonly bool $rightExtensionsTruncated,
+        public readonly array $leftExtensions,
+        public readonly int $leftExtensionsTotal,
+        public readonly bool $leftExtensionsTruncated,
+        public readonly array $containingWords,
+        public readonly int $containingWordsTotal,
+        public readonly bool $containingWordsTruncated,
+        public readonly array $anagramsPlusOne,
+        public readonly array $anagramsMinusOne,
+        public readonly array $relatedSearches,
+        public readonly int $queryCount,
     ) {
     }
 }

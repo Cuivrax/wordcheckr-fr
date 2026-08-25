@@ -50,7 +50,12 @@ CREATE TABLE registry (
     sitemap_fragment TEXT,
     -- NULL = absente de tout sitemap. Sinon, nom du fragment sans extension
     -- (ex. 'words-0001'), conforme aux préfixes documentés (docs/05 Sitemaps) :
-    -- words-*, invalid-french-*, starts-*, ends-*, contains-*, letters-*, core-*.
+    -- words-*, invalid-french-*, starts-*, ends-*, contains-*, letters-*, core-*,
+    -- combined-* (D-025), position-* (D-028), avec-single-* (palier 1 de "avec",
+    -- 2026-08-17) -- liste tenue à jour au fil des familles ouvertes, voir
+    -- FAMILY_FRAGMENT_PREFIXES dans scripts/build_sitemaps.php pour la table
+    -- exacte famille -> préfixe réellement appliquée (source de vérité, cette
+    -- ligne de commentaire n'en est qu'un résumé).
     -- Jamais renseignée pour robots != 'index,follow' (appliqué par
     -- scripts/apply_seo_batch.php, pas seulement documenté ici).
 

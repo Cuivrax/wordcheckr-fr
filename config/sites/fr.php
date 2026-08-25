@@ -31,7 +31,7 @@ return [
     'min_term_length' => 2,
     'max_term_length' => 15,
 
-    // PLACEHOLDER (Phase 6, agent seo-registry) : remplacer par le domaine reel de
-    // production avant la mise en ligne (Phase 7). Aucun domaine n'est decide dans docs/.
-    'canonical_base_url' => 'https://CHANGE-ME.exemple.fr',
+    // Domaine de production (decision utilisateur, 2026-08-21) : wordcheckr.fr, decline
+    // ensuite en .com/.de/.es. Voir docs/DECISIONS.md.
+    'canonical_base_url' => 'https://www.wordcheckr.fr',
 ];

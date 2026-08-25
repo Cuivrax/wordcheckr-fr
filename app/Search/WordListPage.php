@@ -26,23 +26,23 @@ namespace App\Search;
  *   signale que d'autres correspondances pourraient exister au-dela de cette fenetre : ne
  *   jamais presenter $total comme un compte exhaustif dans ce cas.
  */
-final readonly class WordListPage
+final class WordListPage
 {
     /**
      * @param list<array{normalized: string, slug: string, score: int, length: int, isOds8: bool, isOds9: bool, status: string}> $items
      *        page courante uniquement, taille au plus WordListSolver::PAGE_SIZE
      */
     public function __construct(
-        public string $canonicalPath,
-        public int $page,
-        public int $pageSize,
-        public array $items,
-        public int $total,
-        public bool $exact,
-        public bool $truncated,
-        public bool $hasNextPage,
-        public bool $hasPreviousPage,
-        public int $queryCount,
+        public readonly string $canonicalPath,
+        public readonly int $page,
+        public readonly int $pageSize,
+        public readonly array $items,
+        public readonly int $total,
+        public readonly bool $exact,
+        public readonly bool $truncated,
+        public readonly bool $hasNextPage,
+        public readonly bool $hasPreviousPage,
+        public readonly int $queryCount,
     ) {
     }
 }
