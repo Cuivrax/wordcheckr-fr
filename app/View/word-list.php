@@ -623,7 +623,7 @@ $showPagination = $page->hasPreviousPage || $page->hasNextPage;
         <p class="explore-subgroup-label">Commençant Par <?= e($group['start']) ?> (<?= e(count($group['letters'])) ?>)</p>
         <div class="related-links">
 <?php foreach ($group['letters'] as $link): ?>
-          <a href="<?= e($link['url']) ?>"><span class="explore-label"><?= e($link['letter']) ?></span> <span class="explore-count">(<?= e(number_format($link['count'], 0, ',', ' ')) ?>)</span></a>
+          <a href="<?= e($link['url']) ?>"><span class="explore-label">Terminant Par <?= e($link['letter']) ?></span> <span class="explore-count">(<?= e(number_format($link['count'], 0, ',', ' ')) ?>)</span></a>
 <?php endforeach; ?>
         </div>
       </div>
