@@ -1040,30 +1040,21 @@ select:focus-visible {
   color: var(--ink);
 }
 
-/* Sous-groupes repliables (par position de lettre, commencant/terminant par -- hub /mots) :
-   <details>/<summary> natif comme .constraint-toggle (zero JavaScript), meme convention
-   visuelle -- marqueur natif du navigateur masque, remplace par le meme lien texte accent/gras
-   (repere retour utilisateur : la fleche par defaut du navigateur ne correspond a aucun autre
-   pattern du site, y compris .constraint-toggle plus haut sur la page qui masque deja la
-   sienne). */
+/* Sous-groupes (par position de lettre, commencant/terminant par -- hub /mots) : repere
+   retour utilisateur -- initialement repliables (<details>/<summary>), mais un mot cle a la
+   fois structurellement necessaire (regrouper par position/lettre de depart) et TOUJOURS
+   visible, meme style pastille que ".related-links" partout ailleurs sur le site (".Mots De X
+   Lettres Avec"/"Terminant Par" n'ont jamais ete repliables) -- coherence visuelle demandee
+   explicitement plutot qu'un pattern different pour ces deux sections seulement. */
 .explore-subgroup + .explore-subgroup {
   margin-top: 14px;
 }
 
-.explore-subgroup summary {
+.explore-subgroup-label {
   color: var(--accent);
   font-size: 0.82rem;
   font-weight: 700;
-  cursor: pointer;
-  list-style: none;
-}
-
-.explore-subgroup summary::-webkit-details-marker {
-  display: none;
-}
-
-.explore-subgroup summary:hover {
-  text-decoration: underline;
+  margin: 0;
 }
 
 .explore-subgroup .related-links {

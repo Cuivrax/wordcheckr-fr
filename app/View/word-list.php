@@ -603,14 +603,14 @@ $showPagination = $page->hasPreviousPage || $page->hasNextPage;
     <section class="explore-group">
       <h2>Mots De <?= e($lengthLabel) ?> Par Position De Lettre</h2>
 <?php foreach ($lengthLinks->byPosition as $group): ?>
-      <details class="explore-subgroup">
-        <summary><?= e($group['position']) ?>e Lettre (<?= e(count($group['letters'])) ?>)</summary>
+      <div class="explore-subgroup">
+        <p class="explore-subgroup-label"><?= e($group['position']) ?>e Lettre (<?= e(count($group['letters'])) ?>)</p>
         <div class="related-links">
 <?php foreach ($group['letters'] as $link): ?>
           <a href="<?= e($link['url']) ?>"><span class="explore-label"><?= e($link['letter']) ?></span> <span class="explore-count">(<?= e(number_format($link['count'], 0, ',', ' ')) ?>)</span></a>
 <?php endforeach; ?>
         </div>
-      </details>
+      </div>
 <?php endforeach; ?>
     </section>
 <?php endif; ?>
@@ -619,14 +619,14 @@ $showPagination = $page->hasPreviousPage || $page->hasNextPage;
     <section class="explore-group">
       <h2>Mots De <?= e($lengthLabel) ?> Commençant Et Terminant Par</h2>
 <?php foreach ($lengthLinks->byStartEnd as $group): ?>
-      <details class="explore-subgroup">
-        <summary>Commençant Par <?= e($group['start']) ?> (<?= e(count($group['letters'])) ?>)</summary>
+      <div class="explore-subgroup">
+        <p class="explore-subgroup-label">Commençant Par <?= e($group['start']) ?> (<?= e(count($group['letters'])) ?>)</p>
         <div class="related-links">
 <?php foreach ($group['letters'] as $link): ?>
           <a href="<?= e($link['url']) ?>"><span class="explore-label"><?= e($link['letter']) ?></span> <span class="explore-count">(<?= e(number_format($link['count'], 0, ',', ' ')) ?>)</span></a>
 <?php endforeach; ?>
         </div>
-      </details>
+      </div>
 <?php endforeach; ?>
     </section>
 <?php endif; ?>
