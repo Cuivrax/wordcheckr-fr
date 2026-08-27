@@ -318,7 +318,15 @@ if ($senses->senses === [] && $page->pos !== null && isset($posLabels[$page->pos
 // Cartes de definition (D-0XX) : une par sens, pos + genre (si nom) en etiquette, phrase de
 // definition en dessous. $senses->senses est deja borne (SenseLookup::ROW_LIMIT), aucune
 // pagination necessaire ici.
+//
+// Fusion des sens a texte identique (retour utilisateur, ex. QUIZOMADAIRES) : de nombreuses
+// formes flechies sont a la fois nom ET adjectif (ex. "campagnards" = pluriel du nom ET de
+// l'adjectif "campagnard") -- render_grammatical_template() produit alors la MEME phrase pour
+// les deux sens (le gabarit ne varie pas selon le pos). Afficher deux cartes identiques cote a
+// cote lit comme du contenu duplique ; on fusionne en UNE carte, etiquette combinee
+// ("adjectif / nom"), plutot que de perdre l'un des deux sens en base.
 $senseCards = [];
+$cardIndexByDefinition = [];
 foreach ($senses->senses as $sense) {
     $label = $posLabels[$sense['pos']] ?? $sense['pos'];
     if ($sense['pos'] === 'N' && $sense['gender'] !== null && isset($genderLabels[$sense['gender']])) {
@@ -327,8 +335,22 @@ foreach ($senses->senses as $sense) {
         $label = mb_strtolower($label);
     }
 
-    $senseCards[] = ['pos_label' => $label, 'definition' => $sense['definition']];
+    $definitionKey = mb_strtolower(trim($sense['definition']));
+    if (isset($cardIndexByDefinition[$definitionKey])) {
+        $existing = $cardIndexByDefinition[$definitionKey];
+        if (!in_array($label, $senseCards[$existing]['pos_labels'], true)) {
+            $senseCards[$existing]['pos_labels'][] = $label;
+        }
+        continue;
+    }
+
+    $cardIndexByDefinition[$definitionKey] = count($senseCards);
+    $senseCards[] = ['pos_labels' => [$label], 'definition' => $sense['definition']];
 }
+foreach ($senseCards as &$card) {
+    $card['pos_label'] = implode(' / ', $card['pos_labels']);
+}
+unset($card);
 
 // Conjugaison (D-018) : temps/personne traduits en francais lisible, jamais de tag anglais
 // brut affiche. Selection representative fixe (docs/DECISIONS.md D-018) -- ordre canonique
