@@ -104,7 +104,7 @@ $pdo = new PDO('sqlite:' . $dbPath, null, null, [
 $pdo->exec('DROP TABLE IF EXISTS list_counts');
 $pdo->exec(
     'CREATE TABLE list_counts ('
-    . "list_type TEXT NOT NULL CHECK (list_type IN ('length', 'start', 'end', 'length_start', 'length_end', 'length_with', 'start_end', 'length_with_position', 'length_avec_sans', 'length_start_end', 'length_with_pair', 'length_with_triple', 'start_end_with', 'start_with', 'prefix2', 'prefix3', 'prefix4', 'suffix2', 'suffix3', 'suffix4', 'length_prefix2', 'length_suffix2')), "
+    . "list_type TEXT NOT NULL CHECK (list_type IN ('length', 'start', 'end', 'length_start', 'length_end', 'length_with', 'start_end', 'length_with_position', 'length_avec_sans', 'length_start_end', 'length_with_pair', 'length_with_triple', 'start_end_with', 'start_with', 'prefix2', 'prefix3', 'prefix4', 'suffix2', 'suffix3', 'suffix4', 'length_prefix2', 'length_suffix2', 'start_with_pair', 'start_with_triple', 'end_with', 'end_with_pair', 'end_with_triple')), "
     . 'list_key TEXT NOT NULL, '
     . 'count INTEGER NOT NULL, '
     . 'PRIMARY KEY (list_type, list_key)'
@@ -456,6 +456,112 @@ foreach ($startWithCounts as $key => $n) {
     $total++;
 }
 
+// start_with_pair / start_with_triple (D-045, extension de 'start_with' ci-dessus a DEUX puis
+// TROIS lettres avec simultanees) : meme principe que 'length_with_pair'/'length_with_triple'
+// (chaque PAIRE puis TRIPLET de lettres DISTINCTES presentes dans le mot, minCount=1 chacune),
+// mais croise avec le PREFIXE (premiere lettre) au lieu de la longueur. list_key =
+// "{prefixe}:{lettre1}:{lettre2}" / "{prefixe}:{lettre1}:{lettre2}:{lettre3}", lettres
+// ALPHABETIQUEMENT ORDONNEES (count_chars(..., 3) les rend deja dans cet ordre, meme garantie
+// que 'length_with_pair'/'length_with_triple' ci-dessus). Degenerescence D-032 (une lettre avec
+// egale le prefixe d'une seule lettre) exclue AU PRECALCUL -- meme raisonnement et meme preuve
+// que 'start_with' ci-dessus (une seule direction de lecture, page source toujours
+// /mots/commencant/{X}/avec/{Y} pour le palier 2, .../avec/{Y}/{Z} pour le palier 3).
+//
+// Combinatoire maximale : 26 x C(25,2) = 26 x 300 = 7800 lignes (palier 2, prefixe exclu du
+// choix de paire) ; 26 x C(25,3) = 26 x 2300 = 59800 lignes (palier 3).
+$startWithPairCounts = [];
+$startWithTripleCounts = [];
+
+$allTermsForStartWithPairStatement = $pdo->query('SELECT normalized FROM terms');
+foreach ($allTermsForStartWithPairStatement as $row) {
+    $normalized = (string) $row['normalized'];
+    $start = $normalized[0];
+    $distinctLetters = array_values(array_filter(
+        str_split(count_chars($normalized, 3)),
+        static fn (string $letter): bool => $letter !== $start
+    ));
+    $letterCount = count($distinctLetters);
+
+    for ($i = 0; $i < $letterCount; $i++) {
+        for ($j = $i + 1; $j < $letterCount; $j++) {
+            $key = $start . ':' . $distinctLetters[$i] . ':' . $distinctLetters[$j];
+            $startWithPairCounts[$key] = ($startWithPairCounts[$key] ?? 0) + 1;
+
+            for ($k = $j + 1; $k < $letterCount; $k++) {
+                $tripleKey = $start . ':' . $distinctLetters[$i] . ':' . $distinctLetters[$j] . ':' . $distinctLetters[$k];
+                $startWithTripleCounts[$tripleKey] = ($startWithTripleCounts[$tripleKey] ?? 0) + 1;
+            }
+        }
+    }
+}
+
+ksort($startWithPairCounts);
+foreach ($startWithPairCounts as $key => $n) {
+    $insert->execute(['start_with_pair', $key, $n]);
+    $total++;
+}
+
+ksort($startWithTripleCounts);
+foreach ($startWithTripleCounts as $key => $n) {
+    $insert->execute(['start_with_triple', $key, $n]);
+    $total++;
+}
+
+// end_with / end_with_pair / end_with_triple (D-045, symetrique cote terminant de 'start_with'/
+// 'start_with_pair'/'start_with_triple' ci-dessus -- famille entierement nouvelle,
+// Family::WORD_LIST_TERMINANT_WITH_LETTER et ses paliers 2/3, absente du site jusqu'ici) :
+// croise le SUFFIXE (derniere lettre, premier caractere de `reversed`) avec une, deux puis
+// trois lettres avec. list_key = "{suffixe}:{lettre}" / "{suffixe}:{lettre1}:{lettre2}" /
+// "{suffixe}:{lettre1}:{lettre2}:{lettre3}". Meme degenerescence D-032 exclue au precalcul
+// (lettre avec egale le suffixe d'une seule lettre).
+$endWithCounts = [];
+$endWithPairCounts = [];
+$endWithTripleCounts = [];
+
+$allTermsForEndWithStatement = $pdo->query('SELECT normalized, reversed FROM terms');
+foreach ($allTermsForEndWithStatement as $row) {
+    $normalized = (string) $row['normalized'];
+    $end = ((string) $row['reversed'])[0];
+    $distinctLetters = array_values(array_filter(
+        str_split(count_chars($normalized, 3)),
+        static fn (string $letter): bool => $letter !== $end
+    ));
+    $letterCount = count($distinctLetters);
+
+    for ($i = 0; $i < $letterCount; $i++) {
+        $key = $end . ':' . $distinctLetters[$i];
+        $endWithCounts[$key] = ($endWithCounts[$key] ?? 0) + 1;
+
+        for ($j = $i + 1; $j < $letterCount; $j++) {
+            $pairKey = $end . ':' . $distinctLetters[$i] . ':' . $distinctLetters[$j];
+            $endWithPairCounts[$pairKey] = ($endWithPairCounts[$pairKey] ?? 0) + 1;
+
+            for ($k = $j + 1; $k < $letterCount; $k++) {
+                $tripleKey = $end . ':' . $distinctLetters[$i] . ':' . $distinctLetters[$j] . ':' . $distinctLetters[$k];
+                $endWithTripleCounts[$tripleKey] = ($endWithTripleCounts[$tripleKey] ?? 0) + 1;
+            }
+        }
+    }
+}
+
+ksort($endWithCounts);
+foreach ($endWithCounts as $key => $n) {
+    $insert->execute(['end_with', $key, $n]);
+    $total++;
+}
+
+ksort($endWithPairCounts);
+foreach ($endWithPairCounts as $key => $n) {
+    $insert->execute(['end_with_pair', $key, $n]);
+    $total++;
+}
+
+ksort($endWithTripleCounts);
+foreach ($endWithTripleCounts as $key => $n) {
+    $insert->execute(['end_with_triple', $key, $n]);
+    $total++;
+}
+
 // prefix2 / prefix3 / prefix4 (entonnoir commencant multi-lettres, tache de dimensionnement
 // 2026-08-18) : GROUP BY direct sur substr(normalized, 1, N), N = 2, 3, 4 -- contrairement a
 // 'length_with'/'length_with_pair'/'length_with_triple' ci-dessus (ou aucun index ne peut aider
@@ -535,6 +641,6 @@ $pdo->commit();
 $pdo->exec('ANALYZE');
 
 printf(
-    "list_counts : %d lignes (14 longueur + 26 commencant + 26 terminant + length_start/length_end/length_with/start_end/length_with_position/length_avec_sans/length_start_end/length_with_pair/length_with_triple/start_end_with/start_with/prefix2/prefix3/prefix4/suffix2/suffix3/suffix4/length_prefix2/length_suffix2 attendues)\n",
+    "list_counts : %d lignes (14 longueur + 26 commencant + 26 terminant + length_start/length_end/length_with/start_end/length_with_position/length_avec_sans/length_start_end/length_with_pair/length_with_triple/start_end_with/start_with/prefix2/prefix3/prefix4/suffix2/suffix3/suffix4/length_prefix2/length_suffix2/start_with_pair/start_with_triple/end_with/end_with_pair/end_with_triple attendues)\n",
     $total,
 );

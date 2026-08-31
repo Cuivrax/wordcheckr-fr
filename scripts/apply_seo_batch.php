@@ -284,6 +284,86 @@ function familySeoBatchRouteShapeError(string $family, string $routePath): ?stri
 
             return null;
 
+        case Family::WORD_LIST_COMMENCANT_WITH_TWO_LETTERS:
+            // D-045 : extension a DEUX lettres "avec" de WORD_LIST_COMMENCANT_WITH_LETTER
+            // ci-dessus -- meme prefixe d'une seule lettre, SANS longueur, SANS terminant.
+            // Lettres "avec" strictement ordonnees alphabetiquement (garanti par
+            // WordListFilters::fromPath()->canonicalUrl(), jamais assemble a la main).
+            if (preg_match('#^/mots/commencant/([a-z])/avec/([a-z])/([a-z])\z#', $routePath, $m) !== 1) {
+                return "forme attendue '/mots/commencant/{X}/avec/{Y}/{Z}' (Y<Z alphabetiquement, sans longueur, sans terminant)";
+            }
+
+            if ($m[2] === $m[1] || $m[3] === $m[1]) {
+                return "une lettre avec egale le prefixe '{$m[1]}' (D-032) -- collapse en 301 vers une forme reduite, jamais servie en 200";
+            }
+
+            if ($m[2] >= $m[3]) {
+                return "lettres avec non ordonnees alphabetiquement ('{$m[2]}' >= '{$m[3]}')";
+            }
+
+            return null;
+
+        case Family::WORD_LIST_COMMENCANT_WITH_THREE_LETTERS:
+            // D-045 : extension a TROIS lettres "avec", meme principe que ci-dessus.
+            if (preg_match('#^/mots/commencant/([a-z])/avec/([a-z])/([a-z])/([a-z])\z#', $routePath, $m) !== 1) {
+                return "forme attendue '/mots/commencant/{X}/avec/{Y}/{Z}/{W}' (Y<Z<W alphabetiquement, sans longueur, sans terminant)";
+            }
+
+            if ($m[2] === $m[1] || $m[3] === $m[1] || $m[4] === $m[1]) {
+                return "une lettre avec egale le prefixe '{$m[1]}' (D-032) -- collapse en 301 vers une forme reduite, jamais servie en 200";
+            }
+
+            if ($m[2] >= $m[3] || $m[3] >= $m[4]) {
+                return "lettres avec non ordonnees alphabetiquement ('{$m[2]}'/'{$m[3]}'/'{$m[4]}')";
+            }
+
+            return null;
+
+        case Family::WORD_LIST_TERMINANT_WITH_LETTER:
+            // D-045 : symetrique de WORD_LIST_COMMENCANT_WITH_LETTER cote suffixe -- famille
+            // entierement nouvelle.
+            if (preg_match('#^/mots/terminant/([a-z])/avec/([a-z])\z#', $routePath, $m) !== 1) {
+                return "forme attendue '/mots/terminant/{X}/avec/{Y}' (une seule lettre chacune, sans longueur, sans commencant)";
+            }
+
+            if ($m[2] === $m[1]) {
+                return "lettre avec '{$m[2]}' degeneree (egale le suffixe '{$m[1]}') -- collapse en 301 vers la page parente (D-032), jamais servie en 200";
+            }
+
+            return null;
+
+        case Family::WORD_LIST_TERMINANT_WITH_TWO_LETTERS:
+            // D-045 : extension a DEUX lettres "avec" de WORD_LIST_TERMINANT_WITH_LETTER.
+            if (preg_match('#^/mots/terminant/([a-z])/avec/([a-z])/([a-z])\z#', $routePath, $m) !== 1) {
+                return "forme attendue '/mots/terminant/{X}/avec/{Y}/{Z}' (Y<Z alphabetiquement, sans longueur, sans commencant)";
+            }
+
+            if ($m[2] === $m[1] || $m[3] === $m[1]) {
+                return "une lettre avec egale le suffixe '{$m[1]}' (D-032) -- collapse en 301 vers une forme reduite, jamais servie en 200";
+            }
+
+            if ($m[2] >= $m[3]) {
+                return "lettres avec non ordonnees alphabetiquement ('{$m[2]}' >= '{$m[3]}')";
+            }
+
+            return null;
+
+        case Family::WORD_LIST_TERMINANT_WITH_THREE_LETTERS:
+            // D-045 : extension a TROIS lettres "avec", meme principe que ci-dessus.
+            if (preg_match('#^/mots/terminant/([a-z])/avec/([a-z])/([a-z])/([a-z])\z#', $routePath, $m) !== 1) {
+                return "forme attendue '/mots/terminant/{X}/avec/{Y}/{Z}/{W}' (Y<Z<W alphabetiquement, sans longueur, sans commencant)";
+            }
+
+            if ($m[2] === $m[1] || $m[3] === $m[1] || $m[4] === $m[1]) {
+                return "une lettre avec egale le suffixe '{$m[1]}' (D-032) -- collapse en 301 vers une forme reduite, jamais servie en 200";
+            }
+
+            if ($m[2] >= $m[3] || $m[3] >= $m[4]) {
+                return "lettres avec non ordonnees alphabetiquement ('{$m[2]}'/'{$m[3]}'/'{$m[4]}')";
+            }
+
+            return null;
+
         default:
             // Famille non couverte par ce durcissement (word_admitted, word_french_not_admitted,
             // rack, ou toute famille de Family::NEVER_SITEMAP -- deja bloquee par R4a) : aucune

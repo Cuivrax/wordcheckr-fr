@@ -45,8 +45,13 @@ use App\Search\LengthSuffixExtensionLinks;
 use App\Search\LetterCombinedLinks;
 use App\Search\PositionLinks;
 use App\Search\PrefixAvecLinks;
+use App\Search\PrefixAvecThreeLettersLinks;
+use App\Search\PrefixAvecTwoLettersLinks;
 use App\Search\PrefixExtensionLinks;
 use App\Search\StartEndWithLinks;
+use App\Search\SuffixAvecLinks;
+use App\Search\SuffixAvecThreeLettersLinks;
+use App\Search\SuffixAvecTwoLettersLinks;
 use App\Search\SuffixExtensionLinks;
 use App\Search\TermPage;
 use App\Search\WordListFilters;
@@ -201,6 +206,52 @@ $avecThreeLettersLinks ??= null;
  * @var AvecSansLengthLinks|null $avecSansLengthLinks
  */
 $avecSansLengthLinks ??= null;
+
+/**
+ * Maillage "terminant/{X}" -> "terminant/{X}/avec/{Y}" (D-045, symetrique de $prefixAvecLinks
+ * ci-dessus cote suffixe, Family::WORD_LIST_TERMINANT_WITH_LETTER, famille entierement
+ * nouvelle) -- non null uniquement depuis une page terminant SEULE (une lettre, aucune
+ * longueur, aucun prefixe, aucune autre contrainte, public/index.php). Precalcule
+ * (App\Search\SuffixAvecLinksBuilder), jamais de requete live.
+ *
+ * @var SuffixAvecLinks|null $suffixAvecLinks
+ */
+$suffixAvecLinks ??= null;
+
+/**
+ * Maillage "commencant/{X}/avec/{Y}" -> "commencant/{X}/avec/{Y}/{Z}" (D-045, palier 2 de
+ * l'extension de Family::WORD_LIST_COMMENCANT_WITH_LETTER) -- non null uniquement depuis une
+ * page prefixe d'une lettre + UNE SEULE lettre "avec", sans longueur, sans autre contrainte.
+ * Precalcule (App\Search\PrefixAvecTwoLettersLinksBuilder), jamais de requete live.
+ *
+ * @var PrefixAvecTwoLettersLinks|null $prefixAvecTwoLettersLinks
+ */
+$prefixAvecTwoLettersLinks ??= null;
+
+/**
+ * Meme principe, palier 3 (App\Search\PrefixAvecThreeLettersLinksBuilder) -- non null
+ * uniquement depuis une page prefixe d'une lettre + EXACTEMENT DEUX lettres "avec".
+ *
+ * @var PrefixAvecThreeLettersLinks|null $prefixAvecThreeLettersLinks
+ */
+$prefixAvecThreeLettersLinks ??= null;
+
+/**
+ * Symetrique cote suffixe de $prefixAvecTwoLettersLinks ci-dessus (D-045, palier 2 de
+ * Family::WORD_LIST_TERMINANT_WITH_LETTER). Precalcule
+ * (App\Search\SuffixAvecTwoLettersLinksBuilder), jamais de requete live.
+ *
+ * @var SuffixAvecTwoLettersLinks|null $suffixAvecTwoLettersLinks
+ */
+$suffixAvecTwoLettersLinks ??= null;
+
+/**
+ * Symetrique cote suffixe de $prefixAvecThreeLettersLinks ci-dessus (D-045, palier 3).
+ * Precalcule (App\Search\SuffixAvecThreeLettersLinksBuilder), jamais de requete live.
+ *
+ * @var SuffixAvecThreeLettersLinks|null $suffixAvecThreeLettersLinks
+ */
+$suffixAvecThreeLettersLinks ??= null;
 
 $filters = WordListFilters::fromPath($page->canonicalPath);
 
@@ -814,6 +865,65 @@ $showPagination = $page->hasPreviousPage || $page->hasNextPage;
       <div class="related-links">
 <?php foreach ($avecSansLengthLinks->links as $link): ?>
         <a href="<?= e($link['url']) ?>"><span class="explore-label"><?= e($link['length']) ?> Lettres</span> <span class="explore-count">(<?= e(number_format($link['count'], 0, ',', ' ')) ?>)</span></a>
+<?php endforeach; ?>
+      </div>
+    </section>
+<?php endif; ?>
+
+<?php if ($suffixAvecLinks !== null && $suffixAvecLinks->links !== []): ?>
+    <section class="explore-group">
+      <h2>Terminant Par <?= e($filters->suffix) ?>, Avec</h2>
+      <div class="related-links">
+<?php foreach ($suffixAvecLinks->links as $link): ?>
+        <a href="<?= e($link['url']) ?>"><span class="explore-label"><?= e($link['letter']) ?></span> <span class="explore-count">(<?= e(number_format($link['count'], 0, ',', ' ')) ?>)</span></a>
+<?php endforeach; ?>
+      </div>
+    </section>
+<?php endif; ?>
+
+<?php if ($prefixAvecTwoLettersLinks !== null && $prefixAvecTwoLettersLinks->links !== []): ?>
+<?php $prefixAvecSingleLetter = array_key_first($filters->withLetters); ?>
+    <section class="explore-group">
+      <h2>Commençant Par <?= e($filters->prefix) ?>, Avec <?= e($prefixAvecSingleLetter) ?> Et</h2>
+      <div class="related-links">
+<?php foreach ($prefixAvecTwoLettersLinks->links as $link): ?>
+        <a href="<?= e($link['url']) ?>"><span class="explore-label"><?= e($link['letter']) ?></span> <span class="explore-count">(<?= e(number_format($link['count'], 0, ',', ' ')) ?>)</span></a>
+<?php endforeach; ?>
+      </div>
+    </section>
+<?php endif; ?>
+
+<?php if ($prefixAvecThreeLettersLinks !== null && $prefixAvecThreeLettersLinks->links !== []): ?>
+<?php $prefixAvecFirstTwoLetters = array_keys($filters->withLetters); ?>
+    <section class="explore-group">
+      <h2>Commençant Par <?= e($filters->prefix) ?>, Avec <?= e($prefixAvecFirstTwoLetters[0]) ?> <?= e($prefixAvecFirstTwoLetters[1]) ?> Et</h2>
+      <div class="related-links">
+<?php foreach ($prefixAvecThreeLettersLinks->links as $link): ?>
+        <a href="<?= e($link['url']) ?>"><span class="explore-label"><?= e($link['letter']) ?></span> <span class="explore-count">(<?= e(number_format($link['count'], 0, ',', ' ')) ?>)</span></a>
+<?php endforeach; ?>
+      </div>
+    </section>
+<?php endif; ?>
+
+<?php if ($suffixAvecTwoLettersLinks !== null && $suffixAvecTwoLettersLinks->links !== []): ?>
+<?php $suffixAvecSingleLetter = array_key_first($filters->withLetters); ?>
+    <section class="explore-group">
+      <h2>Terminant Par <?= e($filters->suffix) ?>, Avec <?= e($suffixAvecSingleLetter) ?> Et</h2>
+      <div class="related-links">
+<?php foreach ($suffixAvecTwoLettersLinks->links as $link): ?>
+        <a href="<?= e($link['url']) ?>"><span class="explore-label"><?= e($link['letter']) ?></span> <span class="explore-count">(<?= e(number_format($link['count'], 0, ',', ' ')) ?>)</span></a>
+<?php endforeach; ?>
+      </div>
+    </section>
+<?php endif; ?>
+
+<?php if ($suffixAvecThreeLettersLinks !== null && $suffixAvecThreeLettersLinks->links !== []): ?>
+<?php $suffixAvecFirstTwoLetters = array_keys($filters->withLetters); ?>
+    <section class="explore-group">
+      <h2>Terminant Par <?= e($filters->suffix) ?>, Avec <?= e($suffixAvecFirstTwoLetters[0]) ?> <?= e($suffixAvecFirstTwoLetters[1]) ?> Et</h2>
+      <div class="related-links">
+<?php foreach ($suffixAvecThreeLettersLinks->links as $link): ?>
+        <a href="<?= e($link['url']) ?>"><span class="explore-label"><?= e($link['letter']) ?></span> <span class="explore-count">(<?= e(number_format($link['count'], 0, ',', ' ')) ?>)</span></a>
 <?php endforeach; ?>
       </div>
     </section>

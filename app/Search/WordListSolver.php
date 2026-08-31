@@ -54,9 +54,19 @@ use App\Database\Connection;
  *     `LIMIT ROW_EXAMINATION_CEILING + 1`, `truncated` deduit du nombre de lignes RENDUES (pas
  *     d'un COUNT() separe) -- fusion mesuree (audit final, code-optimizer, constat I-1) : les
  *     deux requetes precedentes executaient le meme parcours pour n'en extraire qu'un booleen.
- *   - 'reversed' (ancrage sur suffixe seul) : 2 requetes (plafond puis recuperation), l'ordre
- *     d'ancrage differant de l'ordre d'affichage rendrait la fusion incorrecte sans un tri PHP
- *     prealable -- chemin deja rapide (rapports mesures : 27 a 53 ms), non fusionne.
+ *   - 'reversed' (ancrage sur suffixe seul) : 1 SEULE requete depuis D-046 (meme fusion que
+ *     ci-dessus, jusque-la non appliquee ici -- l'ordre d'ancrage differe de l'ordre
+ *     d'affichage, donc un TRI PHP explicite par `normalized` suit la recuperation, sur un
+ *     panier deja borne a ROW_EXAMINATION_CEILING + 1 lignes au plus). CORRECTIF D-046
+ *     (trouve en verifiant la performance de Family::WORD_LIST_TERMINANT_WITH_LETTER, D-045) :
+ *     l'ancien chemin a 2 requetes (rapports mesures a l'epoque : 27 a 53 ms) ne couvrait
+ *     JAMAIS le cas d'un predicat residuel peu selectif (ex. "avec" une lettre rare) sur un
+ *     grand panier suffixe -- jusqu'a 15,5 s mesures avant D-046 (terminant/s/avec/w, S =
+ *     338 308 mots). Corrige par la fusion ci-dessus PLUS un nouvel index COUVRANT
+ *     (idx_terms_reversed_covering, schema.sql) qui elimine le lookup de table par ligne
+ *     candidate qu'imposait idx_terms_reversed seul (non couvrant) -- voir docs/DECISIONS.md
+ *     D-046 pour la mesure complete (p95 : 3 493 ms -> 98 ms sur les 621 pages reelles du
+ *     lot D-045).
  * Le plafond porte sur le nombre de CORRESPONDANCES trouvees (lignes qui satisfont TOUTE la
  * clause WHERE combinee), jamais sur les lignes lues avant filtrage -- meme principe que
  * RelationsFinder::containingWords() (Phase 4). Sans ancrage indexe (contenant/avec/sans seuls),
@@ -285,25 +295,40 @@ final class WordListSolver
 
             $queryCount = 1 + $frequencyQueryCount;
         } else {
-            // Ancrage 'reversed' (suffixe seul ou combine sans prefixe) : 2 requetes, voir
-            // l'entete de la methode pour la raison de ne pas fusionner ce chemin.
-            $boundaryStatement = $pdo->prepare(
-                "SELECT COUNT(*) c FROM (SELECT id FROM terms $whereSql ORDER BY $anchorOrder LIMIT ?)"
-            );
-            $boundaryStatement->execute([...$params, self::ROW_EXAMINATION_CEILING + 1]);
-            $boundaryCount = (int) $boundaryStatement->fetch()['c'];
-            $truncated = $boundaryCount > self::ROW_EXAMINATION_CEILING;
-
-            $fetchStatement = $pdo->prepare(
-                'SELECT normalized, score, length, is_ods8, is_ods9 FROM ('
-                . "SELECT normalized, score, length, is_ods8, is_ods9 FROM terms $whereSql "
+            // Ancrage 'reversed' (suffixe seul ou combine sans prefixe) : FUSIONNE en 1 seule
+            // requete (CORRECTIF D-045, meme principe et meme preuve que la branche
+            // 'normalized' ci-dessus, deja optimisee lors de l'audit final, constat I-1).
+            // Ancienne version : 2 requetes (plafond puis recuperation) executant CHACUNE le
+            // meme parcours couteux quand un predicat non indexe "avec"/"contenant"/"sans"
+            // filtre peu sur un grand panier suffixe -- jamais mesure a ce cout avant que
+            // Family::WORD_LIST_TERMINANT_WITH_LETTER (D-045) n'ouvre ce chemin a un residu
+            // peu selectif (ex. terminant/e/avec/x : 6,4 s mesures avant ce correctif, panier
+            // E = 127 601 mots, X rare parmi eux -- quasi-scan complet du panier, DEUX fois).
+            // ORDER BY $anchorOrder (reversed) reste necessaire pour l'arret anticipe au
+            // plafond (index idx_terms_reversed) ; l'ordre d'AFFICHAGE (normalized) differe de
+            // l'ordre d'ancrage ici (contrairement a la branche 'normalized' ci-dessus, ou les
+            // deux coincident) -- un tri PHP est donc necessaire APRES recuperation, sur un
+            // panier deja BORNE a ROW_EXAMINATION_CEILING + 1 lignes au plus (meme budget deja
+            // accepte pour le tri par points plus bas, D-022 : 173 ms mesures au pire cas sur
+            // 10 000 lignes -- comparaison de chaines normalized moins couteuse qu'un tri par
+            // score). `normalized` est la cle UNIQUE de `terms` (sqlite_autoindex_terms_1) :
+            // tri deterministe, aucune ambiguite de rang.
+            $statement = $pdo->prepare(
+                "SELECT normalized, score, length, is_ods8, is_ods9 FROM terms $whereSql "
                 . "ORDER BY $anchorOrder LIMIT ?"
-                . ') ORDER BY normalized'
             );
-            $fetchStatement->execute([...$params, self::ROW_EXAMINATION_CEILING]);
-            $rows = $fetchStatement->fetchAll();
+            $statement->execute([...$params, self::ROW_EXAMINATION_CEILING + 1]);
+            $rows = $statement->fetchAll();
 
-            $queryCount = 2 + $frequencyQueryCount;
+            $truncated = count($rows) > self::ROW_EXAMINATION_CEILING;
+
+            if ($truncated) {
+                array_pop($rows);
+            }
+
+            usort($rows, static fn (array $a, array $b): int => $a['normalized'] <=> $b['normalized']);
+
+            $queryCount = 1 + $frequencyQueryCount;
         }
 
         // Tri par points (D-022) : le panier est deja borne par ROW_EXAMINATION_CEILING a ce

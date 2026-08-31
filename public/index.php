@@ -90,6 +90,8 @@ use App\Search\LetterCombinedLinksBuilder;
 use App\Search\Normalizer;
 use App\Search\PositionLinksBuilder;
 use App\Search\PrefixAvecLinksBuilder;
+use App\Search\PrefixAvecThreeLettersLinksBuilder;
+use App\Search\PrefixAvecTwoLettersLinksBuilder;
 use App\Search\PrefixExtensionLinksBuilder;
 use App\Search\Rack;
 use App\Search\RackSolver;
@@ -97,6 +99,9 @@ use App\Search\RelationsFinder;
 use App\Search\SenseLookup;
 use App\Search\StartEndWithLinksBuilder;
 use App\Search\Suggester;
+use App\Search\SuffixAvecLinksBuilder;
+use App\Search\SuffixAvecThreeLettersLinksBuilder;
+use App\Search\SuffixAvecTwoLettersLinksBuilder;
 use App\Search\SuffixExtensionLinksBuilder;
 use App\Search\TermLookup;
 use App\Search\TermPage;
@@ -514,6 +519,19 @@ if ($path === '/mots' || preg_match('#^/mots(/.*)$#u', $path, $matches) === 1) {
         && count($filters->withoutLetters) === 1
         && $hasNoOtherConstraint($filters, ['withLetters', 'withoutLetters']);
 
+    // D-045 : "commencant/{X}/avec/{Y}[/{Z}]" et "terminant/{X}/avec/{Y}[/{Z}]" -- meme
+    // reutilisation de $singleAvecLetter/$twoAvecLetters (deja calcules ci-dessus pour le
+    // pendant longueur) que $isLengthPlusSingleAvecOnly/$isLengthPlusTwoAvecOnly, mais avec
+    // prefixe/suffixe d'UNE lettre a la place de la longueur.
+    $isPrefixPlusSingleAvecOnly = $filters->prefix !== null && strlen($filters->prefix) === 1
+        && $singleAvecLetter !== null && $hasNoOtherConstraint($filters, ['prefix', 'withLetters']);
+    $isPrefixPlusTwoAvecOnly = $filters->prefix !== null && strlen($filters->prefix) === 1
+        && $twoAvecLetters !== null && $hasNoOtherConstraint($filters, ['prefix', 'withLetters']);
+    $isSuffixPlusSingleAvecOnly = $filters->suffix !== null && strlen($filters->suffix) === 1
+        && $singleAvecLetter !== null && $hasNoOtherConstraint($filters, ['suffix', 'withLetters']);
+    $isSuffixPlusTwoAvecOnly = $filters->suffix !== null && strlen($filters->suffix) === 1
+        && $twoAvecLetters !== null && $hasNoOtherConstraint($filters, ['suffix', 'withLetters']);
+
     $lengthLinks = $filters->length !== null
         ? (new LengthLinksBuilder($connection))->build($filters->length)
         : null;
@@ -574,6 +592,30 @@ if ($path === '/mots' || preg_match('#^/mots(/.*)$#u', $path, $matches) === 1) {
         ? (new AvecSansLengthLinksBuilder($connection))->build($singleAvecLetter, $filters->withoutLetters[0])
         : null;
 
+    // D-045 : commencant/terminant + avec (1, 2 lettres) -- SANS longueur, symetrique du bloc
+    // avec+longueur ci-dessus mais ancre sur le prefixe/suffixe. La page BARE prefixe/suffixe
+    // (sans aucun "avec") declenche le palier 1 -- prefixAvecLinks (existant, ci-dessus) cote
+    // commencant, suffixAvecLinks (nouveau) cote terminant.
+    $suffixAvecLinks = $isBareSingleLetterSuffix
+        ? (new SuffixAvecLinksBuilder($connection))->build($filters->suffix)
+        : null;
+
+    $prefixAvecTwoLettersLinks = $isPrefixPlusSingleAvecOnly
+        ? (new PrefixAvecTwoLettersLinksBuilder($connection))->build($filters->prefix, $singleAvecLetter)
+        : null;
+
+    $prefixAvecThreeLettersLinks = $isPrefixPlusTwoAvecOnly
+        ? (new PrefixAvecThreeLettersLinksBuilder($connection))->build($filters->prefix, $twoAvecLetters[0], $twoAvecLetters[1])
+        : null;
+
+    $suffixAvecTwoLettersLinks = $isSuffixPlusSingleAvecOnly
+        ? (new SuffixAvecTwoLettersLinksBuilder($connection))->build($filters->suffix, $singleAvecLetter)
+        : null;
+
+    $suffixAvecThreeLettersLinks = $isSuffixPlusTwoAvecOnly
+        ? (new SuffixAvecThreeLettersLinksBuilder($connection))->build($filters->suffix, $twoAvecLetters[0], $twoAvecLetters[1])
+        : null;
+
     $render('word-list', [
         'page' => $page,
         'lengthLinks' => $lengthLinks,
@@ -589,6 +631,11 @@ if ($path === '/mots' || preg_match('#^/mots(/.*)$#u', $path, $matches) === 1) {
         'avecTwoLettersLinks' => $avecTwoLettersLinks,
         'avecThreeLettersLinks' => $avecThreeLettersLinks,
         'avecSansLengthLinks' => $avecSansLengthLinks,
+        'suffixAvecLinks' => $suffixAvecLinks,
+        'prefixAvecTwoLettersLinks' => $prefixAvecTwoLettersLinks,
+        'prefixAvecThreeLettersLinks' => $prefixAvecThreeLettersLinks,
+        'suffixAvecTwoLettersLinks' => $suffixAvecTwoLettersLinks,
+        'suffixAvecThreeLettersLinks' => $suffixAvecThreeLettersLinks,
     ], 200, $canonical);
 
     return;

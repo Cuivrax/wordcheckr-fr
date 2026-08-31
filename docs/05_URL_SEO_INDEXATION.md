@@ -102,6 +102,11 @@ avec-pair-*.xml
 avec-triple-*.xml
 combined-with-*.xml
 commencant-avec-*.xml
+commencant-avec2-*.xml
+commencant-avec3-*.xml
+terminant-avec-*.xml
+terminant-avec2-*.xml
+terminant-avec3-*.xml
 ```
 
 `combined-*.xml` (ajouté le 2026-08-09, D-024 correctif / D-025) : commençant + terminant,
@@ -315,6 +320,29 @@ Limite interne :
 ```text
 40 000 URL par fragment
 ```
+
+`starts-length-*.xml`/`ends-length-*.xml` (ajoutés le 2026-08-31, D-044) : longueur + préfixe/
+suffixe d'UNE lettre, `App\Seo\Family::WORD_LIST_COMMENCANT`/`WORD_LIST_TERMINANT` (mêmes
+familles, aucune nouvelle classification — maillage déjà rendu depuis `/mots/{N}-lettres`,
+D-022, seule l'ouverture à l'indexation manquait). 690 URL. `starts-length2-*.xml`/
+`ends-length2-*.xml` (même lot) : longueur + préfixe/suffixe de DEUX lettres, infrastructure
+nouvelle (`list_counts` type `length_prefix2`/`length_suffix2`) motivée par un volume de
+recherche réel mesuré ("mot de 6 lettres commençant par ar" ~4,4k/mois). 6 665 URL, dont 609
+doublons de contenu exacts exclus (`noindex,follow` + canonical). Voir `docs/DECISIONS.md`
+D-044 pour le détail complet.
+
+`terminant-avec-*.xml` (ajouté le 2026-08-31, D-045) : `App\Seo\Family::
+WORD_LIST_TERMINANT_WITH_LETTER` — famille ENTIÈREMENT NOUVELLE, symétrique de
+`commencant-avec-*.xml` ci-dessus mais ancrée sur le suffixe (`/mots/terminant/{X}/avec/{Y}`),
+absente du site avant ce lot. 621 URL, 0 doublon trouvé sur cet axe (vérifié, pas supposé).
+`commencant-avec2-*.xml`/`commencant-avec3-*.xml` (même lot) : extension à 2 puis 3 lettres
+"avec" de `App\Seo\Family::WORD_LIST_COMMENCANT_WITH_LETTER` (D-036, qui restait limitée à 1
+lettre) — nouvelles classifications `WORD_LIST_COMMENCANT_WITH_TWO_LETTERS`/
+`_WITH_THREE_LETTERS`. `terminant-avec2-*.xml`/`terminant-avec3-*.xml` : mêmes paliers 2/3,
+côté suffixe (`WORD_LIST_TERMINANT_WITH_TWO_LETTERS`/`_WITH_THREE_LETTERS`). 90 397 URL au
+total sur ces quatre fragments (7 246 + 6 240 + 44 023 + 32 888), dont 12 074 doublons de
+contenu exacts (parent direct ou pages sœurs de même panier) exclus — méthodologie détaillée
+et vérifiée par échantillonnage direct contre `terms`, voir `docs/DECISIONS.md` D-045.
 
 Chaque URL du sitemap doit répondre :
 

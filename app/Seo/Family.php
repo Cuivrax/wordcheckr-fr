@@ -37,6 +37,11 @@ final class Family
     public const WORD_LIST_AVEC_THREE_LETTERS = 'word_list_avec_three_letters';
     public const WORD_LIST_COMBINED_WITH_LETTER = 'word_list_combined_with_letter';
     public const WORD_LIST_COMMENCANT_WITH_LETTER = 'word_list_commencant_with_letter';
+    public const WORD_LIST_COMMENCANT_WITH_TWO_LETTERS = 'word_list_commencant_with_two_letters';
+    public const WORD_LIST_COMMENCANT_WITH_THREE_LETTERS = 'word_list_commencant_with_three_letters';
+    public const WORD_LIST_TERMINANT_WITH_LETTER = 'word_list_terminant_with_letter';
+    public const WORD_LIST_TERMINANT_WITH_TWO_LETTERS = 'word_list_terminant_with_two_letters';
+    public const WORD_LIST_TERMINANT_WITH_THREE_LETTERS = 'word_list_terminant_with_three_letters';
     public const RACK = 'rack';
 
     /** @var list<string> */
@@ -58,6 +63,11 @@ final class Family
         self::WORD_LIST_AVEC_THREE_LETTERS,
         self::WORD_LIST_COMBINED_WITH_LETTER,
         self::WORD_LIST_COMMENCANT_WITH_LETTER,
+        self::WORD_LIST_COMMENCANT_WITH_TWO_LETTERS,
+        self::WORD_LIST_COMMENCANT_WITH_THREE_LETTERS,
+        self::WORD_LIST_TERMINANT_WITH_LETTER,
+        self::WORD_LIST_TERMINANT_WITH_TWO_LETTERS,
+        self::WORD_LIST_TERMINANT_WITH_THREE_LETTERS,
         self::RACK,
     ];
 
@@ -386,6 +396,31 @@ final class Family
      * par PRÉFIXE SEUL sont en moyenne bien plus grands, ce qui rend statistiquement bien plus
      * rare que deux lettres distinctes induisent EXACTEMENT le même sous-ensemble — résultat
      * négatif vérifié, pas simplement supposé.
+     *
+     * WORD_LIST_COMMENCANT_WITH_TWO_LETTERS / WORD_LIST_COMMENCANT_WITH_THREE_LETTERS (D-045,
+     * demande produit du 2026-08-31) : extension DÉLIBÉRÉE de WORD_LIST_COMMENCANT_WITH_LETTER
+     * ci-dessus à DEUX puis TROIS lettres "avec" simultanées — jamais réutiliser cette dernière
+     * pour un périmètre plus large que celui mesuré à l'origine (même discipline que
+     * WORD_LIST_AVEC_SINGLE_LETTER/TWO_LETTERS/THREE_LETTERS, un palier = une constante).
+     * Routes : `/mots/commencant/{X}/avec/{Y}/{Z}` (2 lettres) et
+     * `/mots/commencant/{X}/avec/{Y}/{Z}/{W}` (3 lettres), `{Y}<{Z}<{W}` alphabétiquement (même
+     * convention que le palier "avec" sans commençant). Précalcul : `list_counts`, list_type
+     * `start_with_pair`/`start_with_triple` (scripts/build_explore_hub_counts.php).
+     *
+     * WORD_LIST_TERMINANT_WITH_LETTER / WORD_LIST_TERMINANT_WITH_TWO_LETTERS /
+     * WORD_LIST_TERMINANT_WITH_THREE_LETTERS (D-045) : famille ENTIÈREMENT NOUVELLE, symétrique
+     * de WORD_LIST_COMMENCANT_WITH_LETTER et de ses deux extensions ci-dessus, mais ancrée sur
+     * le SUFFIXE plutôt que le préfixe — n'existait nulle part sur ce dépôt avant ce lot (constat
+     * explicite du produit, vérifié directement contre les 13 familles existantes avant D-045).
+     * Routes : `/mots/terminant/{X}/avec/{Y}`, `.../avec/{Y}/{Z}`, `.../avec/{Y}/{Z}/{W}`.
+     * Précalcul : `list_counts`, list_type `end_with`/`end_with_pair`/`end_with_triple`.
+     *
+     * Détection des doublons de contenu pour les cinq constantes ci-dessus : même méthodologie
+     * que le reste de ce fichier (comparaison contre le compte de la page PARENTE — un palier de
+     * moins — puis empreinte SQL `GROUP_CONCAT` sur les groupes candidats de même compte pour les
+     * doublons SŒURS), calculée PROGRAMMATIQUEMENT par le générateur de lot plutôt que
+     * transcrite à la main comme les listes plus anciennes de ce fichier — voir
+     * `docs/DECISIONS.md` D-045 pour le détail complet et les chiffres réels.
      *
      * @var list<string>
      */

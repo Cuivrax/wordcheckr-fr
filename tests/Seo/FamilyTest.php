@@ -20,6 +20,11 @@ return function (): void {
     Assert::true(Family::isValid(Family::WORD_LIST_AVEC_THREE_LETTERS));
     Assert::true(Family::isValid(Family::WORD_LIST_COMBINED_WITH_LETTER));
     Assert::true(Family::isValid(Family::WORD_LIST_COMMENCANT_WITH_LETTER));
+    Assert::true(Family::isValid(Family::WORD_LIST_COMMENCANT_WITH_TWO_LETTERS));
+    Assert::true(Family::isValid(Family::WORD_LIST_COMMENCANT_WITH_THREE_LETTERS));
+    Assert::true(Family::isValid(Family::WORD_LIST_TERMINANT_WITH_LETTER));
+    Assert::true(Family::isValid(Family::WORD_LIST_TERMINANT_WITH_TWO_LETTERS));
+    Assert::true(Family::isValid(Family::WORD_LIST_TERMINANT_WITH_THREE_LETTERS));
     Assert::true(!Family::isValid('mot_inconnu'));
     Assert::true(!Family::isValid(''));
 
@@ -82,6 +87,13 @@ return function (): void {
     // indexables) -- distincte en permanence de WORD_LIST_COMMENCANT (préfixe seul, ci-dessus)
     // ET de WORD_LIST_COMBINED_WITH_LETTER (préfixe+terminant+avec, ci-dessus, forme de route
     // syntaxiquement différente), voir app/Seo/Family.php.
+    // WORD_LIST_COMMENCANT_WITH_TWO_LETTERS / WORD_LIST_COMMENCANT_WITH_THREE_LETTERS et
+    // WORD_LIST_TERMINANT_WITH_LETTER / WORD_LIST_TERMINANT_WITH_TWO_LETTERS /
+    // WORD_LIST_TERMINANT_WITH_THREE_LETTERS (D-045, demande produit du 2026-08-31) ajoutées
+    // directement hors de NEVER_SITEMAP : extension à 2/3 lettres "avec" du côté commençant
+    // (jamais fait avant ce lot) et famille "terminant+avec" entièrement nouvelle (1/2/3
+    // lettres, n'existait nulle part sur ce dépôt), voir app/Seo/Family.php et
+    // docs/DECISIONS.md D-045 pour le détail complet.
     $expectedAllowed = [
         Family::HOME,
         Family::WORD_ADMITTED,
@@ -96,6 +108,11 @@ return function (): void {
         Family::WORD_LIST_AVEC_THREE_LETTERS,
         Family::WORD_LIST_COMBINED_WITH_LETTER,
         Family::WORD_LIST_COMMENCANT_WITH_LETTER,
+        Family::WORD_LIST_COMMENCANT_WITH_TWO_LETTERS,
+        Family::WORD_LIST_COMMENCANT_WITH_THREE_LETTERS,
+        Family::WORD_LIST_TERMINANT_WITH_LETTER,
+        Family::WORD_LIST_TERMINANT_WITH_TWO_LETTERS,
+        Family::WORD_LIST_TERMINANT_WITH_THREE_LETTERS,
     ];
 
     foreach ($expectedAllowed as $family) {

@@ -95,6 +95,30 @@ CREATE INDEX idx_terms_reversed ON terms(reversed);
 -- sur idx_terms_reversed, inchangé -- ce nouvel index ne le concerne pas.
 CREATE INDEX idx_terms_length_reversed ON terms(length, reversed);
 
+-- Suffixe COMBINÉ à un prédicat "avec" non indexable (instr(normalized, ?), une lettre
+-- PRÉSENTE n'importe où dans le mot -- D-045, /mots/terminant/{X}/avec/{Y}) : bug de
+-- performance réel trouvé en ouvrant Family::WORD_LIST_TERMINANT_WITH_LETTER à
+-- l'indexation. Distinct du cas ci-dessus (idx_terms_length_reversed, résidu `length = ?`,
+-- une ÉGALITÉ que SQLite peut combiner à la recherche par plage) : `instr()` est une fonction
+-- scalaire, aucun index ne peut en faire une condition de RECHERCHE -- le scan du panier
+-- suffixe reste nécessaire quel que soit l'index. Le coût mesuré ne venait cependant PAS du
+-- scan lui-même mais du LOOKUP DE TABLE PAR LIGNE CANDIDATE qu'impose idx_terms_reversed
+-- (index NON couvrant : seule la colonne `reversed` y figure, `normalized`/`score`/`length`/
+-- `is_ods8`/`is_ods9` restent à lire depuis la table principale à chaque ligne, un ACCÈS
+-- ALÉATOIRE coûteux car les lignes partageant un même suffixe sont dispersées dans tout le
+-- fichier une fois la table triée par `normalized` à l'import, D-022 -- alors qu'une même
+-- plage `normalized` reste, elle, contiguë sur le disque). Rendre l'index COUVRANT (toutes
+-- les colonnes nécessaires à SELECT/WHERE/ORDER BY déjà présentes dans l'index lui-même)
+-- élimine ce lookup : SQLite répond entièrement depuis le B-tree de l'index, sans jamais
+-- toucher la table principale. Mesuré (storage/dictionary_fr.sqlite, 838 180 lignes,
+-- terminant/s/avec/w -- S = 338 308 mots, le plus grand panier suffixe de la base, W rare
+-- parmi eux, 1 605 correspondances réelles, cas NON tronqué donc scan du panier entier) :
+-- 11 022 ms SANS cet index (idx_terms_reversed seul) contre 534 ms AVEC -- gain ×20,6.
+-- `is_ods8`/`is_ods9` inclus pour rester couvrant sur le SELECT exact de
+-- WordListSolver::solveBounded() (voir la constante des colonnes sélectionnées dans cette
+-- méthode) -- toute divergence future entre les deux devra revalider ce choix.
+CREATE INDEX idx_terms_reversed_covering ON terms(reversed, normalized, score, length, is_ods8, is_ods9);
+
 -- Familles restreintes à une édition, en ordre alphabétique.
 -- Index couvrants : ils servent aussi bien le filtre que le tri.
 CREATE INDEX idx_terms_ods8 ON terms(is_ods8, normalized);
@@ -369,8 +393,23 @@ CREATE INDEX idx_word_senses_term ON word_senses(term_normalized);
 -- (nouveau), rendu sur la page longueur+1-lettre-prefixe/suffixe (D-044) pour fournir un lien
 -- interne reel vers le palier 2 lettres -- meme mecanisme que prefix2/prefix3 pour le palier
 -- sans longueur (PrefixExtensionLinksBuilder).
+-- 'start_with_pair'/'start_with_triple' (D-045, demande produit 2026-08-31) : extension de
+-- 'start_with' (commencant + UNE lettre avec, D-036) a DEUX puis TROIS lettres avec
+-- simultanees, meme principe que 'length_with_pair'/'length_with_triple' (palier 2/3 de "avec"
+-- SANS commencant) mais croise avec le prefixe au lieu de la longueur. list_key =
+-- "{prefixe}:{lettre1}:{lettre2}" / "{prefixe}:{lettre1}:{lettre2}:{lettre3}", lettres
+-- ALPHABETIQUEMENT ORDONNEES entre elles (meme convention). Degenerescence D-032 (une lettre
+-- avec egale le prefixe d'une seule lettre) exclue AU PRECALCUL, meme discipline que
+-- 'start_with'.
+-- 'end_with'/'end_with_pair'/'end_with_triple' (D-045) : symetrique cote terminant de
+-- 'start_with'/'start_with_pair'/'start_with_triple' ci-dessus -- croise le SUFFIXE (derniere
+-- lettre) avec une, deux puis trois lettres avec. list_key = "{suffixe}:{lettre}" /
+-- "{suffixe}:{lettre1}:{lettre2}" / "{suffixe}:{lettre1}:{lettre2}:{lettre3}". Meme
+-- degenerescence D-032 exclue au precalcul (lettre avec egale le suffixe d'une seule lettre).
+-- Alimente une famille entierement nouvelle, Family::WORD_LIST_TERMINANT_WITH_LETTER (et ses
+-- paliers 2/3), absente du site jusqu'ici (constat explicite du produit, 2026-08-31).
 CREATE TABLE list_counts (
-    list_type TEXT    NOT NULL CHECK (list_type IN ('length', 'start', 'end', 'length_start', 'length_end', 'length_with', 'start_end', 'length_with_position', 'length_avec_sans', 'length_start_end', 'length_with_pair', 'length_with_triple', 'start_end_with', 'start_with', 'prefix2', 'prefix3', 'prefix4', 'suffix2', 'suffix3', 'suffix4', 'length_prefix2', 'length_suffix2')),
+    list_type TEXT    NOT NULL CHECK (list_type IN ('length', 'start', 'end', 'length_start', 'length_end', 'length_with', 'start_end', 'length_with_position', 'length_avec_sans', 'length_start_end', 'length_with_pair', 'length_with_triple', 'start_end_with', 'start_with', 'prefix2', 'prefix3', 'prefix4', 'suffix2', 'suffix3', 'suffix4', 'length_prefix2', 'length_suffix2', 'start_with_pair', 'start_with_triple', 'end_with', 'end_with_pair', 'end_with_triple')),
     list_key  TEXT    NOT NULL,
     count     INTEGER NOT NULL,
 

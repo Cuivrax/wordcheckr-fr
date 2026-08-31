@@ -22,6 +22,12 @@
   <loc>https://wordcheckr.fr/sitemaps/commencant-avec-0001.xml</loc>
  </sitemap>
  <sitemap>
+  <loc>https://wordcheckr.fr/sitemaps/commencant-avec2-0001.xml</loc>
+ </sitemap>
+ <sitemap>
+  <loc>https://wordcheckr.fr/sitemaps/commencant-avec3-0001.xml</loc>
+ </sitemap>
+ <sitemap>
   <loc>https://wordcheckr.fr/sitemaps/core-0001.xml</loc>
  </sitemap>
  <sitemap>
@@ -86,6 +92,15 @@
  </sitemap>
  <sitemap>
   <loc>https://wordcheckr.fr/sitemaps/starts-length2-0001.xml</loc>
+ </sitemap>
+ <sitemap>
+  <loc>https://wordcheckr.fr/sitemaps/terminant-avec-0001.xml</loc>
+ </sitemap>
+ <sitemap>
+  <loc>https://wordcheckr.fr/sitemaps/terminant-avec2-0001.xml</loc>
+ </sitemap>
+ <sitemap>
+  <loc>https://wordcheckr.fr/sitemaps/terminant-avec3-0001.xml</loc>
  </sitemap>
  <sitemap>
   <loc>https://wordcheckr.fr/sitemaps/words-0001.xml</loc>

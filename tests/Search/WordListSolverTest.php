@@ -89,11 +89,12 @@ return function (): void {
     // --- l'index compose (length, reversed), SQLite ancre sur la plage reversed GLOBALE
     // --- (toutes longueurs) et lit chaque ligne candidate en table pour verifier la longueur --
     // --- mesure a 1 779 ms sur "7-lettres/terminant/s" avant correctif (S = 338 308 mots toutes
-    // --- longueurs), 100,7 ms apres. Verifie ici par force brute que le resultat reste correct,
-    // --- et que le budget de requetes ne change pas (toujours 2, ancrage reversed non fusionne).
+    // --- longueurs), 100,7 ms apres. Depuis D-046 (fusion de requete + idx_terms_reversed_
+    // --- covering), ce meme cas passe par ailleurs de 2 a 1 requete -- verifie ici par force
+    // --- brute que le resultat reste correct.
     $lengthSuffix = $solver->solve('7-lettres/terminant/s');
     Assert::notNull($lengthSuffix);
-    Assert::same(2, $lengthSuffix->queryCount);
+    Assert::same(1, $lengthSuffix->queryCount, 'fusionne a 1 requete depuis D-046, meme ancrage reversed que "terminant/s" seul');
     foreach ($lengthSuffix->items as $item) {
         Assert::same(7, $item['length']);
         Assert::true(str_ends_with($item['normalized'], 'S'));
@@ -349,22 +350,25 @@ return function (): void {
 
     // --- Budget de requetes : au plus 2, quelle que soit la combinaison de contraintes.
     // --- Regime EXACT (longueur/prefixe seuls ou combines) : toujours 2 (COUNT + LIMIT/OFFSET).
-    // --- Regime BORNE : 1 requete quand l'ancrage est deja l'ordre d'affichage (normalized) --
-    // --- fusion mesuree (audit final, code-optimizer, constat I-1), voir l'entete de
-    // --- solveBounded() -- 2 requetes seulement pour l'ancrage sur suffixe (reversed), ou
-    // --- l'ordre d'ancrage differe de l'ordre d'affichage. ---
+    // --- Regime BORNE : 1 SEULE requete dans tous les cas depuis D-046 -- l'ancrage normalized
+    // --- etait deja fusionne (audit final, code-optimizer, constat I-1) ; l'ancrage reversed
+    // --- (suffixe) l'est aussi desormais (CORRECTIF D-046, meme principe : LIMIT
+    // --- ROW_EXAMINATION_CEILING + 1 + tri PHP explicite par normalized, voir l'entete de
+    // --- solveBounded()) -- trouve en verifiant la performance de Family::
+    // --- WORD_LIST_TERMINANT_WITH_LETTER (D-045, jusqu'a 15,5 s mesures avant ce correctif). ---
     foreach ([$byLength, $byPrefix, $comboPage] as $result) {
         Assert::same(2, $result->queryCount, 'regime EXACT : toujours 2 requetes');
     }
-    Assert::same(2, $bySuffix->queryCount, 'suffixe seul : ancrage reversed, 2 requetes (non fusionne)');
+    Assert::same(1, $bySuffix->queryCount, 'suffixe seul : ancrage reversed, fusionne a 1 requete depuis D-046');
     foreach ([$contains, $unanchoredContains, $unanchoredWith, $withLetters, $without, $motif, $anchoredTruncated, $avecTwoLetters, $avecTwoLettersReversedInput, $avecTwoLettersFrequent, $avecThreeLetters, $avecThreeLettersReversedInput, $avecThreeLettersFrequent, $avecThreeLettersTooShort] as $result) {
         Assert::same(1, $result->queryCount, 'regime BORNE, ancrage normalized (ou aucun ancrage) : fusionne a 1 requete');
     }
     // prefixe ET suffixe explicites tous deux presents (D-025bis) : 1 requete de plus pour
     // choisir la lettre la moins frequente comme ancrage (voir anchorClause()) -- ici N (fin
     // de TION) s'avere moins frequente que C (debut de CH), donc ancrage reversed -> regime a
-    // 2 requetes de base + 1 = 3, pas le chemin fusionne a 1 requete des autres cas BORNE.
-    Assert::same(3, $prefixSuffix->queryCount, 'prefixe+suffixe explicites : 2 requetes de base (ancrage reversed) + 1 requete de frequence');
+    // 1 requete de base (D-046) + 1 requete de frequence = 2, meme budget que le chemin
+    // fusionne des autres cas BORNE.
+    Assert::same(2, $prefixSuffix->queryCount, 'prefixe+suffixe explicites : 1 requete de base (ancrage reversed, D-046) + 1 requete de frequence');
     foreach ([$byLength, $byPrefix, $comboPage, $bySuffix, $contains, $unanchoredContains, $unanchoredWith, $withLetters, $without, $motif, $prefixSuffix, $anchoredTruncated, $avecTwoLetters, $avecTwoLettersReversedInput, $avecTwoLettersFrequent, $avecThreeLetters, $avecThreeLettersReversedInput, $avecThreeLettersFrequent, $avecThreeLettersTooShort] as $result) {
         Assert::true($result->queryCount <= 10, 'budget de requetes indexees depasse');
     }
@@ -451,12 +455,12 @@ return function (): void {
     }
 
     // --- Budget de requetes : les nouveaux cas restent dans les memes regimes deja verifies
-    // --- ci-dessus (EXACT = 2, BORNE ancrage normalized = 1, BORNE ancrage reversed = 2). ---
+    // --- ci-dessus (EXACT = 2, BORNE ancrage normalized OU reversed = 1 depuis D-046). ---
     foreach ([$admittedOnly, $notAdmittedOnly, $sortedAsc, $sortedDesc, $statusAndSort] as $result) {
         Assert::same(2, $result->queryCount, 'regime EXACT inchange par statut/tri');
     }
-    Assert::same(2, $boundedStatus->queryCount, 'regime BORNE ancrage reversed (terminant seul, suffixe) inchange par statut');
-    Assert::same(2, $boundedSorted->queryCount, 'regime BORNE ancrage reversed (suffixe) inchange par tri');
+    Assert::same(1, $boundedStatus->queryCount, 'regime BORNE ancrage reversed (terminant seul, suffixe) inchange par statut, fusionne a 1 requete depuis D-046');
+    Assert::same(1, $boundedSorted->queryCount, 'regime BORNE ancrage reversed (suffixe) inchange par tri, fusionne a 1 requete depuis D-046');
 
     // --- Position (D-023) : une lettre connue a une position precise, verifiee par force
     // --- brute (substr() cote SQL, position PHP equivalente cote test). Toujours regime
@@ -534,7 +538,7 @@ return function (): void {
 
     $suffix3 = $solver->solve('terminant/ing');
     Assert::notNull($suffix3);
-    Assert::same(2, $suffix3->queryCount, 'regime BORNE ancrage reversed (terminant seul), quel que soit le nombre de lettres');
+    Assert::same(1, $suffix3->queryCount, 'regime BORNE ancrage reversed (terminant seul), quel que soit le nombre de lettres -- fusionne a 1 requete depuis D-046');
     $expectedSuffix3 = (int) $pdo->query("SELECT COUNT(*) c FROM terms WHERE normalized LIKE '%ING'")->fetch()['c'];
     Assert::same($expectedSuffix3, $suffix3->total);
     foreach ($suffix3->items as $item) {

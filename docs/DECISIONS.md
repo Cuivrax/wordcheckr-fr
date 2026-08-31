@@ -3248,3 +3248,256 @@ prochaine action non prise ici : reproduction ISO de ce lot (schema, precalcul, 
   ce stade) ; verification du risque de doublon pour "longueur+commencant+avec"/
   "longueur+terminant+avec" (demande separee, priorite basse, non commencee)
 ```
+
+## D-045 — Ouverture À L'Indexation : Commençant/Terminant + Avec (1, 2 Et 3 Lettres)
+
+Date : 2026-08-31
+Statut : accepté et appliqué
+
+Contexte :
+
+```text
+demande produit explicite (2026-08-31) : "commencant_with_letter" (Family::
+  WORD_LIST_COMMENCANT_WITH_LETTER, D-036) n'existait qu'a UNE lettre "avec", jamais 2 ni 3 --
+  et "terminant+avec" (l'equivalent cote suffixe) n'existait NULLE PART, constat deja fait et
+  documente plus tot dans cette session (voir docs/PHASE_STATUS.md, note du 2026-08-31 avant
+  correction). Demande explicite : etendre commencant+avec a 2/3 lettres ET construire
+  terminant+avec a 1/2/3 lettres, sur ce depot en premier
+```
+
+Décision :
+
+```text
+CINQ nouvelles classifications Family:: (app/Seo/Family.php) : WORD_LIST_COMMENCANT_WITH_
+  TWO_LETTERS, WORD_LIST_COMMENCANT_WITH_THREE_LETTERS (extension de D-036, jamais reutiliser
+  WORD_LIST_COMMENCANT_WITH_LETTER pour un perimetre plus large que celui mesure a l'origine,
+  meme discipline que WORD_LIST_AVEC_SINGLE/TWO/THREE_LETTERS), WORD_LIST_TERMINANT_WITH_
+  LETTER, _WITH_TWO_LETTERS, _WITH_THREE_LETTERS (famille ENTIEREMENT NOUVELLE, symetrique
+  cote suffixe, absente du site avant ce lot)
+
+schema.sql : list_counts.list_type gagne 'start_with_pair'/'start_with_triple' (extension
+  commencant+avec) et 'end_with'/'end_with_pair'/'end_with_triple' (terminant+avec, nouveau) --
+  precalcul dans scripts/build_explore_hub_counts.php, meme principe que 'length_with_pair'/
+  'length_with_triple' (croisement par PAIRE puis TRIPLET de lettres distinctes presentes dans
+  le mot) mais croise avec le PREFIXE/SUFFIXE au lieu de la longueur. Degenerescence D-032
+  (une lettre avec egale le prefixe/suffixe d'une seule lettre) exclue AU PRECALCUL, meme
+  discipline que 'start_with' (D-036). 91 018 lignes precalculees au total (7 246 + 44 023
+  cote commencant, 621 + 6 240 + 32 888 cote terminant)
+
+DIX nouveaux fichiers app/Search/ (5 builders + 5 value objects) : SuffixAvecLinks(Builder)
+  (mirroir de PrefixAvecLinksBuilder, D-036), PrefixAvecTwoLettersLinks(Builder),
+  PrefixAvecThreeLettersLinks(Builder), SuffixAvecTwoLettersLinks(Builder),
+  SuffixAvecThreeLettersLinks(Builder) -- meme principe partout : 1 requete list_counts
+  triviale (OR sur 2 ou 3 motifs LIKE pour les paliers 2/3, meme technique que App\Search\
+  AvecTwoLettersLinksBuilder/AvecThreeLettersLinksBuilder), jamais de calcul sur `terms` au
+  runtime. Point de vigilance documente explicitement (comme pour D-044) : le joker LIKE du
+  palier 3 se place ENTRE les deux lettres fixes pour le 2e des trois motifs, verifie par
+  test, pas seulement suppose
+
+public/index.php : cable sur 4 nouvelles gardes reutilisant $singleAvecLetter/$twoAvecLetters
+  (deja calcules pour le pendant longueur, D-030/D-031) combines a prefixe/suffixe d'une
+  lettre au lieu de la longueur ($isPrefixPlusSingleAvecOnly, $isPrefixPlusTwoAvecOnly,
+  $isSuffixPlusSingleAvecOnly, $isSuffixPlusTwoAvecOnly) ; $isBareSingleLetterSuffix (deja
+  existant) reutilise pour SuffixAvecLinksBuilder (palier 1 terminant)
+
+app/View/word-list.php : 5 nouvelles sections "explore-group" (memes libelles/gabarit HTML
+  que l'existant "Commençant Par {X}, Avec"), rendues en entonnoir depuis chaque page parente
+
+DETECTION DES DOUBLONS -- meme methodologie que D-039/D-040/D-041/D-044 (comparaison au
+  parent direct + empreinte pour les doublons soeurs), MAIS calculee PROGRAMMATIQUEMENT
+  (script dedie, chargement en memoire du panier complet de chaque prefixe/suffixe -- UNE
+  requete par ancre, 52 au total -- puis filtrage entierement en PHP) plutot que transcrite a
+  la main comme les listes plus anciennes de ce fichier : a cette echelle (91 018 candidats),
+  une verification par requete SQL LIKE individuelle (le patron original D-036/D-041) s'est
+  revelee INEXPLOITABLE en pratique -- premiere tentative tuee apres 29 minutes sans avoir
+  fini le premier des six lots, a cause de motifs LIKE '%lettre%' non indexes repetes sur des
+  paniers jusqu'a 338 308 mots (suffixe S). Reecrite avec chargement unique par ancre : les 52
+  ancres traitees en 288,6 secondes, deux methodes independantes verifiees manuellement contre
+  de vraies donnees avant application (A+Q=A+Q+U=3155 mots exactement ; D+J+Y=D+J+K=
+  {DJERMAKOYE,DJERMAKOYES} exactement)
+
+  resultats (doublons PARENT puis SOEURS, sur le total de candidats de chaque palier) :
+    terminant+avec 1 lettre (621 candidats)         : 0 doublon
+    commencant+avec 2 lettres (7 246 candidats)      : 46 parent + 58 soeurs = 104
+    terminant+avec 2 lettres (6 240 candidats)       : 82 parent + 283 soeurs = 365
+    commencant+avec 3 lettres (44 023 candidats)     : 3 810 parent + 1 909 soeurs = 5 719
+    terminant+avec 3 lettres (32 888 candidats)      : 3 567 parent + 2 319 soeurs = 5 886
+  total doublons : 12 074 sur 91 018 candidats (13,3 %), tous servis en noindex,follow +
+    canonical vers la forme gagnante (parent direct, ou plus petit route_path alphabetique
+    entre soeurs) -- JAMAIS retires du registre, meme discipline que D-044
+
+  BUG TROUVE ET CORRIGE avant tout commit (verification live, pas suppose) : les cinq
+  builders avaient d'abord ete cables avec leurs constantes EXTERNAL_DUPLICATE_KEYS/
+  DUPLICATE_PARENT_KEYS/SIBLING_DUPLICATE_KEYS vides -- l'entonnoir rendait donc encore des
+  liens internes vers des pages deja marquees noindex,follow dans le registre (ex.
+  /mots/commencant/a/avec/q affichait un lien vers .../avec/q/u, doublon exact). Corrige en
+  patchant les 12 074 cles calculees directement dans les constantes des 5 builders (via
+  script, jamais recopiees a la main pour eviter toute erreur de transcription sur un tel
+  volume), reverifie en direct : le lien disparait, /mots/commencant/d/avec/j n'affiche plus
+  Y (perdant face a K, meme panier exact)
+
+lots SEO generes et appliques (5 fichiers scripts/seo-batches/*-2026-08-31.php, 0 conflit de
+  route verifie avant generation) : 91 018 lignes au total, 78 944 index,follow + 12 074
+  noindex,follow. Registre : 931 763 -> 1 022 781 URL (1 010 088 index,follow). Sitemaps :
+  40 -> 45 fragments (terminant-avec-0001.xml, commencant-avec2-*, terminant-avec2-*,
+  commencant-avec3-*, terminant-avec3-*)
+```
+
+Raison :
+
+```text
+demande produit explicite -- extension symetrique et complete des paliers "avec" deja
+  ouverts pour la longueur (D-029/D-030/D-031) et pour le prefixe a 1 lettre (D-036), plus
+  construction du pendant suffixe manquant identifie comme une vraie lacune projet (pas une
+  omission DE/ES) plus tot dans cette session
+```
+
+Conséquence :
+
+```text
+php tests/run.php : 48 reussis, 1 echoue (echec pre-existant sans rapport, position-summary,
+  meme etat que tout le reste de cette session) -- 10 nouveaux fichiers de test (5 pour D-044,
+  5 pour ce lot) tous verts, y compris apres le correctif moteur D-046 ci-dessous
+BLOQUANT DE PERFORMANCE TROUVE ET CORRIGE avant tout commit -- voir docs/DECISIONS.md D-046
+  pour le detail complet : l'ouverture de Family::WORD_LIST_TERMINANT_WITH_LETTER a expose un
+  defaut de performance latent du moteur (App\Search\WordListSolver), jusque-la jamais
+  declenche a cette echelle -- jusqu'a 15,5 s mesures sur certaines pages reellement appliquees
+  par ce lot avant correctif. Corrige a la source (moteur partage, benefice a tout le site, pas
+  seulement a ce lot) : p95 sur les 621 pages terminant+avec palier 1 passe de 3 493 ms a 98 ms,
+  max de 15 536 ms a 263 ms (bruit de cache froid, 34-63 ms en re-mesure), pages > 250 ms de
+  200/621 a 0/621 en conditions normales
+balayage GENERIQUE croise entre familles (scripts/check_combinatorial_duplicates.php, meme
+  outillage D-041) : LANCE mais TRES LONG au moment de la redaction de cette entree (plus de
+  40 minutes, toujours en cours) -- l'ajout de ~79 000 nouvelles pages index,follow dans le
+  perimetre balaye (chacune necessite une requete d'empreinte GROUP_CONCAT+sha1 sur son panier
+  reel complet, SANS plafond -- ce balayage ne beneficie donc pas du correctif D-046 ci-dessus,
+  qui ne s'applique qu'au chemin BORNE de WordListSolver) rend ce balayage nettement plus long
+  que les precedents (D-041 original : quelques minutes sur un registre plus petit et sans
+  cette famille). PAS un renoncement a cette verification -- une fois termine, tout doublon
+  croise trouve sera traite en lot correctif separe, meme precedent que D-037 a D-041 (jamais
+  un blocage pour appliquer les corrections deja verifiees par les deux methodes internes
+  ci-dessus, qui restent la protection principale et deja confirmee)
+prochaine action non prise ici : attendre/traiter le resultat du balayage generique ;
+  reproduction ISO sur DE/ES (documentee dans leurs docs/PHASE_STATUS.md respectifs, comme
+  pour D-044 -- AJOUTER explicitement le correctif moteur D-046 a cette reproduction, pas
+  seulement les nouvelles familles) ; audit formel code-reviewer/seo-technical-auditor ;
+  deploiement o2switch -- explicitement PAS fait dans ce lot sans confirmation supplementaire,
+  contrairement a D-044 (echelle et balayage generique encore incomplet)
+```
+
+## D-046 — Correctif Moteur : Ancrage `reversed` De WordListSolver, Doublement De Requête Et Lookup De Table Non Couvert
+
+Date : 2026-08-31
+Statut : accepté et appliqué
+
+Contexte :
+
+```text
+trouve en verifiant la performance reelle de D-045 (demande explicite du produit : "que tout
+  soit parfait et performant comme le reste"), PAS par relecture de code -- un test manuel de
+  /mots/terminant/e/avec/x (page reellement appliquee par D-045) a mesure 2,6 a 6,4 s de temps
+  de reponse, tres au-dessus du budget CLAUDE.md (TTFB p95 < 250 ms). Investigation
+  systematique plutot que correctif isole sur ce seul cas
+```
+
+Décision :
+
+```text
+DEUX defauts distincts trouves et corriges dans App\Search\WordListSolver::solveBounded(),
+  branche $anchorOrder === 'reversed' (ancrage suffixe seul, sans prefixe) :
+
+1. DOUBLEMENT DE REQUETE (deja corrige pour la branche 'normalized' lors de l'audit final,
+   constat I-1, jamais reproduit ici) : la branche 'reversed' executait DEUX requetes
+   quasi-identiques (boundaryStatement pour compter/plafonner, fetchStatement pour recuperer)
+   -- chacune re-executant le MEME parcours couteux. Fusionnee en UNE SEULE requete
+   (LIMIT ROW_EXAMINATION_CEILING + 1, truncated deduit du nombre de lignes rendues, meme
+   principe exact que la branche 'normalized'), PLUS un tri PHP explicite par `normalized`
+   apres recuperation (necessaire ici, contrairement a la branche 'normalized', car l'ordre
+   d'ancrage 'reversed' differe de l'ordre d'affichage) -- panier deja BORNE a
+   ROW_EXAMINATION_CEILING + 1 lignes au plus a ce stade, meme budget deja accepte pour le tri
+   par points existant (D-022, 173 ms mesures au pire cas sur 10 000 lignes).
+
+2. LOOKUP DE TABLE NON COUVERT (defaut latent, jamais mesure a cette echelle avant D-045) :
+   idx_terms_reversed (schema.sql) ne couvre QUE la colonne `reversed` -- `normalized`/
+   `score`/`length`/`is_ods8`/`is_ods9` restent a lire depuis la table principale a CHAQUE
+   ligne candidate, un ACCES ALEATOIRE couteux car les lignes partageant un meme suffixe sont
+   dispersees dans tout le fichier (la table est triee/inseree par `normalized` a l'import,
+   D-022 -- une plage `normalized` reste contigue sur le disque, une plage `reversed` ne l'est
+   jamais). Un residu de type EGALITE (ex. `length = ?`) peut deja etre absorbe par un index
+   compose (idx_terms_length_reversed, correctif du 2026-08-08, deja en place) -- mais un
+   residu de type `instr(normalized, ?) > 0` ("avec", une lettre presente n'importe ou) ne
+   peut JAMAIS devenir une condition de RECHERCHE indexee, quel que soit l'index : seul le
+   LOOKUP DE TABLE peut etre elimine, pas le scan du panier lui-meme. Nouvel index COUVRANT
+   ajoute (schema.sql) :
+     CREATE INDEX idx_terms_reversed_covering
+       ON terms(reversed, normalized, score, length, is_ods8, is_ods9);
+   Toutes les colonnes necessaires au SELECT/WHERE/ORDER BY de solveBounded() y figurent deja
+   -- SQLite repond entierement depuis le B-tree de l'index (confirme par EXPLAIN QUERY PLAN :
+   "SEARCH terms USING COVERING INDEX idx_terms_reversed_covering"), sans jamais toucher la
+   table principale. idx_terms_reversed (non couvrant) reste en place, toujours utile pour les
+   requetes qui n'ont besoin QUE de `reversed` (ex. comptage) -- aucune suppression, un ajout
+   pur. ANALYZE terms rejoue apres creation (statistiques a jour pour le planificateur).
+
+Mesure isolee (storage/dictionary_fr.sqlite, 838 180 lignes, terminant/s/avec/w -- S = 338 308
+  mots, le plus grand panier suffixe de la base, W rare parmi eux, 1 605 correspondances
+  reelles, cas NON tronque donc scan du panier entier necessaire) :
+    11 022 ms sans aucun correctif (etat D-045 avant investigation)
+     7 006 ms avec SEULEMENT le correctif 1 (doublement de requete supprime, ~2x)
+       534 ms avec SEULEMENT le correctif 2 (index couvrant, requete brute non fusionnee, ~20x)
+  Combines (etat final applique) : mesure de bout en bout via le vrai
+  App\Search\WordListSolver::solve() sur les 621 pages reellement appliquees par le palier 1
+  terminant+avec (D-045) :
+    p50   31,2 ms -> 1,4 ms
+    p95   3 493,4 ms -> 98,0 ms
+    max   15 536,1 ms -> 263,2 ms (bruit de cache froid du balayage sequentiel complet --
+          re-mesure isolee des deux cas les plus lents : 34-63 ms en conditions normales)
+    pages > 250 ms : 200/621 (32,2 %) -> 0/621 en conditions normales
+  Echantillon tier2/tier3 terminant (paliers 2 et 3 de D-045, meme correctif, meme index) :
+  25-84 ms sur les combinaisons connues les plus couteuses (S/T/E + lettres rares) -- meme
+  ordre de grandeur que le palier 1, confirme que le correctif beneficie a TOUS les paliers.
+
+BENEFICE AU-DELA DE D-045 -- ce correctif touche App\Search\WordListSolver, le moteur PARTAGE
+  par toutes les listes de mots du site, pas un fichier propre a ce lot : des pages DEJA EN
+  PRODUCTION depuis D-017/D-024 (ex. /mots/terminant/e, suffixe seul, sans aucun "avec")
+  beneficient aussi -- mesure : 226-260 ms avant correctif (deja a la limite du budget CLAUDE.md
+  sur une page live), 25-48 ms apres. Toute future famille anchoree sur `reversed` (aucune
+  n'existe a ce jour au-dela de word_list_terminant/word_list_terminant_with_letter/_two/
+  _three) heritera du meme benefice sans effort supplementaire.
+```
+
+Raison :
+
+```text
+demande produit explicite de verification de performance sur D-045 -- CLAUDE.md impose
+  "TTFB chaud p95 sous 250 ms" comme contrainte dure, jamais negociable ; un defaut de cette
+  ampleur (jusqu'a 15,5 s mesures, 32 % des pages nouvellement ouvertes hors budget) aurait ete
+  incompatible avec toute mise en ligne du lot D-045, et affectait deja une page en production
+  (terminant/e) sans que personne ne l'ait remarque avant cette verification explicite
+```
+
+Conséquence :
+
+```text
+schema.sql (fichier partage) modifie directement (session principale) : nouvel index
+  idx_terms_reversed_covering, documente en detail dans son commentaire de creation
+app/Search/WordListSolver.php modifie : branche 'reversed' de solveBounded() fusionnee en 1
+  requete + tri PHP, docblock de classe et de methode a mettre a jour au moment du commit
+  (mention "2 requetes" pour l'ancrage suffixe devient "1 requete, comme l'ancrage prefixe")
+storage/dictionary_fr.sqlite : index cree directement (2,0 s), ANALYZE rejoue (2,5 s) --
+  taille du fichier inchangee de facon mesurable via PRAGMA page_count (351,2 Mo avant/apres,
+  mecanisme exact non totalement explique -- possible reutilisation de pages deja allouees lors
+  d'un test avec un index temporaire identique cree puis supprime plus tot dans la meme session,
+  freelist_count = 0 au moment de la mesure donc cette explication precise reste incertaine) --
+  a revalider avec un VACUUM et une mesure de taille de fichier sur disque lors du prochain
+  rebuild complet. VERIFIE (pas suppose) : scripts/import_fr.py lit et execute schema.sql
+  directement (connection.executescript(SCHEMA_PATH.read_text(...)), ligne 705) -- contrairement
+  a scripts/build_explore_hub_counts.php (qui duplique sa propre DDL a la main pour list_counts,
+  ecart deja documente ailleurs dans ce depot), aucune duplication ici : le nouvel index sera
+  recree automatiquement au prochain rebuild, aucune action supplementaire necessaire.
+php tests/run.php : 48 reussis, 1 echoue (echec pre-existant sans rapport), rejoue apres ce
+  correctif -- aucune regression
+prochaine action non prise ici : porter ce meme correctif (fusion de requete + index couvrant)
+  sur les depots DE et ES cousins (leurs WordListSolver equivalents partagent tres probablement
+  le meme defaut structurel, jamais verifie explicitement sur ces deux depots) -- a documenter
+  dans leurs docs/PHASE_STATUS.md respectifs
+```

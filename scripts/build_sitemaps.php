@@ -111,6 +111,16 @@ const FAMILY_FRAGMENT_PREFIXES = [
     // commencant-avec-no-length-full-sweep.md, reports/query-plans/commencant-avec-maillage.md
     // et app/Seo/Family.php.
     'word_list_commencant_with_letter' => 'commencant-avec',
+    // word_list_commencant_with_two_letters / word_list_commencant_with_three_letters (D-045,
+    // demande produit du 2026-08-31, jamais dans NEVER_SITEMAP) : extension a 2 puis 3 lettres
+    // "avec" de word_list_commencant_with_letter ci-dessus. word_list_terminant_with_letter /
+    // _with_two_letters / _with_three_letters : famille ENTIEREMENT NOUVELLE, symetrique cote
+    // suffixe, absente du site avant ce lot. Voir docs/DECISIONS.md D-045 et app/Seo/Family.php.
+    'word_list_commencant_with_two_letters' => 'commencant-avec2',
+    'word_list_commencant_with_three_letters' => 'commencant-avec3',
+    'word_list_terminant_with_letter' => 'terminant-avec',
+    'word_list_terminant_with_two_letters' => 'terminant-avec2',
+    'word_list_terminant_with_three_letters' => 'terminant-avec3',
     // word_list_avec, word_list_sans, word_list_motif, rack : absents volontairement --
     // App\Seo\Family::NEVER_SITEMAP, jamais de prefixe de fragment.
 ];
