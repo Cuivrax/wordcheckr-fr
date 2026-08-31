@@ -25,8 +25,11 @@ Toutes les phases fonctionnelles (1 à 6) sont livrées, plus un enrichissement
                processus simultanés, hors périmètre de cette passe)
 ```
 
-Mis à jour le 2026-08-21 (D-042, domaine wordcheckr.fr fixé ; D-041, correctif C-4
-appliqué en production — 924 408 URL, prêt pour un 5e audit).
+Mis à jour le 2026-08-31 (D-044, ouverture longueur+préfixe/suffixe 1 et 2 lettres —
+924 408 → 931 763 URL, dont 931 144 en index,follow ; D-043, définitions lexicales
+pilote intégré, 42/42 tests ; D-042, domaine wordcheckr.fr fixé ; D-041, correctif C-4
+appliqué en production). Audit formel code-reviewer/seo-technical-auditor de D-042 à
+D-044 : pas encore fait à ce stade — reste ouvert avant toute mise en ligne o2switch.
 
 Décision explicite prise en cours de route (demande utilisateur) : construire
 un site fonctionnel d'abord, un seul audit consolidé groupé avant mise en

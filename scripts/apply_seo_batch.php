@@ -183,14 +183,20 @@ function familySeoBatchRouteShapeError(string $family, string $routePath): ?stri
                 : "forme attendue '/mots/{N}-lettres'";
 
         case Family::WORD_LIST_COMMENCANT:
-            return preg_match('#^/mots/commencant/[a-z]{1,15}\z#', $routePath) === 1
+            // D-044 : prefixe de longueur OPTIONNEL ajoute (ordre canonique : longueur avant
+            // commencant, App\Search\WordListFilters::canonicalPath()) -- meme extension deja
+            // appliquee sur les depots allemand/espagnol cousins (D-DE-019 equivalent). Une
+            // regle de FORME valide la grammaire de la famille entiere, jamais la portee d'un
+            // lot particulier.
+            return preg_match('#^/mots/(\d{1,2}-lettres/)?commencant/[a-z]{1,15}\z#', $routePath) === 1
                 ? null
-                : "forme attendue '/mots/commencant/{lettres}'";
+                : "forme attendue '/mots/[{N}-lettres/]commencant/{lettres}'";
 
         case Family::WORD_LIST_TERMINANT:
-            return preg_match('#^/mots/terminant/[a-z]{1,15}\z#', $routePath) === 1
+            // D-044 : meme extension que WORD_LIST_COMMENCANT ci-dessus.
+            return preg_match('#^/mots/(\d{1,2}-lettres/)?terminant/[a-z]{1,15}\z#', $routePath) === 1
                 ? null
-                : "forme attendue '/mots/terminant/{lettres}'";
+                : "forme attendue '/mots/[{N}-lettres/]terminant/{lettres}'";
 
         case Family::WORD_LIST_COMBINED:
             return preg_match('#^/mots/(?:\d{1,2}-lettres/)?commencant/[a-z]{1,15}/terminant/[a-z]{1,15}\z#', $routePath) === 1

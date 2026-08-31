@@ -104,7 +104,7 @@ $pdo = new PDO('sqlite:' . $dbPath, null, null, [
 $pdo->exec('DROP TABLE IF EXISTS list_counts');
 $pdo->exec(
     'CREATE TABLE list_counts ('
-    . "list_type TEXT NOT NULL CHECK (list_type IN ('length', 'start', 'end', 'length_start', 'length_end', 'length_with', 'start_end', 'length_with_position', 'length_avec_sans', 'length_start_end', 'length_with_pair', 'length_with_triple', 'start_end_with', 'start_with', 'prefix2', 'prefix3', 'prefix4', 'suffix2', 'suffix3', 'suffix4')), "
+    . "list_type TEXT NOT NULL CHECK (list_type IN ('length', 'start', 'end', 'length_start', 'length_end', 'length_with', 'start_end', 'length_with_position', 'length_avec_sans', 'length_start_end', 'length_with_pair', 'length_with_triple', 'start_end_with', 'start_with', 'prefix2', 'prefix3', 'prefix4', 'suffix2', 'suffix3', 'suffix4', 'length_prefix2', 'length_suffix2')), "
     . 'list_key TEXT NOT NULL, '
     . 'count INTEGER NOT NULL, '
     . 'PRIMARY KEY (list_type, list_key)'
@@ -496,6 +496,33 @@ foreach ([2, 3, 4] as $suffixLength) {
     }
 }
 
+// length_prefix2 / length_suffix2 (D-044, demande produit 2026-08-31 : volume de recherche reel
+// mesure pour "longueur + prefixe de 2 lettres", ex. "mot de 6 lettres commencant par ar"
+// ~4,4k/mois) : CROISE avec la longueur (contrairement a prefix2/suffix2 ci-dessus, qui n'en ont
+// pas) -- meme principe que length_start/length_end (1 caractere) mais a 2 caracteres. GROUP BY
+// (length, substr(...)) : idx_terms_length_normalized couvre length+normalized, substr() sur la
+// 2e colonne n'est pas une expression indexable telle quelle, mais reste un SCAN borne par
+// longueur (14 groupes), jamais un SCAN de la table entiere sans filtre -- hors ligne uniquement,
+// jamais au runtime (meme regime que length_start/length_end/prefix2/suffix2 ci-dessus).
+$lengthPrefix2Statement = $pdo->query(
+    'SELECT length, substr(normalized, 1, 2) c, COUNT(*) n FROM terms'
+    . ' WHERE length >= 2 GROUP BY length, c ORDER BY length, c'
+);
+foreach ($lengthPrefix2Statement as $row) {
+    $insert->execute(['length_prefix2', $row['length'] . ':' . $row['c'], (int) $row['n']]);
+    $total++;
+}
+
+$lengthSuffix2Statement = $pdo->query(
+    'SELECT length, substr(reversed, 1, 2) c, COUNT(*) n FROM terms'
+    . ' WHERE length >= 2 GROUP BY length, c ORDER BY length, c'
+);
+foreach ($lengthSuffix2Statement as $row) {
+    $suffix = strrev((string) $row['c']);
+    $insert->execute(['length_suffix2', $row['length'] . ':' . $suffix, (int) $row['n']]);
+    $total++;
+}
+
 $pdo->commit();
 
 // D-021 : toute modification de table/index doit etre suivie d'ANALYZE dans la MEME
@@ -508,6 +535,6 @@ $pdo->commit();
 $pdo->exec('ANALYZE');
 
 printf(
-    "list_counts : %d lignes (14 longueur + 26 commencant + 26 terminant + length_start/length_end/length_with/start_end/length_with_position/length_avec_sans/length_start_end/length_with_pair/length_with_triple/start_end_with/start_with/prefix2/prefix3/prefix4/suffix2/suffix3/suffix4 attendues)\n",
+    "list_counts : %d lignes (14 longueur + 26 commencant + 26 terminant + length_start/length_end/length_with/start_end/length_with_position/length_avec_sans/length_start_end/length_with_pair/length_with_triple/start_end_with/start_with/prefix2/prefix3/prefix4/suffix2/suffix3/suffix4/length_prefix2/length_suffix2 attendues)\n",
     $total,
 );

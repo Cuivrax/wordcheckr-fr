@@ -40,6 +40,8 @@ use App\Search\AvecThreeLettersLinks;
 use App\Search\AvecTwoLettersLinks;
 use App\Search\LengthCombinedLinks;
 use App\Search\LengthLinks;
+use App\Search\LengthPrefixExtensionLinks;
+use App\Search\LengthSuffixExtensionLinks;
 use App\Search\LetterCombinedLinks;
 use App\Search\PositionLinks;
 use App\Search\PrefixAvecLinks;
@@ -128,6 +130,27 @@ $suffixExtensionLinks ??= null;
  * @var LengthCombinedLinks|null $lengthCombinedLinks
  */
 $lengthCombinedLinks ??= null;
+
+/**
+ * Maillage "longueur + prefixe d'UNE lettre" -> "longueur + prefixe de DEUX lettres" (D-044,
+ * volume de recherche reel mesure, ex. "mot de 6 lettres commencant par ar" ~4,4k/mois) -- non
+ * null uniquement depuis une page longueur + UNE SEULE lettre commencant, sans terminant, sans
+ * autre contrainte (/mots/{N}-lettres/commencant/{X}, public/index.php). Precalcule
+ * (App\Search\LengthPrefixExtensionLinksBuilder, list_counts type 'length_prefix2'), jamais de
+ * requete live.
+ *
+ * @var LengthPrefixExtensionLinks|null $lengthPrefixExtensionLinks
+ */
+$lengthPrefixExtensionLinks ??= null;
+
+/**
+ * Meme principe, symetrique cote terminant (App\Search\LengthSuffixExtensionLinksBuilder,
+ * list_counts type 'length_suffix2') -- non null uniquement depuis une page longueur + UNE
+ * SEULE lettre terminant (/mots/{N}-lettres/terminant/{Y}, public/index.php).
+ *
+ * @var LengthSuffixExtensionLinks|null $lengthSuffixExtensionLinks
+ */
+$lengthSuffixExtensionLinks ??= null;
 
 /**
  * Maillage commencant+terminant+avec (2026-08-18, dimensionnement) -- non null uniquement
@@ -695,6 +718,28 @@ $showPagination = $page->hasPreviousPage || $page->hasNextPage;
       <div class="related-links">
 <?php foreach ($lengthCombinedLinks->links as $link): ?>
         <a href="<?= e($link['url']) ?>"><span class="explore-label"><?= e($link['letter']) ?></span> <span class="explore-count">(<?= e(number_format($link['count'], 0, ',', ' ')) ?>)</span></a>
+<?php endforeach; ?>
+      </div>
+    </section>
+<?php endif; ?>
+
+<?php if ($lengthPrefixExtensionLinks !== null && $lengthPrefixExtensionLinks->links !== []): ?>
+    <section class="explore-group">
+      <h2>Continuer Le Préfixe <?= e($filters->prefix) ?></h2>
+      <div class="related-links">
+<?php foreach ($lengthPrefixExtensionLinks->links as $link): ?>
+        <a href="<?= e($link['url']) ?>"><span class="explore-label"><?= e($link['prefix']) ?></span> <span class="explore-count">(<?= e(number_format($link['count'], 0, ',', ' ')) ?>)</span></a>
+<?php endforeach; ?>
+      </div>
+    </section>
+<?php endif; ?>
+
+<?php if ($lengthSuffixExtensionLinks !== null && $lengthSuffixExtensionLinks->links !== []): ?>
+    <section class="explore-group">
+      <h2>Continuer Le Suffixe <?= e($filters->suffix) ?></h2>
+      <div class="related-links">
+<?php foreach ($lengthSuffixExtensionLinks->links as $link): ?>
+        <a href="<?= e($link['url']) ?>"><span class="explore-label"><?= e($link['suffix']) ?></span> <span class="explore-count">(<?= e(number_format($link['count'], 0, ',', ' ')) ?>)</span></a>
 <?php endforeach; ?>
       </div>
     </section>

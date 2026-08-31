@@ -359,8 +359,18 @@ CREATE INDEX idx_word_senses_term ON word_senses(term_normalized);
 -- -> extensions reelles, l'extension ajoutant une lettre EN TETE du suffixe (pas en queue,
 -- contrairement au prefixe). 17 805 lignes non vides sur le meme theorique maximum
 -- (431+3293+14081 reelles).
+-- 'length_prefix2'/'length_suffix2' (D-044, demande produit 2026-08-31 : volume de recherche
+-- reel mesure -- "mot de 6 lettres commencant par ar" ~4,4k/mois -- pour "longueur + prefixe/
+-- suffixe de 2 lettres", jusque-la absent du site, meme sur FR) : longueur + prefixe/suffixe
+-- REEL de 2 caracteres exactement, symetrique a 'length_start'/'length_end' (1 caractere) mais
+-- CROISE avec la longueur (contrairement a 'prefix2'/'suffix2', qui n'ont pas de longueur).
+-- list_key = "{longueur}:{2 lettres}" -- meme convention que 'length_start'/'length_end'.
+-- Consomme par App\Search\LengthPrefixExtensionLinksBuilder/LengthSuffixExtensionLinksBuilder
+-- (nouveau), rendu sur la page longueur+1-lettre-prefixe/suffixe (D-044) pour fournir un lien
+-- interne reel vers le palier 2 lettres -- meme mecanisme que prefix2/prefix3 pour le palier
+-- sans longueur (PrefixExtensionLinksBuilder).
 CREATE TABLE list_counts (
-    list_type TEXT    NOT NULL CHECK (list_type IN ('length', 'start', 'end', 'length_start', 'length_end', 'length_with', 'start_end', 'length_with_position', 'length_avec_sans', 'length_start_end', 'length_with_pair', 'length_with_triple', 'start_end_with', 'start_with', 'prefix2', 'prefix3', 'prefix4', 'suffix2', 'suffix3', 'suffix4')),
+    list_type TEXT    NOT NULL CHECK (list_type IN ('length', 'start', 'end', 'length_start', 'length_end', 'length_with', 'start_end', 'length_with_position', 'length_avec_sans', 'length_start_end', 'length_with_pair', 'length_with_triple', 'start_end_with', 'start_with', 'prefix2', 'prefix3', 'prefix4', 'suffix2', 'suffix3', 'suffix4', 'length_prefix2', 'length_suffix2')),
     list_key  TEXT    NOT NULL,
     count     INTEGER NOT NULL,
 

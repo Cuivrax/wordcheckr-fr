@@ -3119,3 +3119,132 @@ prochaine action non prise ici : redaction du lot 435 120 formes non admises
   (decision separee) ; audit formel code-reviewer/seo-technical-auditor de
   l'ensemble du lot D-043 (non fait a ce stade)
 ```
+
+## D-044 — Ouverture À L'Indexation : Longueur + Préfixe/Suffixe De 1 Et 2 Lettres (Seuls)
+
+Date : 2026-08-31
+Statut : accepté et appliqué
+
+Contexte :
+
+```text
+demande produit explicite (2026-08-31), appuyee sur une capture d'ecran Semrush/Ahrefs
+  montrant un volume de recherche reel et mesure pour la forme "longueur + commencant par"
+  a prefixe MULTI-LETTRES (ex. "mot de 6 lettres commencant par ar" ~4,4k recherches/mois,
+  KD 6-14%, plusieurs variantes de prefixe dans la meme fourchette) -- absent du site avant
+  ce lot, alors que le lien interne existait deja partiellement (voir plus bas)
+verification directe (pas une supposition) : App\Search\LengthLinksBuilder::build()->
+  byStart/byEnd rendait DEJA de vrais liens fonctionnels depuis /mots/{N}-lettres vers
+  /mots/{N}-lettres/commencant/{1 lettre} (list_counts 'length_start'/'length_end', D-022) --
+  mais ces pages cibles etaient servies en noindex,follow, jamais ouvertes a l'indexation ;
+  seule l'ouverture manquait, pas le maillage
+correction prealable d'une affirmation fausse faite en session : Family::WORD_LIST_COMBINED
+  n'est PAS "longueur+commencant OU longueur+terminant" comme annonce a tort avant
+  verification -- c'est commencant+terminant ENSEMBLE (4 849 lignes deja indexees, D-027).
+  Il n'existait bien AUCUNE famille "longueur+prefixe seul" ni "longueur+suffixe seul" avant
+  ce lot (verifie : 0 ligne dans le registre pour cette forme)
+```
+
+Décision :
+
+```text
+DEUX paliers ouverts dans le meme lot, sur la base du meme volume de recherche reel :
+
+palier 1 (longueur + UNE lettre, prefixe OU suffixe seul) -- maillage deja rendu, seule
+  l'indexation manquait :
+    scripts/apply_seo_batch.php : regles de forme R4 de Family::WORD_LIST_COMMENCANT/
+      WORD_LIST_TERMINANT etendues d'un prefixe de longueur OPTIONNEL
+      ('^/mots/(\d{1,2}-lettres/)?commencant/[a-z]{1,15}\z'), meme extension deja
+      appliquee cote DE/ES cousins pour une forme equivalente (D-DE-019)
+    690 URL appliquees (361 commencant + 329 terminant), classees SOUS
+      Family::WORD_LIST_COMMENCANT/WORD_LIST_TERMINANT existantes -- PAS une nouvelle
+      famille dediee (verifie avant toute generation : la forme etait deja prise ailleurs
+      chez le depot allemand cousin sous cette meme convention, D-DE-033), fragments
+      sitemap starts-length-0001.xml / ends-length-0001.xml
+
+palier 2 (longueur + DEUX lettres, prefixe OU suffixe seul) -- infrastructure entierement
+  nouvelle :
+    schema.sql : list_counts.list_type gagne 'length_prefix2'/'length_suffix2' (format
+      "{longueur}:{2 lettres}"), precalcule par scripts/build_explore_hub_counts.php
+      (GROUP BY length, substr(normalized,1,2) pour le prefixe ; substr(reversed,1,2) puis
+      correction par strrev() pour le suffixe -- la colonne reversed reste l'indexe utilise,
+      jamais un scan de `terms`)
+    App\Search\LengthPrefixExtensionLinks(Builder) et LengthSuffixExtensionLinks(Builder)
+      (nouveaux) : 1 requete indexee chacun (list_type + list_key LIKE, joker simple sur
+      la 2e lettre), memes principes que PrefixExtensionLinksBuilder/
+      SuffixExtensionLinksBuilder (variantes SANS longueur, deja en production) -- point
+      de vigilance documente explicitement dans le docblock du builder suffixe : le joker
+      se place en TETE du motif ('_' . $suffixe), pas en queue, la lettre ajoutee etend le
+      suffixe par l'AVANT (meme convention que SuffixExtensionLinksBuilder)
+    public/index.php : cable sur les memes gardes deja calculees
+      $isLengthPlusSinglePrefixOnly/$isLengthPlusSingleSuffixOnly (longueur + 1 lettre,
+      aucune autre contrainte) -- une page /mots/{N}-lettres/commencant/{X} affiche donc
+      maintenant DEUX entonnoirs distincts : vers commencant+terminant (D-027,
+      LengthCombinedLinksBuilder, deja existant) ET vers le prefixe etendu de 2 lettres
+      (nouveau)
+    app/View/word-list.php : nouvelle section "Continuer Le Prefixe/Suffixe {X}" (meme
+      libelle et meme gabarit HTML que la variante sans longueur deja en production,
+      .explore-group/.related-links -- aucun texte invente, reprise du composant existant)
+    generation du lot (scripts/seo-batches/length-prefix-suffix-2-2026-08-31.php, 6 665
+      candidats issus de list_counts) : verification EXTERNE des doublons de contenu AVANT
+      application (methodologie D-039/D-040/D-041 : longueur seule, prefixe/suffixe SANS
+      longueur par empreinte d'affixe commun k=1..4) ETENDUE de deux checks deterministes
+      propres au palier 2 (aucune deduction necessaire, les deux lettres du candidat sont
+      par construction presentes dans tous ses mots) : le parent direct du palier 1 (meme
+      compte = le candidat 2 lettres est en realite la SEULE extension existante) et
+      avec-single/avec-two-letters (les 2 lettres du prefixe/suffixe, seules puis en paire
+      triee) -- 609 doublons trouves et canonicalises (276 prefixe-sans-longueur, 290
+      suffixe-sans-longueur, 32 palier1-suffix, 4 palier1-prefix, 5 avec-two, 2 avec-single),
+      0 conflit de route deja prise (verification directe faite AVANT generation, precaution
+      D-DE-033)
+    6 665 URL appliquees (6 056 index,follow + 609 noindex,follow canonicalises vers la
+      forme gagnante), fragments sitemap starts-length2-0001.xml (3 643 URL) /
+      ends-length2-0001.xml (2 413 URL)
+
+palier 3 (longueur + TROIS lettres) : explicitement PAS fait dans ce lot (demande produit :
+  "voir" = optionnel, priorite basse) -- infrastructure list_counts/builders reutilisable
+  telle quelle si demande plus tard (meme format de cle, joker sur la 3e lettre)
+```
+
+Raison :
+
+```text
+volume de recherche reel et mesure (capture d'ecran fournie), pas une extrapolation --
+  meme standard de preuve que celui exige pour refuser jusqu'ici "longueur+commencant+avec"/
+  "longueur+terminant+avec" (aucune demande mesuree fournie a ce jour pour ces formes,
+  toujours non construites, voir docs/PHASE_STATUS.md)
+palier 1 : cout marginal quasi nul (maillage deja rendu, seule la classification
+  d'indexation manquait) -- aucune raison de laisser une page deja linkee en noindex
+palier 2 : meme volume de recherche mesure porte explicitement sur des prefixes/suffixes
+  de 2 lettres ("ar", "av", "ac"...), pas seulement 1 -- construire uniquement le palier 1
+  aurait laisse la requete reelle la plus recherchee sans page dediee
+```
+
+Conséquence :
+
+```text
+registre : 924 408 -> 925 098 (+690, palier 1) -> 931 763 (+6 665, palier 2) URL, dont
+  931 144 en 'index,follow' ; sitemaps 38 -> 40 fragments
+EXPLAIN QUERY PLAN sur la requete des deux nouveaux builders : SEARCH list_counts USING
+  INDEX sqlite_autoindex_list_counts_1 (list_type=?) -- meme index compose (list_type,
+  list_key) que tout le reste de list_counts, aucun index nouveau necessaire ; mesure :
+  ~1 ms/requete (50 executions, 48,2 ms total)
+verification live faite avant application : /mots/6-lettres/commencant/a (palier 1,
+  index,follow) affiche desormais son entonnoir palier 2 (liens reels vers .../aa, .../ab...
+  avec comptes exacts) ; une extension reellement doublonnee (ex. .../aa, seul mot AARITE)
+  est correctement servie en noindex,follow avec canonical vers la page gagnante
+  /mots/commencant/aari, pas une fausse ouverture
+php tests/run.php : 41 reussis, 1 echoue (echec pre-existant sans rapport, position-summary,
+  meme etat que les depots DE/ES cousins) -- baseline confirmee saine avant ET apres ce lot
+etiquetage : ce lot a d'abord ete redige par erreur sous le label "D-042" (deja pris par la
+  decision domaine, wordcheckr.fr) dans le code et dans storage/seo_fr.sqlite -- corrige ici
+  vers D-044 avant commit (10 fichiers source + notes des 7 355 lignes de registre deja
+  appliquees), aucune consequence fonctionnelle, uniquement une correction de reference
+prochaine action non prise ici : reproduction ISO de ce lot (schema, precalcul, builders,
+  gabarit, lot SEO) sur les depots allemand et espagnol cousins, demande explicitement par
+  le produit -- documentee comme action a faire dans leurs docs/PHASE_STATUS.md respectifs
+  plutot que executee depuis ce depot (cross-repertoire trop lent, sessions dediees existent
+  deja pour DE/ES) ; audit formel code-reviewer/seo-technical-auditor de ce lot (non fait a
+  ce stade) ; verification du risque de doublon pour "longueur+commencant+avec"/
+  "longueur+terminant+avec" (demande separee, priorite basse, non commencee)
+```

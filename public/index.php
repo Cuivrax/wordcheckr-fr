@@ -84,6 +84,8 @@ use App\Search\ConjugationLookup;
 use App\Search\ExploreHubBuilder;
 use App\Search\LengthCombinedLinksBuilder;
 use App\Search\LengthLinksBuilder;
+use App\Search\LengthPrefixExtensionLinksBuilder;
+use App\Search\LengthSuffixExtensionLinksBuilder;
 use App\Search\LetterCombinedLinksBuilder;
 use App\Search\Normalizer;
 use App\Search\PositionLinksBuilder;
@@ -540,6 +542,18 @@ if ($path === '/mots' || preg_match('#^/mots(/.*)$#u', $path, $matches) === 1) {
         default => null,
     };
 
+    // D-044 : meme garde ($isLengthPlusSingle*Only, deja calculee ci-dessus) que
+    // $lengthCombinedLinks -- une page "longueur + prefixe/suffixe d'UNE lettre" affiche
+    // maintenant AUSSI l'entonnoir vers ses extensions de 2 lettres (volume de recherche
+    // reel mesure sur cette forme, voir docs/DECISIONS.md D-044).
+    $lengthPrefixExtensionLinks = $isLengthPlusSinglePrefixOnly
+        ? (new LengthPrefixExtensionLinksBuilder($connection))->build($filters->length, $filters->prefix)
+        : null;
+
+    $lengthSuffixExtensionLinks = $isLengthPlusSingleSuffixOnly
+        ? (new LengthSuffixExtensionLinksBuilder($connection))->build($filters->length, $filters->suffix)
+        : null;
+
     $startEndWithLinks = $isBarePrefixSuffixPair
         ? (new StartEndWithLinksBuilder($connection))->build($filters->prefix, $filters->suffix)
         : null;
@@ -568,6 +582,8 @@ if ($path === '/mots' || preg_match('#^/mots(/.*)$#u', $path, $matches) === 1) {
         'prefixExtensionLinks' => $prefixExtensionLinks,
         'suffixExtensionLinks' => $suffixExtensionLinks,
         'lengthCombinedLinks' => $lengthCombinedLinks,
+        'lengthPrefixExtensionLinks' => $lengthPrefixExtensionLinks,
+        'lengthSuffixExtensionLinks' => $lengthSuffixExtensionLinks,
         'startEndWithLinks' => $startEndWithLinks,
         'positionLinks' => $positionLinks,
         'avecTwoLettersLinks' => $avecTwoLettersLinks,
