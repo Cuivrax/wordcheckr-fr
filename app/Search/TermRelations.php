@@ -5,11 +5,12 @@ declare(strict_types=1);
 namespace App\Search;
 
 /**
- * Relations de la fiche mot /mot/{mot} (Phase 4, docs/08), pour un mot ADMIS uniquement
- * (RelationsFinder::find() n'est appele que si TermPage::$status === STATUS_ADMITTED --
- * un mot inconnu ou francais non admis n'a pas de relations calculees, cout zero pour ces
- * deux statuts). Consomme par la couche de rendu (app/View/, hors perimetre de cet agent) --
- * structure prete a rendre, meme principe que TermPage/RackPage/WordListPage.
+ * Relations de la fiche mot /mot/{mot} (Phase 4, docs/08), pour tout mot TROUVE -- admis ou
+ * francais non admis (D-050, 2026-09-01 : RelationsFinder::find() est desormais appele des que
+ * TermPage::$found est vrai, plus seulement pour STATUS_ADMITTED -- un mot inconnu n'a
+ * toujours pas de relations calculees, cout zero pour ce seul statut). Consomme par la couche
+ * de rendu (app/View/, hors perimetre de cet agent) -- structure prete a rendre, meme principe
+ * que TermPage/RackPage/WordListPage.
  *
  * Dix categories (docs/01_MASTER_BRIEF.md, definitions precisees par docs/08) :
  *

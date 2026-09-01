@@ -4194,3 +4194,76 @@ MESURE REELLE FAITE APRES DEPLOIEMENT (2026-09-01, engagement de suivi ferme) : 
   palier 4 du sitemap a ce stade. A resurveiller si des pics reapparaissent sous charge reelle
   (plusieurs workers concurrents, pas simule ici), mais pas d'action immediate necessaire.
 ```
+
+## D-050 — `RelationsFinder` Étendu Aux Mots Français Non Admis (Même Défaut Que Le Dépôt Espagnol Cousin, ES-047)
+
+Date : 2026-09-01
+Statut : accepté et appliqué
+
+Contexte :
+
+```text
+en verifiant si des trouvailles du depot espagnol cousin (ES) s'appliquaient a FR (demande
+  explicite utilisateur, "regarde ce qu'on fait ES et DE... si des problemes qu'on n'a pas vu
+  existent sur FR"), lecture de ES-047 (docs/DECISIONS.md du depot ES) : le meme defaut y avait
+  ete trouve et corrige -- App\Search\RelationsFinder (10 categories de "mots lies" : anagrammes,
+  changer une lettre, rallonges, sous-mots...) n'etait appele que pour un mot ADMIS
+  ($page->status === TermPage::STATUS_ADMITTED), jamais pour un mot francais reel mais NON
+  admis. Verifie directement sur pieces (pas suppose par analogie) : public/index.php:249 avait
+  EXACTEMENT la meme garde chez nous, avec le meme commentaire premisse ("elles n'auraient
+  aucun sens produit").
+```
+
+Décision :
+
+```text
+Meme decision produit qu'ES-047 : la premisse "aucun sens produit pour un mot non admis" est
+  fausse -- deja infirmee sur ce depot par D-018/D-043 (Conjugation/SenseLookup calcules pour
+  "tout mot TROUVE, admis ou non", "un mot francais non admis merite aussi sa definition") --
+  RelationsFinder n'avait simplement jamais recu le meme traitement.
+
+Verification AVANT application (jamais suppose) :
+  - App\Search\RelationsFinder.php : aucune de ses 5 requetes ne filtre sur le mot SOURCE,
+    uniquement sur les mots CIBLES retournes (deja is_ods8=1 OR is_ods9=1 -- on ne suggere
+    jamais un mot non jouable comme relation). Architecture deja sure pour ce changement.
+  - Budget requetes recalcule (pas seulement porte depuis ES, la fiche FR a des composants
+    qu'ES n'a pas -- Conjugation/Sense) : TermLookup=2 (lookup + precedent/suivant fusionnes,
+    D-043) + Conjugation=1 (D-018) + Sense=1 (D-043) + Relations=5 = 9 requetes pour TOUT mot
+    trouve desormais, IDENTIQUE au budget deja mesure et accepte pour un mot admis -- toujours
+    sous "moins de 10" (CLAUDE.md). Etait 4 (2+1+1, Relations sautees) pour un mot non admis
+    avant ce correctif.
+  - Mesure reelle (5 mots non admis aleatoires, storage/dictionary_fr.sqlite) : 9 requetes
+    confirmees sur chacun, timing 4,01 a 113,09 ms (dispersion liee au mot precis, pas au
+    statut -- meme constat qu'ES-047).
+
+Correctif applique :
+  - public/index.php:249 : garde remplacee de `$page->status === TermPage::STATUS_ADMITTED`
+    a `$page->found` (vrai pour ADMIS et francais non admis, faux pour "inconnu" seulement --
+    RelationsFinder reste hors de portee d'un mot inconnu, chaine arbitraire non bornee, cout
+    potentiellement eleve pour zero valeur produit puisqu'aucune ligne registre SEO n'existe
+    pour un mot inconnu de toute facon).
+  - Docblocks perimes corriges sur pieces (pas juste le code) : app/Search/RelationsFinder.php
+    (2 endroits), app/Search/TermRelations.php, app/View/word.php (2 endroits) -- tous
+    affirmaient encore "calcule uniquement pour un mot admis", la vue elle-meme etait deja
+    agnostique (if ($relations !== null), jamais un test sur le statut), seuls les commentaires
+    etaient perimes -- meme constat qu'ES-047 sur son propre depot.
+  - Verifie en direct (serveur local, curl reel) : GET /mot/ghoster (GHOSTER, francais non
+    admis, l'exemple de remplacement de QUEULEULEU deja etabli sur ce depot) -> 200, contient
+    desormais `class="relations"` et "Recherches Liées" dans le HTML rendu.
+  - tests/Frontend/WordViewTest.php reverifie apres coup : toujours vert -- ce test couvre le
+    rendu de la VUE etant donne $relations (null ou non), independant de la decision du routeur
+    sur QUAND le passer, donc non affecte par ce changement (deja explicitement documente dans
+    son propre en-tete comme hors de son perimetre).
+
+Portée : les 435 120 fiches `word_french_not_admitted` (deja index,follow depuis D-017) emettent
+  desormais un veritable maillage de "mots lies" (anagrammes, rallonges, sous-mots, recherches
+  liees startsWith/endsWith/length/with/play) -- gain de maillage interne bien plus large que le
+  cas K/W isole trouve sur ES (structurellement, ce depot n'a pas d'equivalent K/W -- toutes les
+  lettres francaises ont des mots admis -- mais le meme defaut de fond, "maillage sortant jamais
+  calcule pour un mot non admis", touchait 435 120 pages ici, pas 2).
+
+Non fait a ce stade : pas de nouveau balayage d'orphelines dedie (le point ouvert deja signale
+  dans docs/PHASE_STATUS.md, audit inbound/orphelines jamais fait sur ce depot, reste ouvert et
+  sans rapport direct avec ce correctif precis -- celui-ci AJOUTE du maillage sortant, il ne
+  peut par construction jamais en retirer).
+```

@@ -242,11 +242,18 @@ if (preg_match('#^/mot/([^/]+)$#u', $path, $matches) === 1) {
     }
 
     // Relations (Phase 4, docs/08, agent data-engine) : 5 requetes indexees
-    // supplementaires (App\Search\RelationsFinder), uniquement pour un mot
-    // effectivement admis -- jamais calculees pour "francais non admis" ou
-    // "inconnu", ou elles n'auraient aucun sens produit. null sinon, la vue
-    // ne rend alors aucune section de relations (voir reports/query-plans/phase4.md).
-    $relations = $page->status === TermPage::STATUS_ADMITTED
+    // supplementaires (App\Search\RelationsFinder), pour tout mot TROUVE (admis ou
+    // francais non admis) -- CORRECTIF D-050 (2026-09-01, meme defaut trouve et
+    // corrige sur le depot espagnol cousin, ES-047) : la premisse "aucun sens
+    // produit" pour un mot non admis etait fausse, decision produit deja actee
+    // (D-018/D-043 : "deux questions symetriques", un mot non admis merite le
+    // meme maillage qu'un mot admis). Jamais pour "inconnu" ($page->found faux,
+    // RelationsFinder ne filtre que sur les CIBLES retournees, jamais sur le mot
+    // source -- verifie directement dans RelationsFinder.php avant ce changement).
+    // Budget : 2(TermLookup)+1(Conjugation)+1(Sense)+5(Relations)=9 requetes pour
+    // TOUT mot trouve desormais (admis ou non), identique au budget deja mesure
+    // et accepte pour un mot admis -- toujours sous "moins de 10" (CLAUDE.md).
+    $relations = $page->found
         ? (new RelationsFinder($connection))->find($page->normalized)
         : null;
 

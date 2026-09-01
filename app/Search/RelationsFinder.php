@@ -8,19 +8,26 @@ use App\Database\Connection;
 
 /**
  * Relations de la fiche mot /mot/{mot} (Phase 4, docs/08) -- dix categories definies par
- * docs/01_MASTER_BRIEF.md et precisees par docs/08, calculees UNIQUEMENT pour un mot ADMIS
- * (le routeur n'appelle find() que si TermPage::$status === TermPage::STATUS_ADMITTED ;
- * cette classe elle-meme ne verifie pas le statut, elle fait confiance a l'appelant --
- * meme division des responsabilites que RackSolver/WordListSolver, qui ne verifient pas non
- * plus l'origine de leurs entrees deja normalisees).
+ * docs/01_MASTER_BRIEF.md et precisees par docs/08, calculees pour TOUT mot TROUVE (admis ou
+ * francais non admis -- CORRECTIF D-050, 2026-09-01, meme defaut trouve et corrige sur le
+ * depot espagnol cousin ES-047 : la premisse "aucun sens produit pour un mot non admis" etait
+ * fausse, la meme decision produit deja actee pour Conjugation/SenseLookup D-018/D-043
+ * s'applique ici aussi). Le routeur n'appelle find() que si TermPage::$found est vrai (jamais
+ * pour "inconnu") ; cette classe elle-meme ne verifie pas le statut du mot SOURCE, elle fait
+ * confiance a l'appelant -- meme division des responsabilites que RackSolver/WordListSolver.
+ * Aucune des 5 requetes ci-dessous ne filtre sur le mot source, uniquement sur les mots CIBLES
+ * retournes (deja is_ods8=1 OR is_ods9=1 -- on ne suggere jamais un mot non jouable comme
+ * relation), verifie avant d'etendre le perimetre plutot que suppose.
  *
  * ## Budget -- chiffre avant implementation (reports/query-plans/phase4.md pour le detail)
  *
- * La fiche complete (TermLookup::find() + RelationsFinder::find()) tient a 8 requetes
- * SQLite indexees, sous le plafond de moins de 10 (CLAUDE.md) :
+ * La fiche complete (TermLookup::find() + Conjugation + Sense + RelationsFinder::find()) tient
+ * a 9 requetes SQLite indexees pour tout mot trouve, sous le plafond de moins de 10 (CLAUDE.md) :
  *
- *   TermLookup::find()   3 requetes (lookup, precedent, suivant -- Phase 1, inchange)
- *   RelationsFinder      5 requetes pour un mot admis, 0 pour un mot non admis/inconnu
+ *   TermLookup::find()   2 requetes (lookup, precedent+suivant fusionnes -- D-043)
+ *   ConjugationLookup    1 requete (D-018, tout mot trouve)
+ *   SenseLookup          1 requete (D-043, tout mot trouve)
+ *   RelationsFinder      5 requetes pour tout mot trouve (D-050), 0 pour un mot inconnu
  *
  * Sans regroupement, les dix categories auraient coute 9 a 10 requetes a elles seules (une
  * par categorie), ce qui aurait fait depasser le budget total des 2026-08-03. Deux
@@ -127,10 +134,10 @@ final class RelationsFinder
     }
 
     /**
-     * Calcule les relations d'un mot ADMIS deja normalise (A-Z, 2 a 15 lettres). L'appelant
-     * (routeur) garantit ce prealable en n'invoquant find() que pour TermPage::STATUS_ADMITTED
-     * -- meme convention que RackSolver/WordListSolver, qui font confiance a une entree deja
-     * validee par la couche appelante plutot que de revalider.
+     * Calcule les relations d'un mot TROUVE deja normalise (A-Z, 2 a 15 lettres), admis ou
+     * francais non admis (D-050). L'appelant (routeur) garantit ce prealable en n'invoquant
+     * find() que pour TermPage::$found -- meme convention que RackSolver/WordListSolver, qui
+     * font confiance a une entree deja validee par la couche appelante plutot que de revalider.
      */
     public function find(string $normalized): TermRelations
     {

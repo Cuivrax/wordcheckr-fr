@@ -5,9 +5,10 @@ declare(strict_types=1);
 /**
  * Vue fiche mot, appelee par public/index.php avec $page (App\Search\TermPage),
  * $relations (App\Search\TermRelations|null, Phase 4) et $conjugation
- * (App\Search\Conjugation, D-018). $relations est null des que le mot n'est pas
- * effectivement admis (francais non admis ou inconnu) -- aucune section relations n'est
- * alors rendue (aucune section vide, docs/01_MASTER_BRIEF.md).
+ * (App\Search\Conjugation, D-018). $relations est null uniquement pour un mot inconnu
+ * (D-050, 2026-09-01 : calcule desormais pour tout mot TROUVE, admis ou francais non
+ * admis, meme correctif que le depot espagnol cousin ES-047) -- aucune section relations
+ * n'est alors rendue (aucune section vide, docs/01_MASTER_BRIEF.md).
  *
  * Le statut est ferme a trois valeurs (CLAUDE.md) : admitted / french_not_admitted /
  * unknown. Les deux premieres phrases de reponse directe reprennent le texte exact
@@ -89,10 +90,10 @@ $statusMeta = match ($page->status) {
 $letterList = implode(' + ', array_column($page->letters, 'letter'));
 $tilesAriaLabel = sprintf('%s, total %d points', $letterList, $page->score);
 
-// Relations (Phase 4) : construites uniquement si $relations !== null (mot effectivement
-// admis, voir doc de tete). Tout le calcul est de la simple comparaison de chaines et de la
-// construction d'URL deja etablie ailleurs (WordListFilters) -- aucune requete, aucune
-// logique metier nouvelle.
+// Relations (Phase 4) : construites uniquement si $relations !== null (mot TROUVE, voir doc
+// de tete -- plus reserve aux seuls mots admis depuis D-050). Tout le calcul est de la simple
+// comparaison de chaines et de la construction d'URL deja etablie ailleurs (WordListFilters)
+// -- aucune requete, aucune logique metier nouvelle.
 $relationCategories = [];
 $relatedLabel = null;
 

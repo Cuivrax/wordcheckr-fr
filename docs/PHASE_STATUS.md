@@ -125,8 +125,10 @@ Phase 3  contraintes de recherche           /mots/...
          d'une approche bornée sur les index existants
 Phase 4  fiches riches (relations)          10 catégories sur /mot/{mot}
          budget mesuré et tenu : 9 requêtes dictionnaire + 1 registre SEO
-         pour un mot admis, 4 + 1 pour un français non admis (< 10 par base,
-         voir D-003 pour la convention de comptage entre les deux bases)
+         pour tout mot TROUVE (admis ou français non admis, D-050 — était
+         4 + 1 pour un français non admis avant D-050, relations jamais
+         calculées), toujours < 10 par base (voir D-003 pour la convention
+         de comptage entre les deux bases)
 Phase 5  autocomplétion                     GET /api/suggest, combobox ARIA
 Phase 6  registre SEO                       storage/seo_fr.sqlite, D-017
          838 248 URL en index,follow (403 060 admis + 435 120 français non
