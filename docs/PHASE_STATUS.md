@@ -37,7 +37,15 @@ ouverture longueur+préfixe/suffixe 1 et 2 lettres — 924 408 → 931 763 URL, 
 PRODUCTION sur wordcheckr.fr, confirmation explicite de l'utilisateur après tests verts ;
 D-043, définitions lexicales pilote intégré, 42/42 tests ; D-042, domaine wordcheckr.fr
 fixé ; D-041, correctif C-4 appliqué en production).
-D-045 à D-048 NON ENCORE DÉPLOYÉS sur o2switch (seul D-044 est en production à ce stade).
+D-045 À D-049QUATER DÉPLOYÉS SUR O2SWITCH le 2026-09-01 (code via git archive, les deux bases
+storage/dictionary_fr.sqlite et storage/seo_fr.sqlite via scp + bascule atomique, intégrité
+vérifiée sur les deux avant bascule). Registre en production : 1 162 936 lignes, 1 132 207 en
+index,follow. Routes témoins vérifiées 200 en direct sur https://www.wordcheckr.fr (/, /mot/,
+/mots/7-lettres, /sitemap-index.xml, /mots/avec/a/b/c/d, storage/ toujours 404). TTFB réel
+mesuré post-déploiement : 199-242ms sur 7/8 échantillons après stabilisation du cache (voir
+D-049quater pour le détail complet, y compris la variance initiale liée au cache froid juste
+après bascule). Balayage de nettoyage (scripts/build_avec_bare_candidates.php) terminé avant
+déploiement — plus de reliquat non testé.
 
 D-049 APPLIQUÉ ET CORRIGÉ (2026-09-01) : "avec" SANS AUCUN ancrage (BARE, ni longueur ni préfixe
 ni suffixe) — demande produit explicite, preuve de volume réel Semrush. Convention de nom `BARE`

@@ -4005,6 +4005,16 @@ Date : 2026-09-01
 Statut : deux bloquants corriges et re-verifies independamment, un troisieme tranche par decision
   produit explicite (revision D-019 ci-dessous)
 
+NOTE DE CHIFFRES PERIMES (ajoutee apres coup, deploiement) : les comptes "1 132 295 en
+  index,follow" cites plusieurs fois ci-dessous etaient exacts AU MOMENT de la redaction de
+  cette entree, avant que le balayage de nettoyage en fond (D-049) n'atteigne sa toute derniere
+  passe. Ce balayage a fini par trouver 193 doublons externes et 60 doublons soeurs
+  supplementaires sur le reliquat (au-dela des 323 parents deja captes par C-2 ci-dessous),
+  remplacant les 165 quarantaines de C-3 par une resolution complete et definitive. Chiffre
+  FINAL reellement deploye (verifie sur le registre reel apres reapplication des 4 lots avec
+  la resolution complete) : **1 132 207** en index,follow (pas 1 132 295) -- voir D-049quater
+  pour la suite complete et le chiffre juste.
+
 Contexte :
 
 ```text
@@ -4170,4 +4180,17 @@ VERIFICATION AVANT ET APRES RECONSTRUCTION COMPLETE (meme discipline que Phase 0
 Non fait : re-mesure en conditions de production reelles (o2switch, workers concurrents) --
   reste l'engagement de suivi de D-049ter, ce correctif REDUIT le cout mesure mais ne leve pas
   le constat CLAUDE.md (scan complet toujours present, juste moins couteux par ligne examinee).
+
+MESURE REELLE FAITE APRES DEPLOIEMENT (2026-09-01, engagement de suivi ferme) : TTFB mesure
+  depuis la machine de dev vers https://www.wordcheckr.fr (inclut la latence reseau reelle,
+  pas seulement le temps serveur -- meme methodologie que le rapport de deploiement D-043).
+  Premiere serie juste apres bascule des bases (cache OS/SQLite froid sur des fichiers de
+  729 Mo fraichement remplaces) : 192-747 ms, forte variance. Comparaison immediate avec une
+  page SANS aucun rapport avec "avec nue" (/mot/bonjour, ancree normalized) : 186-283 ms, MEME
+  ordre de variance -- pas specifique au scan complet, plutot un effet de cache froid post-
+  bascule. Reverifie apres stabilisation (8 mesures, page palier 4 "avec nue") : 199-242 ms sur
+  7/8, un seul pic a 331 ms -- dans le budget CLAUDE.md (p95 < 250 ms) sur l'echantillon.
+  CONCLUSION : le correctif letter_mask suffit en pratique, aucune raison de retirer le
+  palier 4 du sitemap a ce stade. A resurveiller si des pics reapparaissent sous charge reelle
+  (plusieurs workers concurrents, pas simule ici), mais pas d'action immediate necessaire.
 ```
