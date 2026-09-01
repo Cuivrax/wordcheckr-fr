@@ -17,6 +17,13 @@ use App\Database\Connection;
  */
 final class PositionLinksBuilder
 {
+    // CORRECTIF PERF (2026-09-01, meme pattern que AvecFourLettersLinksBuilder) : in_array($key,
+    // self::EXTERNAL_DUPLICATE_KEYS, true) est un parcours lineaire relance a CHAQUE ligne
+    // list_counts examinee dans build() (et aussi referencee depuis LengthLinksBuilder). Table
+    // de hachage calculee UNE FOIS par process (cache statique), lookup O(1) au lieu de O(n) --
+    // aucun changement de contenu.
+    private static ?array $externalDuplicateKeySet = null;
+
     /**
      * Doublons de contenu CROISÉS avec une famille EXTÉRIEURE à "position" (D-041, garde-fou
      * structurel demandé par le constat C-4 du 4e audit consolidé, docs/DECISIONS.md D-040) --
@@ -45,9 +52,22 @@ final class PositionLinksBuilder
      * Liste figée : valable pour l'état actuel de storage/dictionary_fr.sqlite (838 180 termes,
      * inchangé depuis D-022). Une reconstruction future de la base devra revalider cette liste.
      *
+     * COMPLÉTÉE PAR D-047 (2026-08-31, balayage générique post-D-045/D-046) : +22 clés
+     * supplémentaires (extraites directement du lot storage/seo_fr.sqlite/word_list_position déjà
+     * appliqué au registre, toutes perdantes face à commençant/terminant). Découverte tardive :
+     * ce lot avait été appliqué au registre réel dès sa découverte mais laissait ce builder (et
+     * App\Search\LengthLinksBuilder::byPosition, qui référence cette même constante) générer des
+     * liens internes VIVANTS vers ces pages devenues noindex,follow (violation R5, confirmée en
+     * direct via HTTP avant correctif : /mots/10-lettres liait vers
+     * /mots/10-lettres/position/9/q, noindex depuis D-047). Voir docs/DECISIONS.md D-047/D-048.
+     *
      * @var list<string>
      */
-    public const EXTERNAL_DUPLICATE_KEYS = ['13:W:10', '15:W:10'];
+    public const EXTERNAL_DUPLICATE_KEYS = [
+        '10:Q:9', '11:Q:10', '12:Q:11', '12:Z:11', '13:W:10', '13:X:12', '13:Z:12', '14:B:13',
+        '14:F:13', '14:J:2', '14:K:13', '14:P:13', '14:V:13', '14:W:10', '14:X:13', '15:F:14',
+        '15:H:14', '15:K:14', '15:K:2', '15:P:14', '15:V:14', '15:W:10', '5:Q:4', '7:Q:6',
+    ];
 
     public function __construct(
         private readonly Connection $connection,
@@ -61,12 +81,14 @@ final class PositionLinksBuilder
         );
         $statement->execute([$length . ':' . $letter . ':%']);
 
+        self::$externalDuplicateKeySet ??= array_flip(self::EXTERNAL_DUPLICATE_KEYS);
+
         $links = [];
 
         foreach ($statement as $row) {
             $key = (string) $row['list_key'];
 
-            if (in_array($key, self::EXTERNAL_DUPLICATE_KEYS, true)) {
+            if (isset(self::$externalDuplicateKeySet[$key])) {
                 continue;
             }
 

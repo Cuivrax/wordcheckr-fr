@@ -28,6 +28,19 @@ CREATE TABLE terms (
     signature    TEXT    NOT NULL,
     reversed     TEXT    NOT NULL,
 
+    -- Masque de bits (26 bits, un par lettre A-Z presente dans `normalized`) -- D-049quater,
+    -- correctif structurel pour la famille "avec nue" (D-049) : sans prefixe/longueur/suffixe
+    -- ancrable, une contrainte "avec X, Y, Z" ne peut jamais eviter un parcours des 838 180
+    -- lignes (aucune plage de tri exploitable, contrairement a normalized/reversed) -- mais UN
+    -- ET binaire sur un entier est mesure ~2x moins cher qu'une chaine de instr() (49 ms contre
+    -- 112-152 ms sur 4 cas representatifs, voir docs/DECISIONS.md D-049quater). Reste un SCAN
+    -- (l'interdit CLAUDE.md n'est pas leve), simplement moins couteux -- alternative table de
+    -- postings (une ligne par lettre/mot) mesuree et ECARTEE dans le meme correctif : plus lente
+    -- que l'actuel sur les lettres frequentes (253 ms sur E+I+O+U) et +553 Mo, reproduit
+    -- exactement le constat deja fait sur les postings generaux (355 Mo, toujours trop lent,
+    -- D-012/Phase 3).
+    letter_mask  INTEGER NOT NULL,
+
     -- D-018 : nature grammaticale et genre, sur CHAQUE terme (admis ou non), independants
     -- du statut Scrabble. Source : data/raw/french_dict.db (Kartmaan), colonnes pos/gender,
     -- lignes NP et locutions exclues (meme regle que le filtre d'import francais). NULL si
@@ -67,6 +80,11 @@ CREATE INDEX idx_terms_length_normalized ON terms(length, normalized);
 
 -- Anagrammes exactes, et point de départ des anagrammes ±1 lettre.
 CREATE INDEX idx_terms_signature ON terms(signature);
+
+-- "avec nue" (D-049) : aucun ancrage indexable disponible, ce SCAN reste un SCAN quel que soit
+-- l'index -- letter_mask couvre juste normalized/score/length/is_ods8/is_ods9 pour eviter un
+-- lookup ligne par ligne en plus du parcours (meme principe que idx_terms_reversed_covering).
+CREATE INDEX idx_terms_letter_mask ON terms(letter_mask, normalized, score, length, is_ods8, is_ods9);
 
 -- Suffixes : /mots/terminant/tion interroge reversed par PLAGE, jamais par LIKE.
 --
@@ -409,7 +427,7 @@ CREATE INDEX idx_word_senses_term ON word_senses(term_normalized);
 -- Alimente une famille entierement nouvelle, Family::WORD_LIST_TERMINANT_WITH_LETTER (et ses
 -- paliers 2/3), absente du site jusqu'ici (constat explicite du produit, 2026-08-31).
 CREATE TABLE list_counts (
-    list_type TEXT    NOT NULL CHECK (list_type IN ('length', 'start', 'end', 'length_start', 'length_end', 'length_with', 'start_end', 'length_with_position', 'length_avec_sans', 'length_start_end', 'length_with_pair', 'length_with_triple', 'start_end_with', 'start_with', 'prefix2', 'prefix3', 'prefix4', 'suffix2', 'suffix3', 'suffix4', 'length_prefix2', 'length_suffix2', 'start_with_pair', 'start_with_triple', 'end_with', 'end_with_pair', 'end_with_triple')),
+    list_type TEXT    NOT NULL CHECK (list_type IN ('length', 'start', 'end', 'length_start', 'length_end', 'length_with', 'start_end', 'length_with_position', 'length_avec_sans', 'length_start_end', 'length_with_pair', 'length_with_triple', 'start_end_with', 'start_with', 'prefix2', 'prefix3', 'prefix4', 'suffix2', 'suffix3', 'suffix4', 'length_prefix2', 'length_suffix2', 'start_with_pair', 'start_with_triple', 'end_with', 'end_with_pair', 'end_with_triple', 'length_with_quad', 'avec_bare', 'avec_bare_pair', 'avec_bare_triple', 'avec_bare_quad')),
     list_key  TEXT    NOT NULL,
     count     INTEGER NOT NULL,
 

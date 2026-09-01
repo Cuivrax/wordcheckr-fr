@@ -13,7 +13,7 @@ Ordre de fusion, conforme à docs/03_SOURCES_ET_IMPORT_DATA.md §4 :
     3. retraits ODS9                 is_ods9 = 0
     4. keep_overrides ODS9           is_ods9 = 1
     5. additions ODS9                is_ods9 = 1, is_ods8 = 0 si absent d'ODS8
-    6. score, length, signature, reversed
+    6. score, length, signature, reversed, letter_mask
     7. index, ANALYZE, VACUUM, integrity_check
     8. rapports
 
@@ -39,6 +39,7 @@ from lib.normalize import (  # noqa: E402
     MAX_LENGTH,
     MIN_LENGTH,
     is_valid,
+    letter_mask,
     normalize,
     reverse,
     score,
@@ -719,6 +720,7 @@ def write_database(
                 len(normalized),
                 signature(normalized),
                 reverse(normalized),
+                letter_mask(normalized),
                 pos_gender.get(normalized, {}).get("pos"),
                 pos_gender.get(normalized, {}).get("pos_secondary"),
                 pos_gender.get(normalized, {}).get("gender"),
@@ -727,8 +729,9 @@ def write_database(
         )
         connection.executemany(
             "INSERT INTO terms (id, display_term, normalized, is_french, is_ods8,"
-            " is_ods9, is_admitted, score, length, signature, reversed, pos, pos_secondary, gender)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " is_ods9, is_admitted, score, length, signature, reversed, letter_mask, pos,"
+            " pos_secondary, gender)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             rows,
         )
         connection.executemany(

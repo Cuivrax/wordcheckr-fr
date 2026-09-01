@@ -35,6 +35,11 @@ final class Family
     public const WORD_LIST_AVEC_SINGLE_LETTER = 'word_list_avec_single_letter';
     public const WORD_LIST_AVEC_TWO_LETTERS = 'word_list_avec_two_letters';
     public const WORD_LIST_AVEC_THREE_LETTERS = 'word_list_avec_three_letters';
+    public const WORD_LIST_AVEC_FOUR_LETTERS = 'word_list_avec_four_letters';
+    public const WORD_LIST_AVEC_BARE_SINGLE_LETTER = 'word_list_avec_bare_single_letter';
+    public const WORD_LIST_AVEC_BARE_TWO_LETTERS = 'word_list_avec_bare_two_letters';
+    public const WORD_LIST_AVEC_BARE_THREE_LETTERS = 'word_list_avec_bare_three_letters';
+    public const WORD_LIST_AVEC_BARE_FOUR_LETTERS = 'word_list_avec_bare_four_letters';
     public const WORD_LIST_COMBINED_WITH_LETTER = 'word_list_combined_with_letter';
     public const WORD_LIST_COMMENCANT_WITH_LETTER = 'word_list_commencant_with_letter';
     public const WORD_LIST_COMMENCANT_WITH_TWO_LETTERS = 'word_list_commencant_with_two_letters';
@@ -61,6 +66,11 @@ final class Family
         self::WORD_LIST_AVEC_SINGLE_LETTER,
         self::WORD_LIST_AVEC_TWO_LETTERS,
         self::WORD_LIST_AVEC_THREE_LETTERS,
+        self::WORD_LIST_AVEC_FOUR_LETTERS,
+        self::WORD_LIST_AVEC_BARE_SINGLE_LETTER,
+        self::WORD_LIST_AVEC_BARE_TWO_LETTERS,
+        self::WORD_LIST_AVEC_BARE_THREE_LETTERS,
+        self::WORD_LIST_AVEC_BARE_FOUR_LETTERS,
         self::WORD_LIST_COMBINED_WITH_LETTER,
         self::WORD_LIST_COMMENCANT_WITH_LETTER,
         self::WORD_LIST_COMMENCANT_WITH_TWO_LETTERS,
@@ -227,6 +237,65 @@ final class Family
      * jamais réutiliser WORD_LIST_AVEC_THREE_LETTERS pour un périmètre plus large, même discipline
      * que les avertissements déjà posés ci-dessus pour WORD_LIST_COMBINED et
      * WORD_LIST_AVEC_SINGLE_LETTER.
+     *
+     * WORD_LIST_AVEC_FOUR_LETTERS (D-048, demande produit explicite du 2026-08-31) : PALIER 4,
+     * exactement comme annoncé par l'avertissement ci-dessus -- longueur + exactement QUATRE
+     * lettres "avec" distinctes (`list_counts`, list_type `length_with_quad`, précalculé par
+     * scripts/build_explore_hub_counts.php). Route : `/mots/{N}-lettres/avec/{W}/{X}/{Y}/{Z}`,
+     * lettres alphabétiquement ordonnées. Combinatoire maximale : 14 longueurs × C(26,4) =
+     * 209 300 lignes brutes. Maillage : App\Search\AvecFourLettersLinksBuilder, depuis les pages
+     * palier 3 déjà indexées (chaîne à quatre sauts : longueur → avec 1 → avec 2 → avec 3 →
+     * avec 4). Détection des doublons (parent + sœurs) et mesure de performance : voir
+     * docs/DECISIONS.md D-048 pour le détail complet et les chiffres réels.
+     *
+     * WORD_LIST_AVEC_BARE_SINGLE_LETTER/TWO_LETTERS/THREE_LETTERS/FOUR_LETTERS (D-049, demande
+     * produit explicite du 2026-09-01, preuve de volume réel Semrush) : "avec/{X}[/{Y}[/{Z}
+     * [/{W}]]]" SANS AUCUN autre ancrage (ni longueur, ni préfixe, ni suffixe) — DISTINCT en
+     * permanence des quatre paliers WORD_LIST_AVEC_SINGLE_LETTER/TWO_LETTERS/THREE_LETTERS/
+     * FOUR_LETTERS ci-dessus, qui portent TOUJOURS une longueur explicite (route
+     * `/mots/{N}-lettres/avec/...`, vérifié en direct sur le registre avant d'écrire cette note
+     * — ne pas confondre les deux). Convention de nom `BARE` alignée avec le dépôt allemand
+     * cousin (D-DE-040/D-DE-046, déjà en production sur ce nom exact au moment de cette
+     * décision) — ne jamais renommer sans revalider la convention inter-dépôts. Ce cas "nu" est
+     * le plus dangereux structurellement : App\Search\WordListSolver n'a AUCUN ancrage indexé
+     * pour filtrer avant de scanner `normalized` dans son intégralité (contrairement au cas avec
+     * longueur, ancré sur `length`) — raison originelle du refus D-012/D-019 pour WORD_LIST_AVEC
+     * générique (multiensemble, ci-dessous, reste et restera dans NEVER_SITEMAP).
+     *
+     * Combinatoire : C(26,1)=26, C(26,2)=325, C(26,3)=2 600, C(26,4)=14 950 combinaisons au plus
+     * par palier — `list_counts`, list_type `avec_bare`/`avec_bare_pair`/`avec_bare_triple`/
+     * `avec_bare_quad`, DÉRIVÉ par somme des `list_type` `length_with`/`length_with_pair`/
+     * `length_with_triple`/`length_with_quad` déjà précalculés sur les 14 longueurs (un mot a
+     * exactement une longueur, jamais deux — la somme "toutes longueurs" est mathématiquement
+     * exacte), jamais un second parcours de `terms` (scripts/build_explore_hub_counts.php).
+     * Mesure de performance PROPRE (WordListSolver::solve() direct, 2026-09-01, aucune
+     * contention inter-session confirmée par compteurs CPU avant/après) : palier 1 = 26/26
+     * combinaisons réelles, 0/26 au-dessus du budget TTFB p95 < 250 ms (p95 = 119,7 ms, max =
+     * 137,6 ms) ; palier 2 = 325/325, 1/325 au-dessus (F:V, 263,6 ms) ; palier 3 = 2 575/2 575,
+     * 53/2 575 au-dessus (p95 = 199,5 ms, max = 394,5 ms) ; palier 4 = 13 672/13 672 combinaisons
+     * réelles (balayage complet en cours au moment de la rédaction — voir docs/DECISIONS.md
+     * D-049 pour les chiffres finaux et la liste figée par builder). Exclusion candidat par
+     * candidat via une NOUVELLE constante `OVER_BUDGET_KEYS` (mécanisme de code identique à
+     * `EXTERNAL_DUPLICATE_KEYS` ailleurs sur ce dépôt, raison différente : performance mesurée,
+     * pas doublon de contenu), même nom que le dépôt allemand cousin.
+     *
+     * Détection de doublons de CONTENU (indépendante de la performance ci-dessus) : palier 2
+     * PARENT (vs palier 1) 0/325, SOEURS 0/325 — entièrement propre. Palier 3, chiffres FINAUX
+     * (corrige une mesure préliminaire obsolète laissée ici, trouvé et corrigé par l'audit
+     * seo-technical-auditor du 2026-09-01, I-2) : PARENT (vs palier 2) 3/2 575, EXTERNAL
+     * (croisé toutes familles) 44/2 575, SOEURS 0/2 575 — le contrôle sœur préliminaire avait
+     * trouvé 3 paires candidates avant que le contrôle externe complet ne tourne ; les deux
+     * membres de chaque paire se sont révélés être ÉGALEMENT des doublons croisés avec une
+     * famille externe, absorbés dans les 44 externes plutôt que résolus entre eux — 0 sœur pure
+     * survivante, `AvecBareThreeLettersLinksBuilder::SIBLING_DUPLICATE_KEYS` vide à raison. Total
+     * palier 3 : 47/2 575 exclus, 2 528 index,follow. Palier 4 : voir docs/DECISIONS.md D-049.
+     *
+     * Point d'entrée : App\Search\ExploreHub::$byWith (hub /mots, D-049) — AUCUNE page "avec
+     * longueur" parente n'existe pour ce cas bare, contrairement aux quatre paliers longueur+avec
+     * ci-dessus, donc le hub lui-même doit porter la grille du palier 1 (même précédent que le
+     * dépôt allemand cousin, D-DE-040). Puis chaîne standard palier1→2→3→4 via
+     * App\Search\AvecBareTwoLettersLinksBuilder/AvecBareThreeLettersLinksBuilder/
+     * AvecBareFourLettersLinksBuilder.
      *
      * WORD_LIST_COMBINED_WITH_LETTER (demande produit du 2026-08-18, maillage/mesure de
      * performance déjà faits par l'agent data-engine —

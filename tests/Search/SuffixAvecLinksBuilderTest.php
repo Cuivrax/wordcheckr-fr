@@ -56,10 +56,28 @@ return function (): void {
     $diagonalRow = $pdo->query("SELECT COUNT(*) c FROM list_counts WHERE list_type = 'end_with' AND list_key = 'A:A'")->fetch()['c'];
     Assert::same(0, (int) $diagonalRow, 'sanity check : A:A absent de list_counts (exclu au precalcul, pas au builder)');
 
-    // --- Aucun doublon trouve sur cet axe (D-045, verifie et non suppose). ---
+    // --- Aucun doublon PARENT/SOEUR trouve sur cet axe (D-045, verifie et non suppose). ---
     $reflection = new ReflectionClass(SuffixAvecLinksBuilder::class);
     Assert::same(0, count($reflection->getConstant('DUPLICATE_CONTENT_KEYS')), 'aucun doublon parent attendu sur ce palier (D-045)');
     Assert::same(0, count($reflection->getConstant('SIBLING_DUPLICATE_KEYS')), 'aucun doublon soeur attendu sur ce palier (D-045)');
+
+    // --- Doublons de contenu CROISES avec une famille EXTERIEURE (D-047, balayage generique
+    // post-D-045/D-046) -- constante remplie apres coup, ce test etait reste perime (attendait
+    // encore 0 exclusion), corrige ici plutot que suppose vrai. Voir docs/DECISIONS.md D-047.
+    $externalDuplicateKeys = $reflection->getConstant('EXTERNAL_DUPLICATE_KEYS');
+    Assert::same(
+        ['B:F', 'B:Q', 'B:V', 'B:Z', 'C:W', 'J:C', 'J:F', 'J:H', 'J:T', 'J:Z', 'P:J', 'Q:B', 'Q:F', 'Q:Z', 'U:W', 'V:G', 'V:P', 'V:Y', 'W:B', 'W:F', 'W:P', 'W:Q', 'W:V'],
+        $externalDuplicateKeys,
+        'exactement 23 doublons croises avec une famille exterieure attendus (D-047)'
+    );
+    $externalDuplicateSet = array_fill_keys($externalDuplicateKeys, true);
+
+    foreach ($externalDuplicateKeys as $key) {
+        [$suffix, $letter] = explode(':', $key, 2);
+        $links = $builder->build($suffix);
+        $found = array_values(array_filter($links->links, static fn (array $l): bool => $l['letter'] === $letter));
+        Assert::true($found === [], "{$key} est un doublon de contenu croise (D-047) -- ne doit jamais etre produit");
+    }
 
     // --- Verification EXHAUSTIVE du maillage sur les 26 pages sources reelles. ---
     $expectedStatement = $pdo->query("SELECT list_key, count FROM list_counts WHERE list_type = 'end_with'");
@@ -86,6 +104,7 @@ return function (): void {
             $key = $suffix . ':' . $link['letter'];
 
             Assert::true(isset($expected[$key]), "cle produite par le builder absente de list_counts : {$key}");
+            Assert::true(!isset($externalDuplicateSet[$key]), "cle doublon croise (D-047) produite par erreur, aurait du etre exclue : {$key}");
             Assert::same($expected[$key], $link['count'], "compte divergent pour {$key}");
             Assert::same('/mots/terminant/' . strtolower($suffix) . '/avec/' . strtolower($link['letter']), $link['url']);
             Assert::true($link['count'] > 0, "R5 : aucune entree a 0 attendue ({$key})");
@@ -101,10 +120,16 @@ return function (): void {
         }
     }
 
-    Assert::same(count($expected), $totalLinksProduced, 'total des liens produits doit egaler les 621 lignes list_counts end_with (aucune exclusion sur cet axe)');
-    Assert::same(count($expected), count($producedKeys), 'aucun doublon, chaque cle produite une seule fois');
+    $expectedEligibleCount = count($expected) - count($externalDuplicateSet);
+    Assert::same(598, $expectedEligibleCount, 'sanity check : 598 lignes eligibles (621 brutes - 23 doublons croises famille exterieure D-047)');
+    Assert::same($expectedEligibleCount, $totalLinksProduced, 'total des liens produits doit egaler les lignes list_counts end_with eligibles');
+    Assert::same($expectedEligibleCount, count($producedKeys), 'aucun doublon, chaque cle eligible produite une seule fois');
 
     foreach (array_keys($expected) as $key) {
-        Assert::true(isset($producedKeys[$key]), "ligne list_counts jamais produite par le builder depuis sa page source : {$key}");
+        if (isset($externalDuplicateSet[$key])) {
+            Assert::true(!isset($producedKeys[$key]), "ligne exclue (doublon croise D-047) produite par erreur : {$key}");
+        } else {
+            Assert::true(isset($producedKeys[$key]), "ligne list_counts eligible jamais produite par le builder depuis sa page source : {$key}");
+        }
     }
 };

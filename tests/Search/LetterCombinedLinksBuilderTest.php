@@ -54,8 +54,26 @@ return function (): void {
     }
 
     // --- Coherence globale : la somme des liens depuis A doit egaler le total de la page
-    // --- /mots/commencant/a (chaque mot commencant par A finit par exactement une lettre). ---
+    // --- /mots/commencant/a (chaque mot commencant par A finit par exactement une lettre), MOINS
+    // --- les paires A:{lettre} exclues comme doublon de contenu croise (D-047, EXTERNAL_
+    // --- DUPLICATE_KEYS) -- ces mots existent toujours dans `terms` (contribuent donc au total
+    // --- brut) mais leur lien n'est plus produit par le builder (doublon avec une famille
+    // --- exterieure). Meme principe que les "lignes eligibles" calculees pour les autres paliers
+    // --- (jamais un total brut compare directement des qu'une exclusion existe). ---
+    $reflectionForSum = new ReflectionClass(LetterCombinedLinksBuilder::class);
+    $externalDuplicateKeysForA = array_filter(
+        $reflectionForSum->getConstant('EXTERNAL_DUPLICATE_KEYS'),
+        static fn (string $k): bool => str_starts_with($k, 'A:'),
+    );
+    $excludedFromATotal = 0;
+    foreach ($externalDuplicateKeysForA as $k) {
+        [, $endLetter] = explode(':', $k, 2);
+        $stmt = $pdo->prepare("SELECT COUNT(*) c FROM terms WHERE normalized LIKE 'A%' AND normalized LIKE ?");
+        $stmt->execute(['%' . $endLetter]);
+        $excludedFromATotal += (int) $stmt->fetch()['c'];
+    }
+
     $expectedTotalA = (int) $pdo->query("SELECT COUNT(*) c FROM terms WHERE normalized LIKE 'A%'")->fetch()['c'];
     $sumFromA = array_sum(array_column($fromA->links, 'count'));
-    Assert::same($expectedTotalA, $sumFromA, 'la somme des comptes par terminaison doit egaler le total commencant par A');
+    Assert::same($expectedTotalA - $excludedFromATotal, $sumFromA, 'la somme des comptes par terminaison doit egaler le total commencant par A, moins les paires A:X exclues (D-047)');
 };

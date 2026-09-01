@@ -170,7 +170,7 @@ return function (): void {
     // differente).
     // ============================================================================================
     $externalDuplicateKeys = LengthCombinedLinksBuilder::EXTERNAL_DUPLICATE_KEYS;
-    Assert::same(292, count($externalDuplicateKeys), 'exactement 292 doublons croises avec une famille exterieure attendus (D-041, balayage du 2026-08-21)');
+    Assert::same(487, count($externalDuplicateKeys), 'exactement 487 doublons croises avec une famille exterieure attendus (292 D-041, balayage du 2026-08-21, + 195 D-047, balayage du 2026-08-31 post-D-045/D-046)');
     Assert::same(count($externalDuplicateKeys), count(array_unique($externalDuplicateKeys)), 'aucun doublon dans la liste figee elle-meme');
     $externalDuplicateSet = array_fill_keys($externalDuplicateKeys, true);
     Assert::same(0, count(array_intersect_key($externalDuplicateSet, array_fill_keys($duplicateKeys, true))), 'EXTERNAL_DUPLICATE_KEYS et DUPLICATE_START_END_KEYS doivent rester deux ensembles disjoints');

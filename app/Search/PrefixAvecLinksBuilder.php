@@ -31,6 +31,14 @@ use App\Database\Connection;
  */
 final class PrefixAvecLinksBuilder
 {
+    // CORRECTIF PERF (2026-09-01, meme pattern que AvecFourLettersLinksBuilder) : in_array($key,
+    // self::X_KEYS, true) sur ces trois constantes est un parcours lineaire relance a CHAQUE
+    // ligne list_counts examinee dans build(). Tables de hachage calculees UNE FOIS par process
+    // (cache statique), lookups O(1) au lieu de O(n) -- aucun changement de contenu.
+    private static ?array $duplicateContentKeySet = null;
+    private static ?array $siblingDuplicateKeySet = null;
+    private static ?array $externalDuplicateKeySet = null;
+
     /**
      * Doublons de CONTENU (audit consolide, NO GO) : meme regle de detection que
      * App\Search\StartEndWithLinksBuilder::DUPLICATE_CONTENT_KEYS et que le cas
@@ -135,6 +143,10 @@ final class PrefixAvecLinksBuilder
 
         $parentUrl = WordListFilters::fromPath('commencant/' . strtolower($prefix))?->canonicalUrl();
 
+        self::$duplicateContentKeySet ??= array_flip(self::DUPLICATE_CONTENT_KEYS);
+        self::$siblingDuplicateKeySet ??= array_flip(self::SIBLING_DUPLICATE_KEYS);
+        self::$externalDuplicateKeySet ??= array_flip(self::EXTERNAL_DUPLICATE_KEYS);
+
         $links = [];
 
         foreach ($statement as $row) {
@@ -151,19 +163,19 @@ final class PrefixAvecLinksBuilder
             // ci-dessus -- liste vide sur l'etat actuel de la base, verifiee et non supposee.
             $key = strtoupper($prefix) . ':' . strtoupper($letter);
 
-            if (in_array($key, self::DUPLICATE_CONTENT_KEYS, true)) {
+            if (isset(self::$duplicateContentKeySet[$key])) {
                 continue;
             }
 
             // Doublon de CONTENU entre pages SOEURS (I-A, 2e audit consolide) : voir
             // SIBLING_DUPLICATE_KEYS ci-dessus -- liste vide sur l'etat actuel de la base.
-            if (in_array($key, self::SIBLING_DUPLICATE_KEYS, true)) {
+            if (isset(self::$siblingDuplicateKeySet[$key])) {
                 continue;
             }
 
             // Doublon de contenu CROISE avec une famille EXTERIEURE (D-041) : voir
             // EXTERNAL_DUPLICATE_KEYS ci-dessus.
-            if (in_array($key, self::EXTERNAL_DUPLICATE_KEYS, true)) {
+            if (isset(self::$externalDuplicateKeySet[$key])) {
                 continue;
             }
 

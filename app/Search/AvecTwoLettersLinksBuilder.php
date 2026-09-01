@@ -36,6 +36,14 @@ use App\Database\Connection;
  */
 final class AvecTwoLettersLinksBuilder
 {
+    // CORRECTIF PERF (2026-09-01, meme pattern que AvecFourLettersLinksBuilder) : in_array($key,
+    // self::X_KEYS, true) sur ces trois constantes est un parcours lineaire relance a CHAQUE
+    // ligne list_counts examinee dans build(). Tables de hachage calculees UNE FOIS par process
+    // (cache statique), lookups O(1) au lieu de O(n) -- aucun changement de contenu.
+    private static ?array $duplicateParentKeySet = null;
+    private static ?array $siblingDuplicateKeySet = null;
+    private static ?array $externalDuplicateKeySet = null;
+
     /**
      * Les 4 triples (longueur, lettre1, lettre2) a contenu strictement DUPLIQUE avec l'une de leurs
      * deux pages parentes palier 1 (/mots/{N}-lettres/avec/{lettre1} OU .../avec/{lettre2}) --
@@ -122,6 +130,14 @@ final class AvecTwoLettersLinksBuilder
      * indépendamment par échantillonnage direct contre `terms` (voir le rapport AFTER de cette
      * tâche) : 0 divergence.
      *
+     * COMPLÉTÉE PAR D-047 (2026-08-31, balayage générique post-D-045/D-046) : +2 clés
+     * supplémentaires (extraites directement du lot storage/seo_fr.sqlite/word_list_avec_two_
+     * letters déjà appliqué au registre) -- 140 au total, "3:P:Z" (perd face à terminant+avec
+     * une lettre) et "7:J:W" (perd face à commençant multi-lettres). Découverte tardive : ce
+     * lot avait été appliqué au registre réel dès sa découverte mais laissait ce builder
+     * générer des liens internes VIVANTS vers ces pages devenues noindex,follow (violation R5,
+     * même défaut confirmé sur AvecThreeLettersLinksBuilder). Voir docs/DECISIONS.md D-047/D-048.
+     *
      * Liste figée : valable pour l'état actuel de storage/dictionary_fr.sqlite (838 180 termes,
      * inchangé depuis D-022). Une reconstruction future de la base devra revalider cette liste.
      *
@@ -142,10 +158,10 @@ final class AvecTwoLettersLinksBuilder
         '3:D:X', '3:F:V', '3:F:X', '3:F:Y', '3:G:W', '3:G:X', '3:H:L', '3:H:N',
         '3:H:V', '3:H:W', '3:I:W', '3:J:N', '3:J:P', '3:J:Z', '3:K:Z', '3:M:Q',
         '3:M:V', '3:M:W', '3:M:X', '3:N:R', '3:N:V', '3:N:W', '3:P:Q', '3:P:W',
-        '3:P:X', '3:P:Y', '3:Q:T', '3:S:V', '3:S:Z', '3:T:W', '3:T:X', '3:T:Y',
-        '3:V:X', '3:W:X', '4:G:Q', '4:G:X', '4:J:W', '4:J:X', '4:J:Y', '4:L:Q',
-        '4:M:W', '4:Q:W', '4:Q:Y', '4:W:Z', '5:K:Q', '5:K:X', '5:Q:X', '5:W:X',
-        '6:J:W', '6:W:X',
+        '3:P:X', '3:P:Y', '3:P:Z', '3:Q:T', '3:S:V', '3:S:Z', '3:T:W', '3:T:X',
+        '3:T:Y', '3:V:X', '3:W:X', '4:G:Q', '4:G:X', '4:J:W', '4:J:X', '4:J:Y',
+        '4:L:Q', '4:M:W', '4:Q:W', '4:Q:Y', '4:W:Z', '5:K:Q', '5:K:X', '5:Q:X',
+        '5:W:X', '6:J:W', '6:W:X', '7:J:W',
     ];
 
     public function __construct(
@@ -161,15 +177,19 @@ final class AvecTwoLettersLinksBuilder
         );
         $statement->execute([$length . ':' . $letter . ':%', $length . ':%:' . $letter]);
 
+        self::$duplicateParentKeySet ??= array_flip(self::DUPLICATE_PARENT_KEYS);
+        self::$siblingDuplicateKeySet ??= array_flip(self::SIBLING_DUPLICATE_KEYS);
+        self::$externalDuplicateKeySet ??= array_flip(self::EXTERNAL_DUPLICATE_KEYS);
+
         $links = [];
 
         foreach ($statement as $row) {
             $key = (string) $row['list_key'];
 
             if (
-                in_array($key, self::DUPLICATE_PARENT_KEYS, true)
-                || in_array($key, self::SIBLING_DUPLICATE_KEYS, true)
-                || in_array($key, self::EXTERNAL_DUPLICATE_KEYS, true)
+                isset(self::$duplicateParentKeySet[$key])
+                || isset(self::$siblingDuplicateKeySet[$key])
+                || isset(self::$externalDuplicateKeySet[$key])
             ) {
                 continue;
             }

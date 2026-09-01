@@ -78,6 +78,10 @@ require __DIR__ . '/../app/bootstrap.php';
 use App\Config;
 use App\Database\Connection;
 use App\Search\AvecSansLengthLinksBuilder;
+use App\Search\AvecFourLettersLinksBuilder;
+use App\Search\AvecBareTwoLettersLinksBuilder;
+use App\Search\AvecBareThreeLettersLinksBuilder;
+use App\Search\AvecBareFourLettersLinksBuilder;
 use App\Search\AvecThreeLettersLinksBuilder;
 use App\Search\AvecTwoLettersLinksBuilder;
 use App\Search\ConjugationLookup;
@@ -511,13 +515,37 @@ if ($path === '/mots' || preg_match('#^/mots(/.*)$#u', $path, $matches) === 1) {
         }
     }
 
+    // D-048 : palier 4 de l'entonnoir "avec" -- exactement trois lettres avec, occurrence
+    // unique chacune, meme principe que $twoAvecLetters ci-dessus.
+    $threeAvecLetters = null;
+    if (count($filters->withLetters) === 3) {
+        $letters = array_keys($filters->withLetters);
+        if ($filters->withLetters[$letters[0]] === 1 && $filters->withLetters[$letters[1]] === 1 && $filters->withLetters[$letters[2]] === 1) {
+            $threeAvecLetters = $letters;
+        }
+    }
+
     $isLengthPlusSingleAvecOnly = $filters->length !== null && $singleAvecLetter !== null
         && $hasNoOtherConstraint($filters, ['length', 'withLetters']);
     $isLengthPlusTwoAvecOnly = $filters->length !== null && $twoAvecLetters !== null
         && $hasNoOtherConstraint($filters, ['length', 'withLetters']);
+    $isLengthPlusThreeAvecOnly = $filters->length !== null && $threeAvecLetters !== null
+        && $hasNoOtherConstraint($filters, ['length', 'withLetters']);
     $isAvecSansOnlyNoLength = $filters->length === null && $singleAvecLetter !== null
         && count($filters->withoutLetters) === 1
         && $hasNoOtherConstraint($filters, ['withLetters', 'withoutLetters']);
+
+    // D-049 : "avec" SANS AUCUN ancrage (ni longueur, ni prefixe, ni suffixe) -- distinct de
+    // $isLengthPlusSingleAvecOnly/$isLengthPlusTwoAvecOnly/$isLengthPlusThreeAvecOnly ci-dessus
+    // (qui exigent TOUJOURS une longueur) et de $isAvecSansOnlyNoLength ci-dessus (qui exige une
+    // lettre "sans"). Meme reutilisation de $singleAvecLetter/$twoAvecLetters/$threeAvecLetters
+    // deja calcules plus haut.
+    $isAvecBareSingleOnly = $filters->length === null && $singleAvecLetter !== null
+        && $hasNoOtherConstraint($filters, ['withLetters']);
+    $isAvecBareTwoOnly = $filters->length === null && $twoAvecLetters !== null
+        && $hasNoOtherConstraint($filters, ['withLetters']);
+    $isAvecBareThreeOnly = $filters->length === null && $threeAvecLetters !== null
+        && $hasNoOtherConstraint($filters, ['withLetters']);
 
     // D-045 : "commencant/{X}/avec/{Y}[/{Z}]" et "terminant/{X}/avec/{Y}[/{Z}]" -- meme
     // reutilisation de $singleAvecLetter/$twoAvecLetters (deja calcules ci-dessus pour le
@@ -588,8 +616,28 @@ if ($path === '/mots' || preg_match('#^/mots(/.*)$#u', $path, $matches) === 1) {
         ? (new AvecThreeLettersLinksBuilder($connection))->build($filters->length, $twoAvecLetters[0], $twoAvecLetters[1])
         : null;
 
+    $avecFourLettersLinks = $isLengthPlusThreeAvecOnly
+        ? (new AvecFourLettersLinksBuilder($connection))->build($filters->length, $threeAvecLetters[0], $threeAvecLetters[1], $threeAvecLetters[2])
+        : null;
+
     $avecSansLengthLinks = $isAvecSansOnlyNoLength
         ? (new AvecSansLengthLinksBuilder($connection))->build($singleAvecLetter, $filters->withoutLetters[0])
+        : null;
+
+    // D-049 : "avec" SANS AUCUN ancrage -- chaine palier1->2->3->4, chaque page ne construit que
+    // le maillage VERS le palier suivant (meme principe que la chaine avec+longueur D-029 a
+    // D-048 ci-dessus). Le palier 4 (4 lettres avec, bare) ne construit rien de plus : dernier
+    // palier borne de cette famille, pas de palier 5.
+    $avecBareTwoLettersLinks = $isAvecBareSingleOnly
+        ? (new AvecBareTwoLettersLinksBuilder($connection))->build($singleAvecLetter)
+        : null;
+
+    $avecBareThreeLettersLinks = $isAvecBareTwoOnly
+        ? (new AvecBareThreeLettersLinksBuilder($connection))->build($twoAvecLetters[0], $twoAvecLetters[1])
+        : null;
+
+    $avecBareFourLettersLinks = $isAvecBareThreeOnly
+        ? (new AvecBareFourLettersLinksBuilder($connection))->build($threeAvecLetters[0], $threeAvecLetters[1], $threeAvecLetters[2])
         : null;
 
     // D-045 : commencant/terminant + avec (1, 2 lettres) -- SANS longueur, symetrique du bloc
@@ -630,6 +678,10 @@ if ($path === '/mots' || preg_match('#^/mots(/.*)$#u', $path, $matches) === 1) {
         'positionLinks' => $positionLinks,
         'avecTwoLettersLinks' => $avecTwoLettersLinks,
         'avecThreeLettersLinks' => $avecThreeLettersLinks,
+        'avecFourLettersLinks' => $avecFourLettersLinks,
+        'avecBareTwoLettersLinks' => $avecBareTwoLettersLinks,
+        'avecBareThreeLettersLinks' => $avecBareThreeLettersLinks,
+        'avecBareFourLettersLinks' => $avecBareFourLettersLinks,
         'avecSansLengthLinks' => $avecSansLengthLinks,
         'suffixAvecLinks' => $suffixAvecLinks,
         'prefixAvecTwoLettersLinks' => $prefixAvecTwoLettersLinks,

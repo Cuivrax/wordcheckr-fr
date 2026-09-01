@@ -21,6 +21,14 @@ use App\Database\Connection;
  */
 final class SuffixAvecLinksBuilder
 {
+    // CORRECTIF PERF (2026-09-01, meme pattern que AvecFourLettersLinksBuilder) : in_array($key,
+    // self::X_KEYS, true) sur ces trois constantes est un parcours lineaire relance a CHAQUE
+    // ligne list_counts examinee dans build(). Tables de hachage calculees UNE FOIS par process
+    // (cache statique), lookups O(1) au lieu de O(n) -- aucun changement de contenu.
+    private static ?array $duplicateContentKeySet = null;
+    private static ?array $siblingDuplicateKeySet = null;
+    private static ?array $externalDuplicateKeySet = null;
+
     /**
      * Doublons de CONTENU avec la page PARENTE (D-045, meme methodologie que
      * App\Search\PrefixAvecLinksBuilder::DUPLICATE_CONTENT_KEYS) -- voir docs/DECISIONS.md
@@ -41,11 +49,21 @@ final class SuffixAvecLinksBuilder
 
     /**
      * Doublons de contenu CROISES avec une famille EXTERIEURE (D-045, meme discipline D-041) --
-     * voir docs/DECISIONS.md D-045.
+     * remplie par D-047 (balayage generique complet post-D-045/D-046,
+     * scripts/check_combinatorial_duplicates.php, 23 cles trouvees pour cette famille,
+     * word_list_terminant_with_letter) -- ce lot avait ete applique au registre reel des sa
+     * decouverte mais laissait ce builder generer des liens internes VIVANTS vers ces pages
+     * devenues noindex,follow (violation R5, confirmee en direct via HTTP avant correctif :
+     * /mots/terminant/q liait vers /mots/terminant/q/avec/b, noindex depuis D-047). Voir
+     * docs/DECISIONS.md D-047/D-048.
      *
      * @var list<string>
      */
-    private const EXTERNAL_DUPLICATE_KEYS = [];
+    private const EXTERNAL_DUPLICATE_KEYS = [
+        'B:F', 'B:Q', 'B:V', 'B:Z', 'C:W', 'J:C', 'J:F', 'J:H',
+        'J:T', 'J:Z', 'P:J', 'Q:B', 'Q:F', 'Q:Z', 'U:W', 'V:G',
+        'V:P', 'V:Y', 'W:B', 'W:F', 'W:P', 'W:Q', 'W:V',
+    ];
 
     public function __construct(
         private readonly Connection $connection,
@@ -60,6 +78,10 @@ final class SuffixAvecLinksBuilder
         $statement->execute([$suffix . ':%']);
 
         $parentUrl = WordListFilters::fromPath('terminant/' . strtolower($suffix))?->canonicalUrl();
+
+        self::$duplicateContentKeySet ??= array_flip(self::DUPLICATE_CONTENT_KEYS);
+        self::$siblingDuplicateKeySet ??= array_flip(self::SIBLING_DUPLICATE_KEYS);
+        self::$externalDuplicateKeySet ??= array_flip(self::EXTERNAL_DUPLICATE_KEYS);
 
         $links = [];
 
@@ -76,9 +98,9 @@ final class SuffixAvecLinksBuilder
             $key = strtoupper($suffix) . ':' . strtoupper($letter);
 
             if (
-                in_array($key, self::DUPLICATE_CONTENT_KEYS, true)
-                || in_array($key, self::SIBLING_DUPLICATE_KEYS, true)
-                || in_array($key, self::EXTERNAL_DUPLICATE_KEYS, true)
+                isset(self::$duplicateContentKeySet[$key])
+                || isset(self::$siblingDuplicateKeySet[$key])
+                || isset(self::$externalDuplicateKeySet[$key])
             ) {
                 continue;
             }

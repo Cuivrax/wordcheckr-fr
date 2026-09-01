@@ -100,6 +100,11 @@ position-*.xml
 avec-single-*.xml
 avec-pair-*.xml
 avec-triple-*.xml
+avec-quad-*.xml
+avec-bare-single-*.xml
+avec-bare-two-*.xml
+avec-bare-three-*.xml
+avec-bare-four-*.xml
 combined-with-*.xml
 commencant-avec-*.xml
 commencant-avec2-*.xml
@@ -197,6 +202,30 @@ paliers 1 et 2 — jamais indexables, suivi (`rel`) de la chaîne de pagination 
 pour toute liste ancrée (`app/View/word-list.php`). Voir
 `reports/query-plans/avec-length-3-letters-full-sweep.md` et `app/Seo/Family.php` pour le détail
 complet.
+
+`avec-quad-*.xml` (ajouté le 2026-08-31, D-048, PALIER 4 de l'ouverture en entonnoir de la
+famille "avec") : `App\Seo\Family::WORD_LIST_AVEC_FOUR_LETTERS` — longueur explicite ET
+EXACTEMENT quatre lettres "avec" DISTINCTES (occurrence unique chacune, `minCount=1` sur
+chacune), sans aucune autre contrainte. Espace borné par construction sur ce périmètre précis :
+14 longueurs × C(26,4) = 209 300 combinaisons au plus (`list_counts`, `list_type =
+'length_with_quad'`). Distincte en permanence de `App\Seo\Family::WORD_LIST_AVEC_SINGLE_LETTER/
+TWO_LETTERS/THREE_LETTERS` (paliers 1/2/3, ci-dessus) et de `App\Seo\Family::WORD_LIST_AVEC`
+(multiensemble général, reste et restera dans `NEVER_SITEMAP`). Balayage complet des 209 300
+combinaisons réelles : 123 557/209 300 à ≥ 1 résultat, maillage interne construit ET vérifié
+exhaustivement DANS LES QUATRE SENS (`App\Search\AvecFourLettersLinksBuilder`, depuis les
+28 827 pages palier 3, déjà indexées) avant application du lot, chaîne complète à quatre sauts
+vérifiée à chaque maillon (`/mots/{N}-lettres` → `avec/{X}` → `avec/{X}/{Y}` →
+`avec/{X}/{Y}/{Z}` → `avec/{W}/{X}/{Y}/{Z}`). Détection de doublons de contenu : DEUX classes
+(parent palier 3, sœurs palier 4, 10 185 + 4 145 = 14 330 exclues), corrigées en 4 passes
+successives après la découverte d'un bug de construction du canonical_path pendant la
+vérification manuelle avant application (jamais appliqué au registre tel quel) — voir
+`docs/DECISIONS.md` D-048 pour le détail complet, y compris les cas de régression concrets
+(A:B:H:W confondu à tort avec A:B:H au lieu du vrai B:H:W ; doublon-sœur WEBJOURNAL jamais
+comparé avant le correctif dédié). 109 227/123 557 restent `index,follow` après exclusions —
+40 000 + 40 000 + 28 734 + 493 URL réparties sur `avec-quad-0001/0002/0003/orphan.xml` (le
+fragment `orphan` regroupe les pages promues faute de tout représentant déjà indexé pour leur
+contenu exact — même règle R4 de validation de préfixe que les autres fragments, aucun
+traitement spécial). Voir `app/Seo/Family.php` pour le détail complet.
 
 `combined-*.xml` reçoit un second fragment (`combined-0002.xml`, ajouté le 2026-08-18) : variante
 AVEC longueur de `App\Seo\Family::WORD_LIST_COMBINED` (`/mots/{N}-lettres/commencant/{X}/terminant/{Y}`,

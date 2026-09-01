@@ -36,6 +36,10 @@ declare(strict_types=1);
 require __DIR__ . '/helpers.php';
 
 use App\Search\AvecSansLengthLinks;
+use App\Search\AvecBareTwoLettersLinks;
+use App\Search\AvecBareThreeLettersLinks;
+use App\Search\AvecBareFourLettersLinks;
+use App\Search\AvecFourLettersLinks;
 use App\Search\AvecThreeLettersLinks;
 use App\Search\AvecTwoLettersLinks;
 use App\Search\LengthCombinedLinks;
@@ -196,6 +200,45 @@ $avecTwoLettersLinks ??= null;
  * @var AvecThreeLettersLinks|null $avecThreeLettersLinks
  */
 $avecThreeLettersLinks ??= null;
+
+/**
+ * Maillage "avec {X} {Y} {Z}" -> "avec {W} {X} {Y} {Z}" (palier 4 de l'ouverture en entonnoir
+ * de "avec", D-048) -- non null uniquement depuis une page longueur + EXACTEMENT TROIS lettres
+ * "avec" (occurrence unique chacune, sans autre contrainte, public/index.php). Precalcule
+ * (App\Search\AvecFourLettersLinksBuilder), jamais de requete live.
+ *
+ * @var AvecFourLettersLinks|null $avecFourLettersLinks
+ */
+$avecFourLettersLinks ??= null;
+
+/**
+ * Maillage "avec {X}" bare -> "avec {X} {Y}" bare (palier 1 -> 2 de l'ouverture en entonnoir de
+ * "avec" SANS AUCUN ancrage, D-049) -- non null uniquement depuis une page "avec" SANS longueur
+ * ni prefixe ni suffixe, une seule lettre "avec" (occurrence unique, public/index.php).
+ * Precalcule (App\Search\AvecBareTwoLettersLinksBuilder), jamais de requete live.
+ *
+ * @var AvecBareTwoLettersLinks|null $avecBareTwoLettersLinks
+ */
+$avecBareTwoLettersLinks ??= null;
+
+/**
+ * Maillage "avec {X} {Y}" bare -> "avec {X} {Y} {Z}" bare (palier 2 -> 3, D-049) -- non null
+ * uniquement depuis une page "avec" bare a EXACTEMENT deux lettres (public/index.php).
+ * Precalcule (App\Search\AvecBareThreeLettersLinksBuilder), jamais de requete live.
+ *
+ * @var AvecBareThreeLettersLinks|null $avecBareThreeLettersLinks
+ */
+$avecBareThreeLettersLinks ??= null;
+
+/**
+ * Maillage "avec {X} {Y} {Z}" bare -> "avec {W} {X} {Y} {Z}" bare (palier 3 -> 4, dernier palier
+ * borne de cette famille, D-049) -- non null uniquement depuis une page "avec" bare a EXACTEMENT
+ * trois lettres (public/index.php). Precalcule (App\Search\AvecBareFourLettersLinksBuilder),
+ * jamais de requete live.
+ *
+ * @var AvecBareFourLettersLinks|null $avecBareFourLettersLinks
+ */
+$avecBareFourLettersLinks ??= null;
 
 /**
  * Maillage "avec {X} sans {Y}" -> longueur (D-024bis, decision produit prise, pas un
@@ -386,17 +429,65 @@ if ($filters !== null && $filters->pattern !== null) {
 $descriptor = implode(' ', $titleParts);
 // $descriptor reste en minuscules (hors "Mots") : reutilise tel quel dans les phrases de
 // $statusMeta['direct'] ci-dessous ("Il y a 5 mots de 7 lettres..."), ou un Title Case serait
-// grammaticalement faux en milieu de phrase. $pageTitle (title, breadcrumb, H1) suit la
-// convention Title Case du reste du site (M5, audit final) -- mb_convert_case gere
-// correctement les mots accentues francais (commençant -> Commençant) et laisse les lettres
-// deja en majuscule (A, TION, C--E-) inchangees.
-$pageTitle = mb_convert_case(trim('Mots ' . $descriptor), MB_CASE_TITLE, 'UTF-8');
-// Correctif position (D-023) : mb_convert_case() traite toute frontiere chiffre/lettre comme
-// un debut de "mot" et capitalise la lettre qui suit -- "3e" devient "3E", jamais souhaite
-// pour l'ordinal francais ("3e position", pas "3E Position"). Corrige apres coup plutot que
-// d'echapper le fragment avant mb_convert_case() (aucun moyen simple de le faire ignorer une
-// seule frontiere sans risquer d'affecter les autres mots du titre).
-$pageTitle = (string) preg_replace('/(\d+)E\b/', '$1e', $pageTitle);
+// grammaticalement faux en milieu de phrase.
+//
+// $pageTitle (title, breadcrumb, H1) : construit EN PARALLELE de $titleParts ci-dessus, PAS
+// derive de $descriptor par une conversion globale (CORRECTIF, demande produit explicite --
+// mb_convert_case(..., MB_CASE_TITLE, ...) traitait toute sequence de lettres SANS espace
+// comme un seul "mot" et rabaissait sa casse : "AB"/"ST"/"ER" (contraintes reellement saisies
+// par l'utilisateur) devenaient "Ab"/"St"/"Er", masquant precisement les lettres que la page
+// existe pour montrer -- verifie en direct, /mots/12-lettres/commencant/ab/contenant/st/
+// terminant/er affichait "Commençant Par Ab Contenant St Terminant Par Er" avant ce correctif).
+// Chaque mot-cle francais est ici litteralement deja en Title Case (pas de conversion
+// necessaire, evite aussi tout risque sur les caracteres accentues) ; chaque valeur de lettres
+// (prefixe/suffixe/contenant/avec/sans/motif) passe par mb_strtoupper() explicitement --
+// defensif, ces valeurs sont deja stockees en majuscules (D-009) mais ne dependent plus de cet
+// invariant pour rester visibles. Meme structure canonique que $titleParts (docs/05) : longueur
+// -> commencant -> contenant -> terminant -> position -> avec -> sans -> motif.
+$pageTitleParts = [];
+
+if ($filters !== null && $filters->length !== null) {
+    $pageTitleParts[] = sprintf('De %d Lettre%s', $filters->length, $filters->length > 1 ? 's' : '');
+}
+
+if ($filters !== null && $filters->prefix !== null) {
+    $pageTitleParts[] = 'Commençant Par ' . mb_strtoupper($filters->prefix, 'UTF-8');
+}
+
+if ($filters !== null && $filters->contains !== null) {
+    $pageTitleParts[] = 'Contenant ' . mb_strtoupper($filters->contains, 'UTF-8');
+}
+
+if ($filters !== null && $filters->suffix !== null) {
+    $pageTitleParts[] = 'Terminant Par ' . mb_strtoupper($filters->suffix, 'UTF-8');
+}
+
+if ($filters !== null && $filters->position !== null) {
+    // "e" reste en minuscule (ordinal francais, "3e Position" jamais "3E Position") -- ecrit
+    // ici litteralement, plus besoin du correctif apres coup que l'ancienne conversion globale
+    // exigeait (D-023).
+    $pageTitleParts[] = 'Avec ' . mb_strtoupper($filters->positionLetter, 'UTF-8') . ' En ' . $filters->position . 'e Position';
+}
+
+if ($filters !== null && $filters->withLetters !== []) {
+    $withLettersUpper = [];
+    foreach ($filters->withLetters as $letter => $count) {
+        for ($k = 0; $k < $count; $k++) {
+            $withLettersUpper[] = mb_strtoupper($letter, 'UTF-8');
+        }
+    }
+    $pageTitleParts[] = 'Avec ' . implode(', ', $withLettersUpper);
+}
+
+if ($filters !== null && $filters->withoutLetters !== []) {
+    $pageTitleParts[] = 'Sans ' . implode(', ', array_map(static fn (string $l): string => mb_strtoupper($l, 'UTF-8'), $filters->withoutLetters));
+}
+
+if ($filters !== null && $filters->pattern !== null) {
+    $pageTitleParts[] = 'Au Motif ' . mb_strtoupper($filters->pattern, 'UTF-8');
+}
+
+$pageTitle = trim('Mots ' . implode(' ', $pageTitleParts));
 
 /**
  * Enumeration naturelle "A", "A et B", "A, B et C" (jamais de virgule d'Oxford avant "et",
@@ -849,6 +940,54 @@ $showPagination = $page->hasPreviousPage || $page->hasNextPage;
       <h2>Mots De <?= e($lengthLabel) ?> Avec <?= e($avecFirstTwoLetters[0]) ?> <?= e($avecFirstTwoLetters[1]) ?> Et</h2>
       <div class="related-links">
 <?php foreach ($avecThreeLettersLinks->links as $link): ?>
+        <a href="<?= e($link['url']) ?>"><span class="explore-label"><?= e($link['letter']) ?></span> <span class="explore-count">(<?= e(number_format($link['count'], 0, ',', ' ')) ?>)</span></a>
+<?php endforeach; ?>
+      </div>
+    </section>
+<?php endif; ?>
+
+<?php if ($avecFourLettersLinks !== null && $avecFourLettersLinks->links !== []): ?>
+<?php $avecFirstThreeLetters = array_keys($filters->withLetters); ?>
+    <section class="explore-group">
+      <h2>Mots De <?= e($lengthLabel) ?> Avec <?= e($avecFirstThreeLetters[0]) ?> <?= e($avecFirstThreeLetters[1]) ?> <?= e($avecFirstThreeLetters[2]) ?> Et</h2>
+      <div class="related-links">
+<?php foreach ($avecFourLettersLinks->links as $link): ?>
+        <a href="<?= e($link['url']) ?>"><span class="explore-label"><?= e($link['letter']) ?></span> <span class="explore-count">(<?= e(number_format($link['count'], 0, ',', ' ')) ?>)</span></a>
+<?php endforeach; ?>
+      </div>
+    </section>
+<?php endif; ?>
+
+<?php if ($avecBareTwoLettersLinks !== null && $avecBareTwoLettersLinks->links !== []): ?>
+<?php $avecBareLetter = array_key_first($filters->withLetters); ?>
+    <section class="explore-group">
+      <h2>Mots Avec <?= e($avecBareLetter) ?> Et</h2>
+      <div class="related-links">
+<?php foreach ($avecBareTwoLettersLinks->links as $link): ?>
+        <a href="<?= e($link['url']) ?>"><span class="explore-label"><?= e($link['letter']) ?></span> <span class="explore-count">(<?= e(number_format($link['count'], 0, ',', ' ')) ?>)</span></a>
+<?php endforeach; ?>
+      </div>
+    </section>
+<?php endif; ?>
+
+<?php if ($avecBareThreeLettersLinks !== null && $avecBareThreeLettersLinks->links !== []): ?>
+<?php $avecBareFirstTwoLetters = array_keys($filters->withLetters); ?>
+    <section class="explore-group">
+      <h2>Mots Avec <?= e($avecBareFirstTwoLetters[0]) ?> <?= e($avecBareFirstTwoLetters[1]) ?> Et</h2>
+      <div class="related-links">
+<?php foreach ($avecBareThreeLettersLinks->links as $link): ?>
+        <a href="<?= e($link['url']) ?>"><span class="explore-label"><?= e($link['letter']) ?></span> <span class="explore-count">(<?= e(number_format($link['count'], 0, ',', ' ')) ?>)</span></a>
+<?php endforeach; ?>
+      </div>
+    </section>
+<?php endif; ?>
+
+<?php if ($avecBareFourLettersLinks !== null && $avecBareFourLettersLinks->links !== []): ?>
+<?php $avecBareFirstThreeLetters = array_keys($filters->withLetters); ?>
+    <section class="explore-group">
+      <h2>Mots Avec <?= e($avecBareFirstThreeLetters[0]) ?> <?= e($avecBareFirstThreeLetters[1]) ?> <?= e($avecBareFirstThreeLetters[2]) ?> Et</h2>
+      <div class="related-links">
+<?php foreach ($avecBareFourLettersLinks->links as $link): ?>
         <a href="<?= e($link['url']) ?>"><span class="explore-label"><?= e($link['letter']) ?></span> <span class="explore-count">(<?= e(number_format($link['count'], 0, ',', ' ')) ?>)</span></a>
 <?php endforeach; ?>
       </div>

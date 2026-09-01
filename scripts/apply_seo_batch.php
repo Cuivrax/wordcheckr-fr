@@ -250,6 +250,65 @@ function familySeoBatchRouteShapeError(string $family, string $routePath): ?stri
 
             return null;
 
+        case Family::WORD_LIST_AVEC_FOUR_LETTERS:
+            // D-048 : palier 4, meme principe que WORD_LIST_AVEC_THREE_LETTERS ci-dessus mais
+            // pour quatre lettres. CORRECTIF (D-049) : cas absent de ce durcissement depuis
+            // D-048 -- tombait silencieusement dans le `default` (aucune regle de forme
+            // ecrite), jamais bloque faute d'une regle absente plutot que rejete a tort. Le lot
+            // D-048 avait deja ete verifie independamment par d'autres moyens avant application
+            // (voir docs/DECISIONS.md D-048), ce correctif ferme le trou pour toute application
+            // future.
+            if (preg_match('#^/mots/\d{1,2}-lettres/avec/([a-z])/([a-z])/([a-z])/([a-z])\z#', $routePath, $m) !== 1) {
+                return "forme attendue '/mots/{N}-lettres/avec/{W}/{X}/{Y}/{Z}' (quatre lettres distinctes)";
+            }
+
+            if (!($m[1] < $m[2] && $m[2] < $m[3] && $m[3] < $m[4])) {
+                return "lettres avec doivent etre triees alphabetiquement (W < X < Y < Z), recu '{$m[1]}', '{$m[2]}', '{$m[3]}', '{$m[4]}'";
+            }
+
+            return null;
+
+        case Family::WORD_LIST_AVEC_BARE_SINGLE_LETTER:
+            // D-049 : "avec" SANS AUCUN ancrage (ni longueur, ni prefixe, ni suffixe) --
+            // distinct en permanence de WORD_LIST_AVEC_SINGLE_LETTER ci-dessus (qui porte
+            // TOUJOURS une longueur).
+            return preg_match('#^/mots/avec/[a-z]\z#', $routePath) === 1
+                ? null
+                : "forme attendue '/mots/avec/{X}' (une seule lettre, sans longueur)";
+
+        case Family::WORD_LIST_AVEC_BARE_TWO_LETTERS:
+            if (preg_match('#^/mots/avec/([a-z])/([a-z])\z#', $routePath, $m) !== 1) {
+                return "forme attendue '/mots/avec/{X}/{Y}' (deux lettres distinctes, sans longueur)";
+            }
+
+            if (!($m[1] < $m[2])) {
+                return "lettres avec doivent etre triees alphabetiquement (X < Y), recu '{$m[1]}' et '{$m[2]}'";
+            }
+
+            return null;
+
+        case Family::WORD_LIST_AVEC_BARE_THREE_LETTERS:
+            if (preg_match('#^/mots/avec/([a-z])/([a-z])/([a-z])\z#', $routePath, $m) !== 1) {
+                return "forme attendue '/mots/avec/{X}/{Y}/{Z}' (trois lettres distinctes, sans longueur)";
+            }
+
+            if (!($m[1] < $m[2] && $m[2] < $m[3])) {
+                return "lettres avec doivent etre triees alphabetiquement (X < Y < Z), recu '{$m[1]}', '{$m[2]}', '{$m[3]}'";
+            }
+
+            return null;
+
+        case Family::WORD_LIST_AVEC_BARE_FOUR_LETTERS:
+            if (preg_match('#^/mots/avec/([a-z])/([a-z])/([a-z])/([a-z])\z#', $routePath, $m) !== 1) {
+                return "forme attendue '/mots/avec/{W}/{X}/{Y}/{Z}' (quatre lettres distinctes, sans longueur)";
+            }
+
+            if (!($m[1] < $m[2] && $m[2] < $m[3] && $m[3] < $m[4])) {
+                return "lettres avec doivent etre triees alphabetiquement (W < X < Y < Z), recu '{$m[1]}', '{$m[2]}', '{$m[3]}', '{$m[4]}'";
+            }
+
+            return null;
+
         case Family::WORD_LIST_COMBINED_WITH_LETTER:
             // R4c : prefixe ET suffixe chacun d'une seule lettre, SANS longueur, PLUS une
             // lettre "avec" -- pas de contrainte de tri (voir le docblock ci-dessus, trois

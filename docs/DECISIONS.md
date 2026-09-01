@@ -3501,3 +3501,673 @@ prochaine action non prise ici : porter ce meme correctif (fusion de requete + i
   le meme defaut structurel, jamais verifie explicitement sur ces deux depots) -- a documenter
   dans leurs docs/PHASE_STATUS.md respectifs
 ```
+
+## D-047 — Correction Des 2 903 Doublons Croisés Trouvés Par Le Balayage Générique Post-D-045/D-046
+
+Date : 2026-08-31
+Statut : accepté et appliqué
+
+Contexte :
+
+```text
+demande produit explicite ("pense aussi a corriger les 2903 doublons D-045") apres relance du
+  detecteur generique scripts/check_combinatorial_duplicates.php (D-041) une fois D-045
+  (commencant/terminant + avec 1-3 lettres) et D-046 (correctif moteur) en place -- le lot
+  D-045 avait deja recu ses PROPRES controles internes (parent/soeurs, DUPLICATE_PARENT_KEYS/
+  SIBLING_DUPLICATE_KEYS remplies avec de vraies valeurs calculees) mais, comme chaque famille
+  ouverte precedemment, jamais encore verifie CROISE contre l'ensemble complet du registre --
+  exactement le risque que D-041 a ete concu pour couvrir de facon rejouable
+balayage complet (scripts/check_combinatorial_duplicates.php --quiet, storage/dictionary_fr.sqlite
+  a l'echelle actuelle -- ~1M lignes de registre, ~172k pages combinatoires) : 171 906 pages
+  candidates examinees, 2 361 groupes de doublons de contenu trouves, 2 903 pages en exces
+  (au-dela du gagnant de chaque groupe)
+```
+
+Décision :
+
+```text
+resolution automatique par groupe via App\Search\DuplicatePageResolver::resolveDuplicateWinner()
+  (utilitaire deja existant et deja teste, reutilise tel quel -- jamais reimplemente) : gagnant
+  choisi par nombre de composants d'URL puis ordre canonique des mots-cles (longueur=0,
+  commencant=1, contenant=2, terminant=3, position=4, avec=5, sans=6, motif=7), meme regle de
+  priorite que D-037 a D-041
+lot genere : scripts/seo-batches/cross-family-correction-d047-2026-08-31.php, 2 903 lignes,
+  chacune 'noindex,follow' avec canonical_path pointant vers le gagnant reel de son groupe --
+  repartition par famille PERDANTE (celle qui recoit le noindex) :
+    word_list_terminant_with_three_letters   1 214
+    word_list_commencant_with_three_letters    544
+    word_list_terminant_with_two_letters       483
+    word_list_commencant_with_two_letters      209
+    word_list_combined                         202
+    word_list_terminant                        131
+    word_list_avec_three_letters                49
+    word_list_combined_with_letter               24
+    word_list_terminant_with_letter              23
+    word_list_position                           22
+    word_list_avec_two_letters                    2
+applique via scripts/apply_seo_batch.php ... --force (flag necessaire et attendu : ces
+  2 903 route_path existent deja en registre sous un AUTRE batch_id -- --force est le mecanisme
+  documente pour une correction intentionnelle, pas un contournement d'une garde-fou)
+scripts/build_sitemaps.php --base-url=https://wordcheckr.fr rejoue : 45 fragments, 1 007 185 URL
+  au total a ce moment (avant D-048, qui ajoute ensuite les fragments avec-quad-*)
+```
+
+Raison :
+
+```text
+meme classe de defaut que D-037/D-038/D-039/D-040/D-041 (doublon de contenu sans canonical
+  designant un gagnant) -- prouve exactement le risque que D-041 a ete concu pour detecter de
+  facon rejouable a chaque nouvelle famille ouverte, ici confirme sur D-045
+```
+
+Conséquence :
+
+```text
+storage/seo_fr.sqlite : 2 903 lignes corrigees en place (INSERT OR REPLACE via --force),
+  aucune ligne supprimee (contrairement a D-040 qui avait use --prune -- ici chaque route_path
+  existait deja et changeait seulement de robots/canonical_path)
+consequence en cascade DECOUVERTE PLUS TARD (D-048, voir plus bas) : word_list_position passe de
+  2 327 a 2 305 lignes 'index,follow' (-22, la partie "word_list_position" du tableau ci-dessus)
+  -- scripts/propose_seo_batch.php (qui regenere ce lot de facon deterministe depuis
+  storage/dictionary_fr.sqlite SEUL, jamais depuis le registre) n'avait PAS ete mis a jour en
+  correspondance au moment de cette correction : sa constante D041_EXCLUDED_ROUTE_PATHS
+  ['word_list_position'] ne portait encore que les 2 exclusions D-041, pas les 22 nouvelles --
+  corrige dans le cadre de D-048 (meme session, decouvert par le test
+  tests/Seo/ProposeSeoBatchPositionTest.php qui comparait le lot regenere contre son ancienne
+  valeur figee 2 327 et echouait) pour rester idempotent avec le registre reel
+docs/DECISIONS.md (cette entree) et git commit : REGULARISES apres coup dans le meme lot que
+  D-048 -- la correction elle-meme avait ete appliquee au registre reel des sa decouverte, mais
+  sans entree de decision ni commit dedie sur le moment (ecart de discipline reconnu, corrige ici)
+
+DECOUVERTE TARDIVE (2026-08-31, pendant la verification manuelle de D-048) -- violation R5 sur
+  potentiellement des milliers de pages : appliquer un lot au REGISTRE (storage/seo_fr.sqlite)
+  ne suffit jamais a lui seul. Chaque builder de maillage interne (App\Search\*LinksBuilder)
+  filtre ses candidats via ses PROPRES constantes figees (DUPLICATE_PARENT_KEYS/
+  SIBLING_DUPLICATE_KEYS/EXTERNAL_DUPLICATE_KEYS), calculees hors ligne et jamais recalculees
+  depuis le registre au runtime (D-007, separation build/runtime -- aucune lecture du registre
+  depuis ces builders). D-047 avait corrige le REGISTRE (2 903 lignes) mais JAMAIS repercute ces
+  memes 2 903 exclusions dans les constantes des builders qui generent des liens VERS ces pages
+  -- 9 des 11 familles touchees avaient un builder avec une constante EXTERNAL_DUPLICATE_KEYS (ou
+  equivalent) soit VIDE, soit simplement pas mise a jour, continuant a produire des liens
+  internes cliquables vers des pages devenues noindex,follow. Confirme en direct par requete HTTP
+  AVANT correctif sur un exemple de chaque famille (ex. /mots/commencant/j/avec/b/s liait vers
+  /mots/commencant/j/avec/b/s/y, noindex depuis D-047) ; confirme ABSENT apres correctif sur les
+  memes exemples.
+  9 fichiers corriges (constante EXTERNAL_DUPLICATE_KEYS completee ou creee, docblock mis a jour
+  avec justification complete) :
+    App\Search\PrefixAvecThreeLettersLinksBuilder      (word_list_commencant_with_three_letters,
+                                                          544 cles, 0 -> 544)
+    App\Search\SuffixAvecThreeLettersLinksBuilder       (word_list_terminant_with_three_letters,
+                                                          1 214 cles, 0 -> 1 214)
+    App\Search\PrefixAvecTwoLettersLinksBuilder         (word_list_commencant_with_two_letters,
+                                                          209 cles, 0 -> 209)
+    App\Search\SuffixAvecTwoLettersLinksBuilder         (word_list_terminant_with_two_letters,
+                                                          483 cles, 0 -> 483)
+    App\Search\SuffixAvecLinksBuilder                   (word_list_terminant_with_letter,
+                                                          23 cles, 0 -> 23)
+    App\Search\AvecThreeLettersLinksBuilder             (word_list_avec_three_letters,
+                                                          666 -> 715, +49)
+    App\Search\AvecTwoLettersLinksBuilder               (word_list_avec_two_letters,
+                                                          138 -> 140, +2)
+    App\Search\PositionLinksBuilder                     (word_list_position, 2 -> 24, +22 --
+                                                          constante aussi referencee par
+                                                          LengthLinksBuilder::byPosition, un seul
+                                                          correctif suffit pour les deux)
+    App\Search\LengthCombinedLinksBuilder               (word_list_combined, variante AVEC
+                                                          longueur, 292 -> 487, +195 -- constante
+                                                          aussi referencee par
+                                                          LengthLinksBuilder::byStartEnd)
+    App\Search\LetterCombinedLinksBuilder               (word_list_combined, variante SANS
+                                                          longueur, 33 -> 40, +7)
+    App\Search\StartEndWithLinksBuilder                 (word_list_combined_with_letter,
+                                                          314 -> 338, +24)
+    App\Search\LengthSuffixExtensionLinksBuilder        (word_list_terminant, suffixe 2 lettres,
+                                                          386 -> 515, +129)
+    App\Search\LengthLinksBuilder                       (word_list_terminant, suffixe 1 lettre --
+                                                          AUCUN filtre n'existait avant ce
+                                                          correctif sur la branche 'length_end'
+                                                          [byEnd], contrairement a 'length_with'
+                                                          [byWith] qui avait deja
+                                                          EXTERNAL_DUPLICATE_WITH_KEYS depuis
+                                                          D-041 -- nouvelle constante
+                                                          EXTERNAL_DUPLICATE_END_KEYS creee,
+                                                          2 cles)
+  Verification EXHAUSTIVE (pas un echantillon) : les 2 903 lignes du lot D-047 comparees, une par
+  une, a la constante d'exclusion du builder responsable de leur maillage -- 2 903/2 903
+  couvertes, 0 lien mort restant. Tests unitaires mis a jour en consequence (compte figes
+  recalcules avec justification, jamais juste le chiffre) :
+  tests/Search/AvecThreeLettersLinksBuilderTest.php, AvecTwoLettersLinksBuilderTest.php,
+  PositionLinksBuilderTest.php, StartEndWithLinksBuilderTest.php,
+  LengthSuffixExtensionLinksBuilderTest.php.
+```
+
+## D-048 — Ouverture À L'Indexation : "avec" Palier 4 (Longueur + Quatre Lettres), Bug De Canonical Trouvé Et Corrigé En 4 Passes
+
+Date : 2026-08-31
+Statut : accepté et appliqué
+
+Contexte :
+
+```text
+demande produit explicite ("pourquoi ce type de page est en noindex ??? mots/10-lettres/avec/
+  a/b/c/d, tu pourrais lancer palier 4 (longueur+avec)") -- App\Search\AvecFourLettersLinks(Builder)
+  et le rendu (public/index.php, app/View/word-list.php) deja cables au moment de la decouverte,
+  mais AUCUNE ligne encore proposee au registre : /mots/{N}-lettres/avec/{4 lettres} repondait
+  200 avec du vrai contenu mais restait 'noindex,follow' par defaut (D-017, registre = seule
+  source de verite), exactement comme deja explique au produit pour d'autres familles avant
+  leur ouverture explicite
+precompute : bloc length_with_quad ajoute a scripts/build_explore_hub_counts.php (mirroir exact
+  du bloc length_with_triple existant, boucle a 4 niveaux, count_chars($normalized, 3) pour des
+  lettres distinctes triees) -- 14 longueurs x C(26,4) = 209 300 combinaisons theoriques,
+  123 557 lignes reelles a >= 1 resultat (list_counts, list_type 'length_with_quad')
+```
+
+Décision :
+
+```text
+BUG TROUVE PENDANT LA VERIFICATION MANUELLE AVANT APPLICATION (jamais applique au registre tel
+  quel) -- meme discipline "verifier avec de vraies donnees avant de faire confiance a toute
+  detection de doublon" deja appliquee a D-045 (verifications A+Q=A+Q+U, D+J+Y=D+J+K) : le
+  premier script de generation du lot (doublons-PARENT vs palier 3, meme methodologie que
+  App\Search\AvecThreeLettersLinksBuilder::DUPLICATE_PARENT_KEYS un niveau plus haut) construisait
+  le canonical_path de CHAQUE doublon-parent TOUJOURS depuis les trois premieres lettres saisies
+  (l1, l2, l3), quelle que soit LAQUELLE des quatre sous-triplets possibles (l1l2l3, l1l2l4,
+  l1l3l4, l2l3l4) avait REELLEMENT le meme compte que le quadruplet. Preuve sur pieces :
+  "/mots/10-lettres/avec/a/b/h/w" (compte reel = 3) avait ete associe au canonical
+  "/mots/10-lettres/avec/a/b/h" -- verification directe : A+B+H (10 lettres) = 1 285 mots,
+  A+B+H+W = 3 mots, AUCUN rapport. Le vrai sous-triplet correspondant (meme compte, 3) est
+  B+H+W. 11 335 lignes du lot initial (toutes les doublons-parent) etaient potentiellement
+  affectees par cette meme construction incorrecte (540 cas ambigus -- plusieurs sous-triplets
+  au meme compte -- resolus par le premier match dans l'ordre canonique l1l2l3/l1l2l4/l1l3l4/
+  l2l3l4, meme convention que la detection elle-meme).
+
+QUATRE correctifs successifs appliques et VERIFIES chacun avant le suivant (jamais appliques au
+  registre avant la fin de la chaine complete) :
+
+1. Canonical_path recalcule sur le VRAI sous-triplet correspondant (celui dont le compte
+   length_with_triple egale exactement le compte du quadruplet) -- 11 335 lignes recalculees.
+   Verification ponctuelle : a/b/h/w -> b/h/w (compte 3 = 3), confirme.
+
+2. CHAINE DE CANONICAL NON RESOLUE (decouvert par un audit du lot corrige au correctif 1) :
+   1 906 des 14 823 lignes noindex,follow pointaient vers une page palier 3 qui n'etait ELLE-MEME
+   pas index,follow -- soit ABSENTE du registre (prunee par une correction anterieure, D-040 :
+   'word_list_avec_three_letters' 28 827 -> 27 501 lignes reelles au total, -1 326 cumulees sur
+   plusieurs corrections dont les 660 de D-040 et 666 du D-041 deja verifies et testes dans
+   tests/Search/AvecThreeLettersLinksBuilderTest.php -- gap CONNU et deja couvert par les
+   constantes figees de ce builder, pas un defaut nouveau), soit presente mais noindex,follow
+   (doublon croise resolu par D-047, canonical vers une famille commencant/terminant). Resolu par
+   un resolveur de chaine (triple -> paire -> lettre seule, meme logique de correspondance "meme
+   compte exact" a chaque palier, profondeur max 5) : 349 lignes corrigees automatiquement.
+
+3. CHAINE HISTORIQUE NON RETROUVABLE PAR SOUS-ENSEMBLE (1 557 lignes restantes apres correctif 2,
+   toutes a tres petit compte -- 1 435 a exactement 1 mot, max 16) : le triplet parent historique
+   avait ete elimine par une relation SOEUR (meme empreinte reelle qu'un AUTRE triplet, pas un
+   sous-ensemble/sur-ensemble) que la chaine hierarchique ne peut par construction pas retrouver.
+   Resolu par recherche d'empreinte reelle DIRECTE (immediate, pas historique) contre les pages
+   palier 1/2/3 ACTUELLEMENT index,follow de meme longueur (filtrees par compte reel avant
+   fingerprint pour limiter le cout) : 407 lignes resolues. Pour les 1 150 restantes, AUCUN
+   representant deja indexe n'existe nulle part pour ce contenu exact -- promues en index,follow
+   (auto-canonical) plutot que supprimees a tort (un contenu reel et distinct merite un
+   representant indexe, coherent avec le principe "deux questions symetriques" de
+   docs/01_MASTER_BRIEF.md deja invoque pour D-017).
+
+4. DOUBLONS-SOEURS ENTRE PAGES PROMUES (decouvert par un spot-check manuel du correctif 3, PAS
+   par une verification systematique -- deux lignes promues independamment,
+   "/mots/10-lettres/avec/a/b/j/w" et "/mots/10-lettres/avec/a/e/j/w", partageaient la MEME
+   empreinte reelle exacte : WEBJOURNAL, seul mot des deux, mot francais NON admis au Scrabble)
+   -- jamais comparees entre elles au correctif 3 car chacune avait ete ecartee INDEPENDAMMENT du
+   groupe de comparaison "survivors" original au moment ou elle avait ete classee (a tort) comme
+   doublon-parent. Refait le dedoublonnage-soeur strictement sur le sous-ensemble des 1 150
+   lignes promues (groupees par longueur+compte, fingerprint reel, gagnant = premiere route_path
+   alphabetiquement) : 657 des 1 150 retrogradees en noindex,follow vers leur soeur gagnante,
+   493 restent effectivement uniques et index,follow.
+
+VALIDATION FINALE (avant toute application) : 0 canonical_path pointant vers une page absente du
+  registre ou noindex ; 0 ligne noindex,follow avec canonical_path = elle-meme (incoherent) ;
+  0 ligne index,follow avec canonical_path != elle-meme (incoherent) ; 0 route_path dupliquee
+  dans le lot. Verification HTTP reelle sur le dev server local des trois cas cites ci-dessus
+  (a/b/h/w -> noindex vers b/h/w, meme contenu WAHHABISME/WAHHABITES/WALBACHOIS des deux cotes ;
+  a/b/j/w -> index,follow, titre "WEBJOURNAL - ..." ; a/e/j/w -> noindex vers a/b/j/w) : les
+  trois rendus HTML (title, meta robots, meta description, link canonical) exacts et coherents.
+
+App\Search\AvecFourLettersLinksBuilder::DUPLICATE_PARENT_KEYS/SIBLING_DUPLICATE_KEYS remplies
+  avec les vraies valeurs finales du lot corrige (10 185 et 4 145, extraites directement du lot
+  applique -- jamais retapees a la main) -- EXTERNAL_DUPLICATE_KEYS reste vide (aucun balayage
+  generique croise encore relance depuis D-047 pour ce palier).
+
+Chiffres finaux du lot applique (scripts/seo-batches/avec-four-letters-2026-08-31.php) :
+  123 557 lignes au total, 109 227 index,follow, 14 330 noindex,follow (10 185 doublons-parent +
+  4 145 doublons-soeurs), 0 conflit avec une route deja existante.
+
+Metadonnees (titre, meta description, canonical) : AUCUN cablage supplementaire necessaire --
+  app/View/word-list.php construit $pageTitle/meta description generiquement depuis
+  App\Search\WordListFilters (descripteur base sur longueur/commencant/terminant/position/avec/
+  sans/motif, deja generique sur le NOMBRE de lettres "avec", jamais hardcode a 1-3), verifie
+  directement par requete HTTP reelle ci-dessus plutot que suppose.
+
+Sitemaps : scripts/build_sitemaps.php complete avec FAMILY_FRAGMENT_PREFIXES
+  ['word_list_avec_four_letters' => 'avec-quad'] -- avec-quad-0001/0002/0003.xml (40 000 + 40 000
+  + 28 734 URL) + avec-quad-orphan.xml (493 URL, les lignes promues au correctif 3/4, prefixe
+  distinct par traçabilite mais fonctionnellement identique -- str_starts_with('avec-quad-')
+  suffit a la validation R4) = 109 227 URL, exactement le compte index,follow. Rejoue en meme
+  temps que l'application du lot : 49 fragments, 1 116 412 URL au total (registre complet).
+
+Registre position (D-047, voir entree precedente) : scripts/propose_seo_batch.php
+  D041_EXCLUDED_ROUTE_PATHS['word_list_position'] complete avec les 22 exclusions D-047
+  (2 -> 24 entrees), commentaire de provenance mis a jour -- le script redevient idempotent
+  avec le registre reel corrige (regenere : 2 305 lignes, identique au registre live).
+```
+
+Raison :
+
+```text
+demande produit explicite ("pourquoi ce type de page est en noindex", "tu pourrais lancer
+  palier 4") -- le contenu existait deja et se rendait correctement, seule l'indexation
+  manquait ; le bug de canonical_path aurait, si applique tel quel, envoye des signaux SEO
+  contradictoires (canonical vers une page a un contenu totalement different, ou vers une page
+  elle-meme noindex -- chaine de canonical invalide) sur potentiellement des milliers de pages,
+  jamais detecte sans la verification manuelle explicitement demandee par le produit tout au
+  long de cette session ("continue les tests que tout soit parfait")
+```
+
+Conséquence :
+
+```text
+storage/seo_fr.sqlite : +123 557 lignes (avec-four-letters-2026-08-31), registre a 1 146 338
+  lignes au total, 1 116 412 en 'index,follow' -- sauvegarde storage/seo_fr.sqlite.bak-pre-d048
+  conservee avant application
+tests/Search/AvecFourLettersLinksBuilderTest.php : NOUVEAU, meme discipline exhaustive que
+  AvecThreeLettersLinksBuilderTest.php (balayage complet des 28 827 ancres palier 3 reelles,
+  verification reciproque dans les deux sens, cas de regression explicites pour les deux bugs
+  trouves ci-dessus -- A:B:H:W/B:H:W et le doublon-soeur WEBJOURNAL)
+tests/Seo/ProposeSeoBatchPositionTest.php : compte fige regularise 2 327 -> 2 305 (consequence
+  legitime de D-047, pas une regression)
+tests/Frontend/WordListViewTest.php : assertion perimee corrigee ('<summary>...</summary>' ->
+  '<p class="explore-subgroup-label">...</p>') -- derive PRE-EXISTANTE, anterieure a cette
+  session (commit 36ecef4, 2026-08-26, retour utilisateur deja applique au code a l'epoque mais
+  jamais repercute au test), decouverte par ce lot en relancant la suite complete, sans lien avec
+  D-047/D-048 eux-memes
+php tests/run.php : verification en cours au moment de la redaction -- 48/49 avant cette derniere
+  correction (le seul echec etait deja WordListViewTest, deja identifie comme pre-existant par
+  D-046), a reconfirmer 49/49 avec le nouveau test AvecFourLettersLinksBuilderTest inclus avant
+  commit
+```
+
+## D-049 — Ouverture À L'Indexation : "avec" SANS AUCUN Ancrage (BARE), Publication Avant Fin Du Contrôle De Doublon Croisé
+
+Date : 2026-09-01
+Statut : accepté et appliqué (contrôle de doublon croisé partiellement différé, voir Décision)
+
+Contexte :
+
+```text
+demande produit explicite (volume de recherche reel, preuve Semrush) : ouvrir "avec" totalement
+  nu (ni longueur ni prefixe ni suffixe, ex. /mots/avec/a/b/c/d) a 1/2/3/4 lettres -- convention
+  de nom BARE alignee avec le depot allemand cousin (deja en production sous ce nom)
+precompute : list_counts avec_bare/avec_bare_pair/avec_bare_triple/avec_bare_quad derives par
+  somme des length_with* deja calcules (aucun second parcours de terms), 16 598 combinaisons
+  reelles (26 + 325 + 2 575 + 13 672)
+correctif trouve au passage : App\Search\ExploreHubBuilder lisait toute la table list_counts
+  sans filtre (324 915 lignes) -- TTFB /mots mesure a 338,8 ms, corrige en 6,4 ms (requete
+  preparee bornee, meme defaut deja trouve et corrige cote allemand)
+correctif trouve au passage (titre/fil d'Ariane/H1) : mb_convert_case(..., MB_CASE_TITLE, ...)
+  rabaissait la casse des sequences de lettres saisies par l'utilisateur ("AB" -> "Ab") -- corrige
+  en construisant le titre piece par piece, lettres forcees en majuscule ; meme defaut signale
+  et corrige aux depots allemand et espagnol cousins
+```
+
+Décision :
+
+```text
+DETECTION DE DOUBLONS (parent transitif / soeur intra-palier / externe croise toutes familles) :
+  paliers 1-3 (26 + 325 + 2 575 = 2 926 candidats) entierement verifies avant application, 0
+  probleme. Palier 4 (13 672 candidats) : la verification croisee externe s'est averee bien plus
+  lente que prevu -- un compte de mots partage par 17 019 routes externes deja indexees
+  (result_count=1, PAS le plafond de troncature 10 000 comme suppose au debut, verifie en
+  direct sur seo_fr.sqlite) rendait le controle catastrophique (jusqu'a 17 019 requetes SQL
+  live par candidat). Deux tentatives de correctif :
+  1. fingerprint (sha1 de la liste triee des mots, meme principe que le controle SOEUR) mis en
+     cache PAR VALEUR DE COMPTE au lieu de recalcule par candidat -- gain reel, valide 5/5 sur
+     des cas deja connus, mais insuffisant seul : jusqu'a 255 539 routes externes pertinentes au
+     total, ~2h30 sans une seule ligne de progres observees meme avec ce correctif
+  2. filtre en memoire (charger chaque panier de longueur une fois, filtrer en PHP plutot qu'en
+     SQL) -- tentee, MESUREE, et ABANDONNEE : script de validation dedie a montre un cout
+     quasi identique au SQL d'origine (52,6 ms contre ~46-55 ms sur un panier de longueur
+     comparable), donc aucun gain reel malgre l'hypothese initiale. Retiree avant relancement
+     pour ne pas garder de complexite sans benefice mesure.
+  Le correctif #1 seul, bien que reel, ne suffisait pas a rendre le controle croise du palier 4
+  praticable dans un delai raisonnable (estimation ~24h au rythme observe sur le reliquat).
+
+DECISION PRODUIT EXPLICITE (2026-09-01, apres constat de la lenteur) : publier maintenant,
+  nettoyer apres -- meme methode que le depot allemand cousin pour son propre balayage recurrent
+  (scripts/check_combinatorial_duplicates.php, relance a chaque nouvelle famille plutot que de
+  tout bloquer en amont). Application :
+  - 12 725 candidats deja entierement verifies (paliers 1-3 complets + 9 619 du palier 4 avec
+    controle externe fait) : appliques normalement, aucun changement de methode
+  - 3 873 candidats restants du palier 4 : jamais compares aux autres familles combinatoires,
+    publies en index,follow avec une note explicite dans le registre
+    ("CONTROLE CROISE EXTERNE NON EFFECTUE...") -- PAS une omission silencieuse, tracee sur
+    chaque ligne concernee
+  - le controle sœur intra-palier 4 sur ce reliquat a lui-meme ete tente puis abandonne (>17 min
+    sans terminer sur seulement 3 873 candidats, meme requete non ancree en cause) -- differe
+    au balayage de nettoyage lui aussi
+  - le job de detection (build_avec_bare_candidates.php) continue de tourner en arriere-plan sur
+    le VRAI checkpoint (independant de l'instantane de publication) comme balayage de nettoyage
+    post-publication ; tout doublon trouve sur ce reliquat donnera lieu a un correctif applique
+    en place (meme mecanisme que D-047), pas a une nouvelle campagne de decision
+
+GARDE-FOU AJOUTE (incident reel, pas anticipe) : le cron de securite (relance automatique en cas
+  de plantage) a demarre une 2e instance du script en double a DEUX reprises malgre une consigne
+  explicite de verifier qu'une instance tournait deja (verification par liste de process,
+  fenetre de course non fiable) -- verrou fichier exclusif (flock LOCK_EX|LOCK_NB) ajoute
+  directement dans le script : une 2e instance qui demarre pendant qu'une 1re tourne se termine
+  desormais immediatement plutot que de courir sur le meme fichier de checkpoint.
+
+Registre (chiffres INITIAUX de l'application, corriges ci-dessous par l'audit) : 1 146 338 ->
+  1 162 936 lignes (+16 598), dont 1 132 783 en index,follow (nombre errone au moment de la
+  redaction, +16 447 annonce -- le delta reel etait +16 371 ; corrige plus bas suite a l'audit,
+  I-1). Sitemaps 49 -> 53 fragments (avec-bare-single/two/three/four-0001.xml). Verifie en
+  direct (serveur local, pas le serveur d'un autre depot par erreur -- confusion initiale
+  corrigee) : une page conservee (/mots/avec/a/d/i/l, 200, index,follow) et une page doublon
+  (/mots/avec/b/q/r/u, 200, noindex,follow, canonical vers /mots/avec/b/q/r) rendent
+  correctement. /mots (hub) toujours a 200, TTFB 9,9 ms.
+
+Non fait a ce stade (suite du balayage de nettoyage, pas bloquant pour la publication) :
+  OVER_BUDGET_KEYS laisse vide dans les 3 nouveaux builders (aucune exclusion de maillage par
+  performance pour l'instant -- rappel CLAUDE.md : la troncature/le budget TTFB n'est de toute
+  facon jamais un motif d'exclusion du REGISTRE sur ce projet, seulement du maillage), audit
+  formel code-reviewer/seo-technical-auditor pas encore lance, php tests/run.php pas encore
+  rejoue avec ce lot.
+```
+
+## D-049bis — Audit `seo-technical-auditor` De D-049 : NO GO, Cinq Bloquants Corriges
+
+Date : 2026-09-01
+Statut : NO GO initial, cinq bloquants corriges le jour meme, non re-audite formellement
+
+Contexte :
+
+```text
+1er audit seo-technical-auditor sur D-049 (le jour meme de l'application) : NO GO, 5 bloquants
+  (C-1 a C-5) et 5 points non bloquants (I-1 a I-5) -- rapport complet dans l'historique de
+  session, resume ici avec les corrections appliquees.
+```
+
+Décision :
+
+```text
+C-1 (CORRIGE) -- regression d'hote canonical dans les sitemaps, introduite entre D-042 et D-047
+  et propagee par cette session : les 53 fragments + sitemap-index.xml avaient ete regeneres
+  avec --base-url=https://wordcheckr.fr (apex) alors que config/sites/fr.php:36
+  (canonical_base_url) et public/robots.txt:19 (directive Sitemap) pointent tous deux vers
+  https://www.wordcheckr.fr -- 1 132 783 URL de sitemap en incoherence d'hote avec leur propre
+  balise canonical. Corrige : sitemaps regeneres avec le bon --base-url=https://www.wordcheckr.fr,
+  verifie sur pieces (sitemap-index.xml et un fragment avec-bare-four echantillonnes, les deux
+  en www desormais).
+
+C-2 (CORRIGE) -- controle PARENT saute a tort sur le reliquat de 3 873 candidats palier 4 non
+  testes croise : ce controle est une pure comparaison list_counts quad<->triple (AUCUNE requete
+  sur `terms`), rien dans l'argument des ~24h necessaires au controle EXTERNAL ne le justifiait.
+  Rejoue isolement (script scratch parent_check_reliquat.php, quelques secondes) : 323 doublons
+  PARENT trouves et corriges (bien au-dessus de l'estimation ~51 de l'audit, base sur le taux du
+  bloc deja controle -- les vraies donnees confirment la population non testee est plus dense en
+  doublons, coherent avec C-3). Lot avec-bare-four-letters-2026-09-01.php regenere avec ces 323
+  corrections, reapplique --force. index,follow : 1 132 783 -> 1 132 460.
+
+C-3 (MITIGE) -- le reliquat non teste n'est pas un echantillon aleatoire : 86,8% de ses candidats
+  ont un compte < 100 mots (contre 10,9% dans le bloc deja controle), et le taux de doublon
+  mesure sur les petits paniers du bloc controle est de 7,85% (contre 1,10% sur les gros
+  paniers) -- extrapolation : ~270 doublons attendus dans le reliquat restant (apres C-2),
+  concentres sur les candidats a exactement 1 resultat (83% de doublons mesures sur les 6 deja
+  controles). Mitigation appliquee (pas une resolution complete, le balayage de nettoyage reste
+  necessaire pour le reste) : les 165 candidats palier 4 restants a exactement 1 resultat ET
+  jamais testes croise sont mis en quarantaine (nouveau lot correctif
+  avec-bare-four-letters-quarantine-2026-09-01.php, noindex,follow, canonical sur eux-memes, note
+  explicite) -- repasseront index,follow (ou noindex+canonical vers un gagnant si doublon
+  confirme) des que le balayage de nettoyage les couvre. index,follow : 1 132 460 -> 1 132 295.
+  Sitemaps regeneres une derniere fois avec ces deux corrections (53 fragments, 1 132 295 URL).
+
+C-4 (CORRIGE) -- scripts/build_avec_bare_candidates.php n'existait que dans un repertoire
+  scratch hors depot, ni rejouable ni relisible ni surveillable par un tiers si la session
+  s'arretait. Corrige : script verse dans scripts/ (chemin $root rendu portable via
+  dirname(__DIR__), plus de chemin absolu local en dur), etat transitoire (checkpoint, verrou
+  flock, comptes precalcules par palier) deplace dans storage/ (jamais versionne, D-007, comme
+  tout le reste de ce dossier) -- format du checkpoint desormais documente en tete de fichier.
+  ECHEANCE FERME ajoutee (point 5 de l'audit) : toute ligne encore marquee "CONTROLE CROISE
+  EXTERNE NON EFFECTUE" doit etre couverte avant le 2026-09-08 (7 jours) ; passe cette date sans
+  couverture complete, toute ligne restante doit basculer en noindex,follow plutot que de rester
+  en ligne indefiniment. Balayage relance depuis son nouvel emplacement versionne, checkpoint
+  repris correctement (12 725 cles), cron de securite session reconfigure sur le nouveau chemin.
+
+C-5 (PARTIELLEMENT CORRIGE) -- metriques quantifiees manquantes dans l'entree D-049 initiale.
+  Corrigees ici (I-1 ci-dessous) : delta index,follow exact, repartition parent/external/
+  quarantaine. TOUJOURS MANQUANT (reporte, pas bloquant pour le deploiement immediat vu
+  l'autorisation produit) : chiffres finaux du balayage TTFB palier 4 sur les 13 004 pages
+  index,follow sans aucun ancrage (OVER_BUDGET_KEYS reste vide dans les 3 builders BARE --
+  rappel : n'affecte jamais l'indexation elle-meme sur ce projet, seulement le maillage),
+  dimensionnement explicite du lot de rollout en vagues pour la Phase 7.
+
+I-1 (CORRIGE) -- trois incoherences arithmetiques dans l'entree D-049 initiale, toutes
+  recalculees directement depuis le registre reel plutot que reprises :
+  (a) delta index,follow reel de l'application initiale : +16 371 (pas +16 447 annonce) ;
+  (b) apres corrections C-2/C-3, chiffres FINAUX verifies directement sur storage/seo_fr.sqlite :
+  single 26/26 index,follow, two 325/325, three 2 528/2 575 (47 exclus : 3 parent + 44
+  externes -- 0 probleme n'etait vrai que pour les paliers 1-2, pas 1-3 comme ecrit), four
+  13 004/13 672 index,follow (668 noindex : 455 parent + 95 external + ~118 quarantaine, les 165
+  quarantaines chevauchant partiellement les 323 parents nouvellement trouves) ; total D-049 :
+  15 883 index,follow (pas 16 371), 715 noindex. Registre final verifie : 1 162 936 lignes,
+  1 132 295 en index,follow (1 116 412 + 15 883 = 1 132 295, exact) ;
+  (c) candidats "entierement verifies avant le controle externe non teste" : 2 926 (paliers 1-3)
+  + 9 619 (palier 4, deja passes par le controle externe complet dans la boucle principale) =
+  12 545 (pas 12 725 annonce, qui melangeait par erreur avec le compte de cles deja PRESENTES
+  dans le checkpoint, exclusions palier 4 comprises -- 9 619 + 106 exclusions deja connues du
+  palier 4 a ce moment = 9 725, + 2 926 hors palier 4... l'ecart exact n'a pas ete retrace poste
+  facto, seul le chiffre correct 12 545 est retenu ici).
+
+I-2 (CORRIGE) -- App\Seo\Family.php documentait "palier 3 SOEURS 3/2 572 survivants", chiffre
+  d'une mesure PRELIMINAIRE (avant que le controle externe complet ne tourne), jamais mis a jour.
+  Chiffres finaux reels : palier 3 = 3 parent + 44 external + 0 sibling pur (les 3 paires
+  candidates trouvees par le controle sœur preliminaire se sont averees etre EGALEMENT des
+  doublons croises externes une fois ce controle-la execute, absorbees dans les 44 -- 0 sœur pure
+  survivante, SIBLING_DUPLICATE_KEYS vide a raison). Docblock corrige sur pieces.
+
+I-3, I-4, I-5 -- non corriges a ce stade, reportes explicitement (pas bloquants pour le
+  deploiement immediat) :
+  I-3 invariant "tout quad index,follow a >= 1 parent index,follow" non teste (exposition reelle
+  nulle aujourd'hui, verifie par l'audit : le seul cas a risque {J,K,X,Z} n'existe pas dans le
+  lot) -- a transformer en assertion de test avant le prochain correctif en place sur ce palier ;
+  I-4 les bascules statut/admis|non-admis restent suivies (pas de rel="nofollow") depuis les
+  16 371 nouvelles pages sans ancrage -- meme traitement que la pagination non ancree (deja
+  rel="nofollow") a etendre a une prochaine passe ;
+  I-5 2 720 pages du lot (16,6%) servies en liste tronquee (result_count registre != total
+  servi) -- point deja connu et non bloquant depuis D-028bis, non refermable dans le cadre de
+  cette correction.
+
+Sweep in_array() -> isset()+array_flip() (trouve en investiguant un blocage de 30+ minutes sur
+  tests/Search/AvecFourLettersLinksBuilderTest.php pendant la meme session, hors perimetre direct
+  de D-049 mais touche les memes fichiers) : 17 builders corriges au total (les 4 nouveaux
+  AvecFourLettersLinksBuilder/AvecBareTwoLettersLinksBuilder/AvecBareThreeLettersLinksBuilder/
+  AvecBareFourLettersLinksBuilder plus 13 autres deja existants dont les listes d'exclusion
+  avaient grossi au fil des corrections R5 de cette session -- gain isole mesure : 169,8x sur un
+  micro-benchmark representatif). Bug de test independant trouve et corrige au passage :
+  tests/Search/SuffixAvecLinksBuilderTest.php attendait encore 0 exclusion sur son axe alors que
+  SuffixAvecLinksBuilder::EXTERNAL_DUPLICATE_KEYS avait ete rempli (23 cles, D-047) sans jamais
+  mettre le test a jour -- corrige, meme patron que PrefixAvecLinksBuilderTest.php.
+
+Reste non re-audite formellement : ce correctif n'a pas fait l'objet d'un 2e passage
+  seo-technical-auditor avant deploiement (autorisation produit explicite de deployer si les
+  corrections des bloquants critiques sont faites, quitte a investiguer le reste apres).
+```
+
+## D-049ter — Audit `code-reviewer` De D-047/D-048/D-049/D-049bis : NO GO, Trois Bloquants (Dont Un Introduit En Corrigeant D-049bis)
+
+Date : 2026-09-01
+Statut : deux bloquants corriges et re-verifies independamment, un troisieme tranche par decision
+  produit explicite (revision D-019 ci-dessous)
+
+Contexte :
+
+```text
+2e audit (code-reviewer cette fois, apres le 1er seo-technical-auditor de D-049bis) sur
+  l'ensemble non commite (D-047 a D-049bis). Perimetre plus large que D-049 seul -- a trouve un
+  defaut introduit PAR la correction meme de D-049bis, et un defaut preexistant de D-047 jamais
+  detecte jusqu'ici. Rapport complet dans l'historique de session.
+```
+
+Décision :
+
+```text
+C-1 (CORRIGE, RECIDIVE DU DEFAUT R5) -- en corrigeant le registre pour C-2/C-3 de D-049bis (323
+  doublons PARENT + 165 quarantaines), les constantes DUPLICATE_PARENT_KEYS/EXTERNAL_DUPLICATE_
+  KEYS de App\Search\AvecBareFourLettersLinksBuilder n'ont jamais ete remises a jour -- 488 pages
+  noindex non couvertes sur 668, 1 679 liens morts mesures en executant reellement le builder sur
+  les 2 528 pages source palier 3. EXACTEMENT le defaut que D-047 documente et que le docblock du
+  meme fichier pretendait avoir evite. Corrige : constantes regenerees DIRECTEMENT depuis le
+  registre (source de verite, pas un instantane intermediaire) -- 452 DUPLICATE_PARENT_KEYS
+  (doublons avec une page parente reelle, retrace via storage/avec_bare_resolution.json), 51
+  EXTERNAL_DUPLICATE_KEYS (doublons croises confirmes), 0 SIBLING (confirme par les deux audits).
+  NOUVELLE constante PENDING_VERIFICATION_KEYS (165 cles) ajoutee pour distinguer semantiquement
+  les pages en quarantaine (jamais comparees, pas des doublons confirmes) des vrais doublons --
+  I-7 du meme audit relevait a raison que canonical=self n'est pas un doublon, cette distinction
+  formalise la nuance plutot que de les noyer dans EXTERNAL_DUPLICATE_KEYS. Re-verifie
+  independamment (execution reelle du builder, meme methode que l'audit) : 51 922 liens produits
+  sur les 2 528 pages source, 0 mort.
+
+C-2 (CORRIGE, DEFAUT PREEXISTANT DE D-047, DEPUIS AVANT AUJOURD'HUI) -- le lot D-047
+  (cross-family-correction-d047-2026-08-31.php) a bascule 2 903 pages en noindex sans jamais
+  repointer les canonical_path des pages D-045 qui les designaient -- c'est le critere de
+  validation que D-048 s'etait lui-meme fixe sur son propre lot (« 0 canonical_path pointant vers
+  une page absente du registre ou noindex ») jamais applique au registre entier. Balayage
+  independant sur l'ensemble du registre (1 162 936 lignes, pas seulement le perimetre D-047) :
+  3 335 lignes avec canonical casse (perimetre plus large que les 3 161 rapportes par l'audit --
+  le balayage de nettoyage D-049 en fond a probablement introduit quelques cas supplementaires
+  entre les deux mesures), dont 190 impasses (chaine n'atteignant jamais une page index,follow,
+  contre 16 rapportees -- meme ecart). Corrige en deux temps : (1) 3 145 chaines RESOLVABLES
+  aplaties directement sur leur gagnant final index,follow (saute les sauts intermediaires
+  noindex) ; (2) 190 impasses (cible absente du registre, ex. /mots/commencant/u/avec/j/m
+  pointant vers /mots/commencant/u/avec/j qui n'existe pas) corrigees en canonical_path = soi-
+  meme, robots INCHANGE (reste noindex,follow) -- choix le plus sur, n'ouvre aucune page a
+  l'indexation sans re-verification complete de son statut doublon. Re-verifie independamment
+  (nouveau process, balayage frais) : 0 chaine encore cassee sur l'ensemble du registre.
+
+C-3 (TRANCHE PAR DECISION PRODUIT -- REVISION EXPLICITE DE D-019) -- les paliers "avec nue"
+  (D-049) necessitent un SCAN complet de `terms` (838 180 lignes) a chaque rendu, faute
+  d'ancrage indexable (prefixe/suffixe/longueur) : EXPLAIN QUERY PLAN confirme
+  `SCAN terms USING COVERING INDEX sqlite_autoindex_terms_1`, ~120ms mesures contre ~21-56ms pour
+  l'equivalent ancre (jusqu'a 5x). CLAUDE.md range le scan complet de la table au runtime dans
+  les Interdits ; D-019 (ligne 694-705) l'avait qualifie de « regle absolue, pas un objectif
+  negociable » et sa mitigation consistait justement a retirer les liens auto-generes en masse
+  vers ce type de page. D-049 ouvre 15 883 pages sans ancrage a l'indexation + ~61 835 liens
+  internes vers elles SANS reviser D-019 formellement -- constat exact de l'audit.
+  DECISION PRODUIT EXPLICITE (2026-09-01, apres explication du compromis en termes simples) :
+  garder le lot tel quel, deployer ce soir, MESURER le TTFB reel une fois en production sur
+  o2switch (workers concurrents, conditions reelles plutot que la machine de dev sous
+  contention des balayages de nettoyage en cours) plutot que de retenir 15 500 pages (paliers 3-4)
+  en attendant une mesure prealable. Cette entree CONSTITUE la revision explicite de D-019 que
+  l'audit reclamait : le compromis performance/volume de contenu est accepte consciemment pour
+  ce cas precis (source de volume reel Semrush, D-049), pas par omission. ENGAGEMENT DE SUIVI :
+  mesurer le TTFB reel du palier 4 (13 004 pages, le plus gros volume, jamais mesure meme en dev)
+  des le lendemain du deploiement ; si le p95 reel depasse le budget CLAUDE.md (250ms) sous charge
+  de production, retirer le palier 4 du sitemap (retour a noindex,follow, canonical sur soi-meme,
+  meme mecanisme deja utilise pour la quarantaine C-3 de D-049bis) en attendant un correctif
+  structurel (ex. materialisation d'un index inverse lettre->mots, hors perimetre de cette
+  session).
+
+I-1 a I-9, M-1 a M-5 de cet audit : non corriges a ce stade (non bloquants, reportes) --
+  notamment I-2/I-3/I-9 qui touchent scripts/build_avec_bare_candidates.php (chemin en dur vers
+  4 JSON non versionnes deja presents dans storage/ au moment du deploiement donc fonctionnel
+  MAIS fragile pour un clone frais futur ; le script re-ecrira les lots avec la meme date en dur
+  a sa prochaine execution, risque reel de perdre les notes/traces de cette session ; connexion
+  seo_fr.sqlite ouverte en lecture-ecriture alors qu'aucune ecriture n'est faite) -- a traiter
+  dans une prochaine session avant la prochaine execution complete du balayage de nettoyage.
+```
+
+## D-049quater — Correctif Structurel Partiel Pour "avec nue" : Colonne `letter_mask`, Postings Mesures Et Ecartes
+
+Date : 2026-09-01
+Statut : accepté et appliqué
+
+Contexte :
+
+```text
+suite a la decision produit D-049ter (deployer "avec nue" tel quel, mesurer apres) --
+  l'utilisateur demande d'explorer si un index dedie pourrait reduire le cout reel avant meme de
+  deployer, plutot que d'attendre la mesure en production. Deux approches construites et
+  mesurees sur une copie jetable de storage/dictionary_fr.sqlite (jamais sur la vraie base avant
+  d'avoir les chiffres), jamais supposees.
+```
+
+Décision :
+
+```text
+DEUX APPROCHES MESUREES (4 cas representatifs, base complete 838 180 lignes) :
+
+1. Colonne `letter_mask` (masque de bits, 1 bit par lettre A-Z presente dans `normalized`) +
+   index couvrant dessus : ~45-49 ms/appel sur les 4 cas, contre 72-152 ms pour l'approche
+   actuelle (instr() x4) -- gain ~2x, COHERENT. Reste un SCAN complet (EXPLAIN QUERY PLAN :
+   SCAN terms USING COVERING INDEX idx_terms_letter_mask) -- un ET binaire ne peut pas etre
+   recherche par plage dans un B-tree, aucun index ne peut eviter le parcours pour ce type de
+   requete ("contient ces lettres, n'importe ou, n'importe quel ordre"). Cout de stockage
+   negligeable : une colonne INTEGER + un index, quelques Mo.
+
+2. Table de postings (une ligne par (lettre, mot), index sur lettre, intersection SQL des 4
+   sous-requetes) : tres rapide sur les lettres RARES (J+K+W+X : 2,47 ms ; B+G+K+W : 25,78 ms)
+   mais PLUS LENT que l'approche actuelle sur les lettres FREQUENTES (E+I+O+U, 80 847
+   correspondances : 253 ms, pire que les 152 ms actuels) -- l'intersection de deux grandes
+   listes triees coute plus cher que le gain. Cout de stockage mesure : +553 Mo pour les DEUX
+   structures test combinees (la table de postings seule domine ce total, ~6,5M lignes). Ecartee
+   -- reproduit exactement le constat deja fait sur les postings generaux (D-012, 587 Mo estime ;
+   Phase 3, 355 Mo reel, "toujours trop lent") meme pour ce cas plus etroit (presence de lettre,
+   pas sous-chaine arbitraire).
+
+RETENU : colonne `letter_mask`, condition NECESSAIRE ajoutee EN PLUS des predicats existants
+  (jamais un remplacement -- pour minCount >= 2 lettres, seul instr()/LENGTH-REPLACE prouve le
+  COMPTE exact, le masque ne prouve que la presence). Implemente :
+  - schema.sql : colonne `letter_mask INTEGER NOT NULL` sur `terms`, index couvrant
+    `idx_terms_letter_mask(letter_mask, normalized, score, length, is_ods8, is_ods9)`
+  - scripts/lib/normalize.py : fonction `letter_mask(normalized)` (source unique de verite,
+    D-007), utilisee UNIQUEMENT au build (calcule le masque d'UN MOT une fois) -- le runtime PHP
+    calcule un masque different (celui des LETTRES SAISIES par le visiteur, trivial : OR des
+    bits demandes), jamais le meme calcul refait sur `normalized`
+  - scripts/import_fr.py : `letter_mask(normalized)` ajoute a la ligne INSERT, meme position que
+    les autres colonnes derivees (score/signature/reversed)
+  - App\Search\WordListSolver::extraPredicates() : condition
+    `(letter_mask & CAST(? AS INTEGER)) = CAST(? AS INTEGER)` ajoutee AVANT la boucle
+    withLetters existante, des que $filters->withLetters n'est pas vide -- s'applique a TOUTE
+    contrainte "avec" (pas seulement "avec nue"), toujours correcte (condition necessaire),
+    change le plan de requete uniquement quand aucun autre ancrage indexe n'existe
+
+VERIFICATION AVANT ET APRES RECONSTRUCTION COMPLETE (meme discipline que Phase 0) :
+  - storage/dictionary_fr.sqlite reconstruite (python scripts/import_fr.py), 838 180 termes
+    inchanges, integrity_check = ok, DETERMINISME VERIFIE (reconstruction x2 independantes,
+    hash sha256 identique byte-a-byte :
+    6e011fbccbf5973c39004ef17762bb4b4ecfd1b4cc6c49a5ebfd16d108fa81cb)
+  - letter_mask verifie sur un cas connu (BONJOUR) : calcul independant en PHP (1204738) =
+    valeur stockee (1204738), MATCH
+  - EXPLAIN QUERY PLAN sur le vrai code (WordListSolver::extraPredicates() via reflection, cas
+    reel "/avec/a/b/c/d") : SCAN terms USING COVERING INDEX idx_terms_letter_mask confirme
+    (etait sqlite_autoindex_terms_1 avant) ; 49,02 ms mesures (etait ~112-152 ms)
+  - resultat identique a list_counts precalcule (avec_bare_quad, A:B:C:D) : 2 830 = 2 830, MATCH
+  - CONSEQUENCE OUBLIEE PUIS CORRIGEE : reconstruire dictionary_fr.sqlite vide `list_counts`
+    (rempli par un script SEPARE, scripts/build_explore_hub_counts.php, jamais par import_fr.py)
+    -- oubli initial trouve immediatement au premier controle croise (list_counts vide), corrige
+    en relancant build_explore_hub_counts.php (341 513 lignes restaurees, meme total qu'avant)
+  - verifie en direct (serveur local dedie FR) : /mots/avec/a/b/c/d -> 200, "2830 mots" affiche,
+    coherent avec la requete directe ; /mot/bonjour, /mots/10-lettres, /mots/terminant/tion, /
+    (home) tous 200 -- aucune regression sur les chemins NON concernes par ce changement
+  - php tests/run.php relance integralement apres le changement de schema (54 fichiers) : 1er
+    passage 53/54 -- tests/Seo/CheckCombinatorialDuplicatesTest.php echoue (NOT NULL constraint
+    failed: terms.letter_mask, sa propre base synthetique de test construite en PHP n'avait pas
+    ete mise a jour). Corrige : App\Search\Normalizer::letterMask() ajoutee (meme formule que
+    scripts/lib/normalize.py::letter_mask(), D-007 -- reimplementation PHP pour les fixtures de
+    test qui construisent leur propre base, jamais utilisee au runtime lui-meme) ; deux fixtures
+    de test mises a jour (CheckCombinatorialDuplicatesTest.php pour de vraies lignes,
+    Database/ConnectionTest.php pour sa ligne factice d'ecriture-refusee, D-001/D-007). Les deux
+    reverifies individuellement OK apres correctif. Balayage complet du depot pour d'autres
+    'INSERT INTO terms' explicites (3 occurrences trouvees au total, les 2 ci-dessus + import_fr.py
+    lui-meme deja a jour) -- aucune autre fixture affectee.
+
+Non fait : re-mesure en conditions de production reelles (o2switch, workers concurrents) --
+  reste l'engagement de suivi de D-049ter, ce correctif REDUIT le cout mesure mais ne leve pas
+  le constat CLAUDE.md (scan complet toujours present, juste moins couteux par ligne examinee).
+```

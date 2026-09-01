@@ -94,6 +94,14 @@ return function (): void {
     // (jamais fait avant ce lot) et famille "terminant+avec" entièrement nouvelle (1/2/3
     // lettres, n'existait nulle part sur ce dépôt), voir app/Seo/Family.php et
     // docs/DECISIONS.md D-045 pour le détail complet.
+    // WORD_LIST_AVEC_FOUR_LETTERS (D-048, demande produit du 2026-08-31) : palier 4 de
+    // l'entonnoir "avec" (longueur + quatre lettres) -- absente de cette liste par omission au
+    // moment de D-048, corrigée ici (D-049), jamais dans NEVER_SITEMAP.
+    // WORD_LIST_AVEC_BARE_SINGLE_LETTER/TWO_LETTERS/THREE_LETTERS/FOUR_LETTERS (D-049, demande
+    // produit du 2026-09-01) ajoutées directement hors de NEVER_SITEMAP : "avec" SANS AUCUN
+    // ancrage (ni longueur, ni préfixe, ni suffixe), convention de nom BARE alignée avec le
+    // dépôt allemand cousin -- voir app/Seo/Family.php et docs/DECISIONS.md D-049 pour le détail
+    // complet.
     $expectedAllowed = [
         Family::HOME,
         Family::WORD_ADMITTED,
@@ -106,6 +114,11 @@ return function (): void {
         Family::WORD_LIST_AVEC_SINGLE_LETTER,
         Family::WORD_LIST_AVEC_TWO_LETTERS,
         Family::WORD_LIST_AVEC_THREE_LETTERS,
+        Family::WORD_LIST_AVEC_FOUR_LETTERS,
+        Family::WORD_LIST_AVEC_BARE_SINGLE_LETTER,
+        Family::WORD_LIST_AVEC_BARE_TWO_LETTERS,
+        Family::WORD_LIST_AVEC_BARE_THREE_LETTERS,
+        Family::WORD_LIST_AVEC_BARE_FOUR_LETTERS,
         Family::WORD_LIST_COMBINED_WITH_LETTER,
         Family::WORD_LIST_COMMENCANT_WITH_LETTER,
         Family::WORD_LIST_COMMENCANT_WITH_TWO_LETTERS,

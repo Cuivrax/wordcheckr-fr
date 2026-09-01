@@ -90,6 +90,30 @@ const FAMILY_FRAGMENT_PREFIXES = [
     // reports/query-plans/avec-length-3-letters-full-sweep.md et app/Seo/Family.php pour le detail
     // complet, dont l'investigation d'un pic de latence isole juge non structurel.
     'word_list_avec_three_letters' => 'avec-triple',
+    // word_list_avec_four_letters (D-048, demande produit explicite du 2026-08-31, jamais dans
+    // NEVER_SITEMAP) : PALIER 4 de l'ouverture en entonnoir de "avec" -- longueur explicite ET
+    // exactement quatre lettres "avec" DISTINCTES (occurrence unique chacune), 14 x C(26,4) =
+    // 209 300 combinaisons au plus, borne de la famille elle-meme sur ce perimetre precis --
+    // distincte en permanence de word_list_avec_single_letter/TWO_LETTERS/THREE_LETTERS
+    // (paliers 1/2/3, ci-dessus) et de word_list_avec (multiensemble general, ci-dessous,
+    // NEVER_SITEMAP). Prefixe 'avec-quad', ajoute a docs/05_URL_SEO_INDEXATION.md (section
+    // Sitemaps) dans le meme lot. Balayage complet des 209 300 combinaisons : 123 557 a
+    // >= 1 resultat, voir app/Seo/Family.php pour le detail complet du controle de doublon
+    // (parent palier 3, soeurs palier 4, chaine de canonical resolue jusqu'a une page
+    // reellement index,follow -- 4 correctifs successifs, voir docs/DECISIONS.md D-048).
+    'word_list_avec_four_letters' => 'avec-quad',
+    // word_list_avec_bare_single_letter/two/three/four_letters (D-049, demande produit
+    // explicite du 2026-09-01, preuve de volume reel Semrush, jamais dans NEVER_SITEMAP) :
+    // "avec" SANS AUCUN ancrage (ni longueur, ni prefixe, ni suffixe) -- distinct en permanence
+    // de word_list_avec_single_letter/two/three/four_letters ci-dessus (qui portent TOUJOURS
+    // une longueur) et de word_list_avec (multiensemble general, ci-dessous, NEVER_SITEMAP).
+    // Prefixes 'avec-bare-single'/'avec-bare-two'/'avec-bare-three'/'avec-bare-four', ajoutes a
+    // docs/05_URL_SEO_INDEXATION.md (section Sitemaps) dans le meme lot. Voir
+    // app/Seo/Family.php et docs/DECISIONS.md D-049 pour le detail complet.
+    'word_list_avec_bare_single_letter' => 'avec-bare-single',
+    'word_list_avec_bare_two_letters' => 'avec-bare-two',
+    'word_list_avec_bare_three_letters' => 'avec-bare-three',
+    'word_list_avec_bare_four_letters' => 'avec-bare-four',
     // word_list_combined_with_letter (demande produit du 2026-08-18, jamais dans NEVER_SITEMAP,
     // D-033) : NOUVELLE classification, DISTINCTE de word_list_combined -- prefixe ET suffixe
     // chacun d'une seule lettre, SANS longueur, PLUS une lettre "avec" d'occurrence unique,

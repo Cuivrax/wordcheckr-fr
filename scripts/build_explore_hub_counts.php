@@ -104,7 +104,7 @@ $pdo = new PDO('sqlite:' . $dbPath, null, null, [
 $pdo->exec('DROP TABLE IF EXISTS list_counts');
 $pdo->exec(
     'CREATE TABLE list_counts ('
-    . "list_type TEXT NOT NULL CHECK (list_type IN ('length', 'start', 'end', 'length_start', 'length_end', 'length_with', 'start_end', 'length_with_position', 'length_avec_sans', 'length_start_end', 'length_with_pair', 'length_with_triple', 'start_end_with', 'start_with', 'prefix2', 'prefix3', 'prefix4', 'suffix2', 'suffix3', 'suffix4', 'length_prefix2', 'length_suffix2', 'start_with_pair', 'start_with_triple', 'end_with', 'end_with_pair', 'end_with_triple')), "
+    . "list_type TEXT NOT NULL CHECK (list_type IN ('length', 'start', 'end', 'length_start', 'length_end', 'length_with', 'start_end', 'length_with_position', 'length_avec_sans', 'length_start_end', 'length_with_pair', 'length_with_triple', 'start_end_with', 'start_with', 'prefix2', 'prefix3', 'prefix4', 'suffix2', 'suffix3', 'suffix4', 'length_prefix2', 'length_suffix2', 'start_with_pair', 'start_with_triple', 'end_with', 'end_with_pair', 'end_with_triple', 'length_with_quad', 'avec_bare', 'avec_bare_pair', 'avec_bare_triple', 'avec_bare_quad')), "
     . 'list_key TEXT NOT NULL, '
     . 'count INTEGER NOT NULL, '
     . 'PRIMARY KEY (list_type, list_key)'
@@ -178,6 +178,27 @@ foreach ($lengthWithCounts as $length => $byLetter) {
         $insert->execute(['length_with', $length . ':' . $letter, $n]);
         $total++;
     }
+}
+
+// avec_bare (demande produit explicite, preuve de volume Semrush -- voir docs/DECISIONS.md
+// D-049) : meme contrainte que 'length_with' ci-dessus (lettre presente n'importe ou, minCount=1)
+// mais SANS la dimension longueur -- "/mots/avec/{X}" seul, aucun autre ancrage. DERIVE de
+// $lengthWithCounts (deja construit juste au-dessus par l'UNIQUE parcours PHP de `terms`), PAS
+// un second parcours de la table : la somme des comptes 'length_with' sur les 14 longueurs pour
+// une lettre donnee est mathematiquement egale au compte "toutes longueurs confondues" pour
+// cette meme lettre (un mot a exactement une longueur, jamais deux) -- verifie independamment
+// par une requete SQL directe (COUNT(*) WHERE instr(normalized,?)>0) avant application, meme
+// principe et meme verification que le depot allemand cousin (D-DE-040).
+$bareSingleCounts = [];
+foreach ($lengthWithCounts as $byLetter) {
+    foreach ($byLetter as $letter => $n) {
+        $bareSingleCounts[$letter] = ($bareSingleCounts[$letter] ?? 0) + $n;
+    }
+}
+ksort($bareSingleCounts);
+foreach ($bareSingleCounts as $letter => $n) {
+    $insert->execute(['avec_bare', $letter, $n]);
+    $total++;
 }
 
 // start_end (D-024, maillage commencant+terminant) : croise lettre de debut ET de fin, SANS
@@ -313,6 +334,24 @@ foreach ($pairCounts as $key => $n) {
     $total++;
 }
 
+// avec_bare_pair (meme demande produit qu'avec_bare ci-dessus, D-049) : CHAQUE PAIRE de lettres
+// distinctes presentes (minCount=1 chacune), SANS dimension longueur -- "/mots/avec/{X}/{Y}"
+// seul. DERIVE de $pairCounts (deja construit juste au-dessus), meme raisonnement que
+// 'avec_bare' : la somme des comptes 'length_with_pair' sur les 14 longueurs pour une paire
+// donnee est mathematiquement egale au compte "toutes longueurs confondues" pour cette meme
+// paire. list_key = "{lettre1}:{lettre2}", ordre deja garanti par la construction de
+// $pairCounts (count_chars() mode 3, ordre croissant).
+$barePairCounts = [];
+foreach ($pairCounts as $key => $n) {
+    [, $l1, $l2] = explode(':', $key, 3);
+    $barePairCounts[$l1 . ':' . $l2] = ($barePairCounts[$l1 . ':' . $l2] ?? 0) + $n;
+}
+ksort($barePairCounts);
+foreach ($barePairCounts as $key => $n) {
+    $insert->execute(['avec_bare_pair', $key, $n]);
+    $total++;
+}
+
 // length_with_triple (palier 3 de l'ouverture en entonnoir de "avec") : longueur croisee avec
 // CHAQUE TRIPLET de lettres DISTINCTES presentes dans le mot (minCount=1 chacune -- meme portee
 // que le palier 2 'length_with_pair' ci-dessus, mais pour trois lettres simultanement au lieu de
@@ -352,6 +391,70 @@ foreach ($allTermsForTripleStatement as $row) {
 ksort($tripleCounts);
 foreach ($tripleCounts as $key => $n) {
     $insert->execute(['length_with_triple', $key, $n]);
+    $total++;
+}
+
+// avec_bare_triple (meme demande produit qu'avec_bare/avec_bare_pair ci-dessus, D-049) : CHAQUE
+// TRIPLET de lettres distinctes presentes (minCount=1 chacune), SANS dimension longueur --
+// "/mots/avec/{X}/{Y}/{Z}" seul. DERIVE de $tripleCounts, meme raisonnement que 'avec_bare_pair'.
+$bareTripleCounts = [];
+foreach ($tripleCounts as $key => $n) {
+    [, $l1, $l2, $l3] = explode(':', $key, 4);
+    $bareTripleCounts[$l1 . ':' . $l2 . ':' . $l3] = ($bareTripleCounts[$l1 . ':' . $l2 . ':' . $l3] ?? 0) + $n;
+}
+ksort($bareTripleCounts);
+foreach ($bareTripleCounts as $key => $n) {
+    $insert->execute(['avec_bare_triple', $key, $n]);
+    $total++;
+}
+
+// length_with_quad (palier 4 de l'ouverture en entonnoir de "avec", D-048 -- demande produit
+// explicite du 2026-08-31) : longueur croisee avec CHAQUE QUADRUPLET de lettres DISTINCTES
+// presentes dans le mot (meme portee que le palier 3 'length_with_triple' ci-dessus, mais pour
+// quatre lettres simultanement). list_key = "{longueur}:{lettre1}:{lettre2}:{lettre3}:
+// {lettre4}", lettres ALPHABETIQUEMENT ORDONNEES (meme garantie count_chars() que les paliers
+// precedents). Combinatoire maximale : 14 longueurs x C(26,4) = 14 x 14950 = 209300 lignes.
+$quadCounts = [];
+
+$allTermsForQuadStatement = $pdo->query('SELECT length, normalized FROM terms');
+foreach ($allTermsForQuadStatement as $row) {
+    $length = (int) $row['length'];
+    $distinctLetters = str_split(count_chars((string) $row['normalized'], 3));
+    $letterCount = count($distinctLetters);
+
+    for ($i = 0; $i < $letterCount; $i++) {
+        for ($j = $i + 1; $j < $letterCount; $j++) {
+            for ($k = $j + 1; $k < $letterCount; $k++) {
+                for ($l = $k + 1; $l < $letterCount; $l++) {
+                    $key = $length . ':' . $distinctLetters[$i] . ':' . $distinctLetters[$j] . ':' . $distinctLetters[$k] . ':' . $distinctLetters[$l];
+                    $quadCounts[$key] = ($quadCounts[$key] ?? 0) + 1;
+                }
+            }
+        }
+    }
+}
+
+ksort($quadCounts);
+foreach ($quadCounts as $key => $n) {
+    $insert->execute(['length_with_quad', $key, $n]);
+    $total++;
+}
+
+// avec_bare_quad (meme demande produit qu'avec_bare/avec_bare_pair/avec_bare_triple ci-dessus,
+// D-049) : CHAQUE QUADRUPLET de lettres distinctes presentes (minCount=1 chacune), SANS
+// dimension longueur -- "/mots/avec/{W}/{X}/{Y}/{Z}" seul. DERIVE de $quadCounts (deja construit
+// juste au-dessus), meme raisonnement que 'avec_bare_pair'/'avec_bare_triple' -- FR beneficie
+// ici d'un derive PUREMENT en memoire (contrairement au depot allemand cousin, qui n'avait pas
+// encore 'length_with_quad' precalcule au moment de D-DE-046 et a du l'accumuler directement
+// pendant le parcours de `terms`).
+$bareQuadCounts = [];
+foreach ($quadCounts as $key => $n) {
+    [, $l1, $l2, $l3, $l4] = explode(':', $key, 5);
+    $bareQuadCounts[$l1 . ':' . $l2 . ':' . $l3 . ':' . $l4] = ($bareQuadCounts[$l1 . ':' . $l2 . ':' . $l3 . ':' . $l4] ?? 0) + $n;
+}
+ksort($bareQuadCounts);
+foreach ($bareQuadCounts as $key => $n) {
+    $insert->execute(['avec_bare_quad', $key, $n]);
     $total++;
 }
 
@@ -641,6 +744,6 @@ $pdo->commit();
 $pdo->exec('ANALYZE');
 
 printf(
-    "list_counts : %d lignes (14 longueur + 26 commencant + 26 terminant + length_start/length_end/length_with/start_end/length_with_position/length_avec_sans/length_start_end/length_with_pair/length_with_triple/start_end_with/start_with/prefix2/prefix3/prefix4/suffix2/suffix3/suffix4/length_prefix2/length_suffix2/start_with_pair/start_with_triple/end_with/end_with_pair/end_with_triple attendues)\n",
+    "list_counts : %d lignes (14 longueur + 26 commencant + 26 terminant + length_start/length_end/length_with/start_end/length_with_position/length_avec_sans/length_start_end/length_with_pair/length_with_triple/start_end_with/start_with/prefix2/prefix3/prefix4/suffix2/suffix3/suffix4/length_prefix2/length_suffix2/start_with_pair/start_with_triple/end_with/end_with_pair/end_with_triple/length_with_quad/avec_bare/avec_bare_pair/avec_bare_triple/avec_bare_quad attendues)\n",
     $total,
 );

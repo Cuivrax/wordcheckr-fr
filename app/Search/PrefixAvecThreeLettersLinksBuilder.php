@@ -19,6 +19,14 @@ use App\Database\Connection;
  */
 final class PrefixAvecThreeLettersLinksBuilder
 {
+    // CORRECTIF PERF (2026-09-01, meme pattern que AvecFourLettersLinksBuilder) : in_array($key,
+    // self::X_KEYS, true) sur ces trois constantes est un parcours lineaire relance a CHAQUE
+    // ligne list_counts examinee dans build(). Tables de hachage calculees UNE FOIS par process
+    // (cache statique), lookups O(1) au lieu de O(n) -- aucun changement de contenu.
+    private static ?array $duplicateParentKeySet = null;
+    private static ?array $siblingDuplicateKeySet = null;
+    private static ?array $externalDuplicateKeySet = null;
+
     /**
      * Doublons de contenu avec l'une des trois pages PARENTES palier 2 (D-045, meme methodologie
      * que App\Search\AvecThreeLettersLinksBuilder::DUPLICATE_PARENT_KEYS). Calculee
@@ -997,11 +1005,86 @@ final class PrefixAvecThreeLettersLinksBuilder
 
     /**
      * Doublons de contenu CROISES avec une famille EXTERIEURE (D-045, meme discipline D-041) --
-     * voir docs/DECISIONS.md D-045.
+     * remplie par D-047 (balayage generique complet post-D-045/D-046,
+     * scripts/check_combinatorial_duplicates.php, 544 cles trouvees pour cette famille,
+     * word_list_commencant_with_three_letters) -- ce lot avait ete applique au registre reel
+     * des sa decouverte mais laissait ce builder generer des liens internes VIVANTS vers ces
+     * pages devenues noindex,follow (violation R5, confirmee en direct via HTTP avant
+     * correctif : /mots/commencant/j/avec/b/s liait vers /mots/commencant/j/avec/b/s/y, noindex
+     * depuis D-047). Voir docs/DECISIONS.md D-047/D-048.
      *
      * @var list<string>
      */
-    private const EXTERNAL_DUPLICATE_KEYS = [];
+    private const EXTERNAL_DUPLICATE_KEYS = [
+        'A:B:F:Q', 'A:B:I:W', 'A:B:P:X', 'A:D:H:K', 'A:D:K:M', 'A:D:K:X', 'A:D:V:Y', 'A:F:H:Y',
+        'A:F:Q:X', 'A:H:K:M', 'A:J:L:X', 'A:K:L:Z', 'A:K:O:W', 'A:K:S:X', 'A:K:T:X', 'A:K:U:V',
+        'A:K:U:Z', 'B:A:G:J', 'B:A:G:W', 'B:A:P:V', 'B:C:J:L', 'B:C:J:T', 'B:C:N:W', 'B:D:F:H',
+        'B:F:H:Z', 'B:F:K:U', 'B:F:M:P', 'B:F:N:P', 'B:F:R:X', 'B:F:R:Y', 'B:F:U:X', 'B:H:I:J',
+        'B:H:M:W', 'B:J:N:V', 'B:J:O:X', 'B:K:L:Y', 'B:K:N:V', 'B:L:P:V', 'B:N:X:Y', 'B:T:W:Z',
+        'B:U:V:X', 'C:A:J:X', 'C:A:K:V', 'C:B:D:J', 'C:B:G:X', 'C:B:O:W', 'C:D:F:Q', 'C:D:F:W',
+        'C:D:G:W', 'C:F:G:J', 'C:G:J:X', 'C:G:S:W', 'C:J:V:X', 'C:K:P:V', 'C:Q:Y:Z', 'D:A:U:W',
+        'D:F:K:P', 'D:G:H:K', 'D:G:J:L', 'D:H:K:L', 'D:I:K:P', 'D:L:N:W', 'D:S:U:W', 'E:A:D:K',
+        'E:A:G:W', 'E:A:W:Z', 'E:B:C:K', 'E:B:K:P', 'E:B:V:Y', 'E:C:D:J', 'E:C:M:W', 'E:D:O:W',
+        'E:G:L:W', 'E:H:K:N', 'E:I:K:X', 'E:K:M:U', 'E:K:N:Y', 'E:K:N:Z', 'E:K:P:U', 'E:K:U:X',
+        'E:N:W:X', 'E:R:W:X', 'F:A:D:W', 'F:A:K:X', 'F:B:M:W', 'F:C:D:J', 'F:C:P:V', 'F:D:G:Z',
+        'F:D:H:X', 'F:D:M:P', 'F:G:H:X', 'F:K:L:X', 'F:K:S:Y', 'F:L:X:Y', 'F:S:W:Y', 'F:U:V:X',
+        'F:U:X:Y', 'G:A:C:K', 'G:A:D:K', 'G:A:K:P', 'G:B:K:M', 'G:B:P:U', 'G:C:D:V', 'G:C:K:M',
+        'G:C:U:X', 'G:D:H:V', 'G:D:R:W', 'G:F:H:R', 'G:F:M:P', 'G:F:X:Z', 'G:H:I:K', 'G:H:K:N',
+        'G:H:M:W', 'G:K:O:W', 'G:K:S:W', 'G:L:Q:X', 'G:S:W:Y', 'G:U:W:Z', 'H:A:C:J', 'H:A:G:W',
+        'H:A:J:L', 'H:B:C:K', 'H:B:D:J', 'H:B:G:K', 'H:C:J:L', 'H:C:R:W', 'H:D:G:K', 'H:D:J:R',
+        'H:D:U:W', 'H:G:U:X', 'H:I:U:W', 'H:J:S:Z', 'H:K:M:U', 'H:K:M:Z', 'H:L:T:W', 'H:M:X:Z',
+        'H:T:X:Z', 'H:U:V:X', 'H:U:V:Z', 'I:A:H:K', 'I:A:J:X', 'I:A:K:P', 'I:A:K:U', 'I:B:E:Z',
+        'I:C:H:K', 'I:C:K:P', 'I:F:M:Y', 'I:H:J:T', 'I:H:N:Z', 'I:H:R:X', 'I:R:X:Y', 'J:A:C:K',
+        'J:A:D:H', 'J:A:F:L', 'J:A:G:X', 'J:A:H:K', 'J:B:K:U', 'J:B:K:Y', 'J:B:M:X', 'J:B:S:Y',
+        'J:C:G:M', 'J:C:H:P', 'J:C:H:Z', 'J:E:G:X', 'J:E:H:K', 'J:E:I:W', 'J:E:Y:Z', 'J:F:L:O',
+        'J:G:S:X', 'J:I:K:Y', 'J:I:N:W', 'J:N:O:W', 'J:O:V:Z', 'J:P:Q:T', 'K:A:B:X', 'K:A:C:G',
+        'K:A:C:X', 'K:A:D:W', 'K:A:D:Z', 'K:A:G:X', 'K:A:U:X', 'K:A:W:Z', 'K:B:D:L', 'K:B:G:Y',
+        'K:B:H:Z', 'K:B:U:Z', 'K:C:D:U', 'K:C:E:Z', 'K:C:H:Y', 'K:C:I:J', 'K:D:E:W', 'K:D:E:Y',
+        'K:D:F:H', 'K:D:F:Z', 'K:D:G:M', 'K:D:U:V', 'K:D:U:Y', 'K:E:W:Z', 'K:E:X:Y', 'K:F:H:M',
+        'K:F:H:W', 'K:F:N:P', 'K:F:Q:S', 'K:G:H:Y', 'K:G:M:Q', 'K:G:S:X', 'K:H:L:X', 'K:L:X:Y',
+        'K:M:P:U', 'K:M:Q:Y', 'K:M:R:Y', 'K:M:S:V', 'K:M:U:Z', 'K:Q:S:V', 'K:T:U:X', 'K:U:X:Y',
+        'L:A:C:W', 'L:B:C:Z', 'L:B:J:R', 'L:B:V:Y', 'L:C:J:N', 'L:C:K:O', 'L:D:M:X', 'L:D:N:X',
+        'L:D:U:W', 'L:F:G:V', 'L:G:R:W', 'L:H:K:T', 'L:J:M:R', 'L:K:P:T', 'L:M:O:W', 'L:O:U:W',
+        'M:B:G:K', 'M:C:D:K', 'M:D:E:K', 'M:E:K:P', 'M:E:K:X', 'M:E:X:Z', 'M:F:H:L', 'M:F:U:X',
+        'M:G:H:J', 'M:G:H:W', 'M:H:K:Y', 'M:H:X:Z', 'M:J:N:X', 'M:K:P:T', 'M:S:W:X', 'N:A:D:K',
+        'N:A:K:Y', 'N:B:I:W', 'N:D:G:P', 'N:D:G:W', 'N:D:L:W', 'N:D:T:W', 'N:E:K:Z', 'N:I:J:L',
+        'N:K:L:W', 'N:K:U:Z', 'N:L:U:X', 'N:L:W:Z', 'N:M:U:X', 'O:A:K:Q', 'O:A:N:W', 'O:A:R:W',
+        'O:B:F:V', 'O:B:G:J', 'O:B:K:P', 'O:B:K:Y', 'O:B:P:Y', 'O:C:G:K', 'O:C:H:V', 'O:C:V:Y',
+        'O:D:H:Z', 'O:D:P:V', 'O:D:T:W', 'O:E:K:Y', 'O:F:G:H', 'O:F:H:X', 'O:H:M:W', 'O:H:R:W',
+        'O:H:V:X', 'O:I:K:M', 'O:J:S:W', 'O:J:S:Y', 'O:K:M:N', 'O:K:N:Q', 'O:K:T:Y', 'O:K:T:Z',
+        'O:K:V:Z', 'O:L:P:X', 'O:L:U:W', 'O:L:V:Y', 'O:L:X:Z', 'O:N:R:W', 'O:R:V:Y', 'O:X:Y:Z',
+        'P:A:H:J', 'P:A:J:K', 'P:B:U:X', 'P:C:H:J', 'P:D:J:Y', 'P:H:T:W', 'P:J:M:V', 'P:J:M:Y',
+        'P:J:T:Y', 'P:L:R:W', 'Q:A:C:K', 'Q:A:E:W', 'Q:A:G:Y', 'Q:C:E:K', 'Q:C:H:Z', 'Q:C:J:X',
+        'Q:C:L:M', 'Q:C:O:X', 'Q:D:J:X', 'Q:D:O:X', 'Q:G:H:S', 'Q:G:M:O', 'Q:I:K:O', 'Q:I:K:T',
+        'Q:I:S:W', 'Q:I:S:X', 'Q:J:N:R', 'Q:O:S:X', 'Q:R:S:W', 'R:B:D:J', 'R:B:S:W', 'R:G:W:Y',
+        'R:H:U:W', 'R:H:V:Y', 'R:J:M:X', 'R:K:M:X', 'R:K:U:V', 'R:L:U:W', 'S:B:K:Q', 'S:C:F:W',
+        'S:C:J:K', 'S:C:K:Y', 'S:D:J:Q', 'S:D:J:R', 'S:D:K:M', 'S:D:L:W', 'S:F:K:Y', 'S:F:N:W',
+        'S:F:Q:X', 'S:G:H:K', 'S:G:H:V', 'S:G:J:K', 'S:G:J:X', 'S:H:K:Y', 'S:H:V:X', 'S:J:K:U',
+        'S:J:P:Q', 'S:J:R:X', 'S:Q:R:V', 'S:R:W:Y', 'T:A:P:W', 'T:B:F:X', 'T:C:G:J', 'T:C:G:K',
+        'T:D:J:K', 'T:E:K:X', 'T:F:H:P', 'T:G:I:W', 'T:G:K:U', 'T:G:O:W', 'T:H:N:W', 'T:I:K:X',
+        'T:J:K:P', 'T:K:N:X', 'T:K:P:Y', 'T:M:W:X', 'T:P:X:Z', 'T:R:V:X', 'T:S:W:X', 'U:A:B:X',
+        'U:A:C:Y', 'U:A:H:Z', 'U:A:L:W', 'U:A:M:X', 'U:A:O:W', 'U:B:C:F', 'U:B:C:L', 'U:B:C:N',
+        'U:B:C:Q', 'U:B:E:X', 'U:B:G:X', 'U:B:I:Z', 'U:B:L:V', 'U:C:G:P', 'U:C:K:L', 'U:C:S:X',
+        'U:D:F:N', 'U:D:G:P', 'U:D:H:N', 'U:D:N:X', 'U:D:Q:R', 'U:E:V:X', 'U:F:G:L', 'U:G:H:M',
+        'U:G:P:X', 'U:G:S:W', 'U:H:I:X', 'U:K:N:Z', 'U:M:S:X', 'V:A:C:K', 'V:A:D:J', 'V:A:F:P',
+        'V:A:J:P', 'V:A:Q:X', 'V:B:D:F', 'V:C:G:Y', 'V:C:H:X', 'V:C:J:P', 'V:D:J:U', 'V:D:K:L',
+        'V:D:K:O', 'V:E:K:P', 'V:E:X:Z', 'V:G:K:N', 'V:G:K:R', 'V:H:N:Y', 'V:J:S:Y', 'V:K:S:Y',
+        'V:P:U:X', 'V:U:X:Z', 'W:A:C:P', 'W:A:D:K', 'W:A:D:Q', 'W:A:E:X', 'W:A:F:H', 'W:A:G:P',
+        'W:A:H:K', 'W:A:I:X', 'W:A:M:X', 'W:A:O:Y', 'W:B:C:F', 'W:B:F:G', 'W:B:H:U', 'W:B:L:N',
+        'W:B:P:S', 'W:C:D:G', 'W:C:E:P', 'W:C:F:U', 'W:C:G:R', 'W:C:L:Q', 'W:C:M:Z', 'W:D:E:Y',
+        'W:D:G:T', 'W:D:H:K', 'W:D:H:N', 'W:D:H:Q', 'W:D:I:Y', 'W:D:M:P', 'W:D:N:P', 'W:E:M:X',
+        'W:F:K:U', 'W:F:L:U', 'W:F:P:S', 'W:F:Q:S', 'W:G:M:Q', 'W:G:U:Z', 'W:I:K:V', 'W:I:T:Y',
+        'W:L:M:V', 'W:L:T:V', 'W:L:T:Z', 'W:M:N:V', 'W:M:N:Y', 'X:A:C:D', 'X:A:C:U', 'X:B:L:N',
+        'X:G:H:U', 'X:I:L:V', 'X:I:O:V', 'X:I:P:U', 'X:M:N:Q', 'X:M:R:U', 'Y:A:D:H', 'Y:A:E:X',
+        'Y:A:F:R', 'Y:A:I:J', 'Y:A:K:P', 'Y:A:L:W', 'Y:B:C:G', 'Y:B:E:H', 'Y:B:G:I', 'Y:B:N:U',
+        'Y:C:G:V', 'Y:C:K:U', 'Y:C:U:V', 'Y:D:O:Z', 'Y:E:H:V', 'Y:E:L:W', 'Y:F:K:S', 'Y:F:L:R',
+        'Y:F:S:U', 'Y:G:J:S', 'Y:G:L:O', 'Y:G:L:R', 'Y:G:M:N', 'Y:H:I:U', 'Y:H:K:U', 'Y:H:O:V',
+        'Y:I:J:O', 'Y:K:M:O', 'Y:K:N:Z', 'Y:L:M:R', 'Y:L:N:P', 'Y:L:P:R', 'Y:M:N:P', 'Z:A:B:H',
+        'Z:A:C:W', 'Z:A:D:V', 'Z:A:J:P', 'Z:A:K:Y', 'Z:A:M:V', 'Z:B:D:F', 'Z:B:D:J', 'Z:B:M:W',
+        'Z:C:D:H', 'Z:C:G:W', 'Z:C:K:O', 'Z:C:O:X', 'Z:D:E:V', 'Z:D:H:P', 'Z:D:U:Y', 'Z:E:R:X',
+        'Z:E:V:Y', 'Z:F:G:N', 'Z:F:I:L', 'Z:F:S:W', 'Z:G:L:W', 'Z:H:O:X', 'Z:H:U:X', 'Z:I:K:M',
+        'Z:J:T:U', 'Z:K:L:Y', 'Z:L:R:Y', 'Z:M:O:V', 'Z:M:U:X', 'Z:N:P:W', 'Z:N:U:X', 'Z:S:T:X',
+    ];
 
     public function __construct(
         private readonly Connection $connection,
@@ -1024,15 +1107,19 @@ final class PrefixAvecThreeLettersLinksBuilder
             $prefix . ':%:' . $x . ':' . $y,
         ]);
 
+        self::$duplicateParentKeySet ??= array_flip(self::DUPLICATE_PARENT_KEYS);
+        self::$siblingDuplicateKeySet ??= array_flip(self::SIBLING_DUPLICATE_KEYS);
+        self::$externalDuplicateKeySet ??= array_flip(self::EXTERNAL_DUPLICATE_KEYS);
+
         $links = [];
 
         foreach ($statement as $row) {
             $key = (string) $row['list_key'];
 
             if (
-                in_array($key, self::DUPLICATE_PARENT_KEYS, true)
-                || in_array($key, self::SIBLING_DUPLICATE_KEYS, true)
-                || in_array($key, self::EXTERNAL_DUPLICATE_KEYS, true)
+                isset(self::$duplicateParentKeySet[$key])
+                || isset(self::$siblingDuplicateKeySet[$key])
+                || isset(self::$externalDuplicateKeySet[$key])
             ) {
                 continue;
             }

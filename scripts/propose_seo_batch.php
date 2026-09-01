@@ -1484,7 +1484,20 @@ const D041_EXCLUDED_ROUTE_PATHS = [
         '/mots/commencant/x/avec/z' => true, '/mots/commencant/y/avec/x' => true,
     ],
     'word_list_position' => [
+        // D-041 (2 exclusions initiales)
         '/mots/13-lettres/position/10/w' => true, '/mots/15-lettres/position/10/w' => true,
+        // D-047 (22 exclusions supplementaires, balayage generique complet post-D-045/D-046)
+        '/mots/10-lettres/position/9/q' => true, '/mots/11-lettres/position/10/q' => true,
+        '/mots/12-lettres/position/11/q' => true, '/mots/12-lettres/position/11/z' => true,
+        '/mots/13-lettres/position/12/x' => true, '/mots/13-lettres/position/12/z' => true,
+        '/mots/14-lettres/position/2/j' => true, '/mots/14-lettres/position/10/w' => true,
+        '/mots/14-lettres/position/13/b' => true, '/mots/14-lettres/position/13/f' => true,
+        '/mots/14-lettres/position/13/k' => true, '/mots/14-lettres/position/13/p' => true,
+        '/mots/14-lettres/position/13/v' => true, '/mots/14-lettres/position/13/x' => true,
+        '/mots/15-lettres/position/2/k' => true, '/mots/15-lettres/position/14/f' => true,
+        '/mots/15-lettres/position/14/h' => true, '/mots/15-lettres/position/14/k' => true,
+        '/mots/15-lettres/position/14/p' => true, '/mots/15-lettres/position/14/v' => true,
+        '/mots/5-lettres/position/4/q' => true, '/mots/7-lettres/position/6/q' => true,
     ],
     'word_list_terminant' => [
         '/mots/terminant/aada' => true, '/mots/terminant/aaku' => true, '/mots/terminant/aat' => true,
@@ -1943,8 +1956,14 @@ switch ($kind) {
             $letter = $item['letter'];
             $routePath = "/mots/{$length}-lettres/position/{$position}/{$letter}";
 
-            // D-041 : 2 exclusions (voir isD041Excluded()) -- doublon de contenu avec une autre
-            // famille combinatoire sur le meme panier, jamais controle avant ce balayage.
+            // D-041 : 2 exclusions initiales (voir isD041Excluded()) -- doublon de contenu avec
+            // une autre famille combinatoire sur le meme panier, jamais controle avant ce
+            // balayage. D-047 (2026-08-31) : 22 exclusions supplementaires trouvees par le
+            // balayage generique complet post-D-045/D-046 (scripts/check_combinatorial_
+            // duplicates.php), toutes des doublons avec commencant/terminant -- ajoutees a la
+            // MEME constante (24 au total) pour garder ce script idempotent avec le registre reel
+            // corrige (storage/seo_fr.sqlite, --force applique directement -- ce script ne l'a
+            // jamais lu, cf. entete de fichier, d'ou la necessite de repercuter ici aussi).
             if (isD041Excluded(Family::WORD_LIST_POSITION, $routePath)) {
                 continue;
             }

@@ -31,6 +31,15 @@ use App\Database\Connection;
  */
 final class StartEndWithLinksBuilder
 {
+    // CORRECTIF PERF (2026-09-01, meme pattern que AvecFourLettersLinksBuilder) : in_array($key,
+    // self::X_KEYS, true) sur ces quatre constantes est un parcours lineaire relance a CHAQUE
+    // ligne list_counts examinee dans build(). Tables de hachage calculees UNE FOIS par process
+    // (cache statique), lookups O(1) au lieu de O(n) -- aucun changement de contenu.
+    private static ?array $duplicateContentKeySet = null;
+    private static ?array $siblingDuplicateKeySet = null;
+    private static ?array $crossDuplicateLengthKeySet = null;
+    private static ?array $externalDuplicateKeySet = null;
+
     /**
      * Les 227 triples (debut, fin, lettre) a contenu strictement DUPLIQUE avec leur page parente
      * /mots/commencant/{debut}/terminant/{fin} (sans "avec") -- distinct du collapse D-032
@@ -335,38 +344,50 @@ final class StartEndWithLinksBuilder
      * Liste figée : valable pour l'état actuel de storage/dictionary_fr.sqlite (838 180 termes,
      * inchangé depuis D-022). Une reconstruction future de la base devra revalider cette liste.
      *
+     * COMPLÉTÉE PAR D-047 (2026-08-31, balayage générique post-D-045/D-046) : +24 clés
+     * supplémentaires (extraites directement du lot storage/seo_fr.sqlite/word_list_combined_
+     * with_letter déjà appliqué au registre) -- 338 au total. Découverte tardive : ce lot avait
+     * été appliqué au registre réel dès sa découverte mais laissait ce builder générer des liens
+     * internes VIVANTS vers ces pages devenues noindex,follow (violation R5, confirmée en direct
+     * via HTTP avant correctif : /mots/commencant/a/terminant/c liait vers
+     * /mots/commencant/a/terminant/c/avec/f, noindex depuis D-047). Voir
+     * docs/DECISIONS.md D-047/D-048.
+     *
      * @var list<string>
      */
     private const EXTERNAL_DUPLICATE_KEYS = [
-        'A:B:I', 'A:C:V', 'A:D:K', 'A:H:W', 'A:M:J', 'A:M:K', 'A:O:W', 'A:O:X',
-        'A:P:K', 'A:R:W', 'A:U:K', 'A:Y:S', 'B:F:D', 'B:F:H', 'B:G:Z', 'B:H:M',
-        'B:H:Z', 'B:I:W', 'B:L:W', 'B:M:G', 'B:O:Y', 'B:O:Z', 'B:P:K', 'B:P:Z',
-        'B:Q:E', 'B:Q:I', 'B:Y:H', 'B:Y:S', 'B:Y:T', 'B:Y:Z', 'C:C:Z', 'C:H:M',
-        'C:P:G', 'C:V:A', 'C:V:O', 'C:W:E', 'C:W:R', 'C:X:W', 'C:Y:K', 'C:Y:W',
-        'D:C:J', 'D:D:K', 'D:H:G', 'D:M:Q', 'D:M:Z', 'D:O:K', 'D:O:X', 'D:P:G',
+        'A:B:I', 'A:C:F', 'A:C:V', 'A:D:K', 'A:H:W', 'A:M:J', 'A:M:K', 'A:O:W',
+        'A:O:X', 'A:P:K', 'A:R:W', 'A:U:K', 'A:Y:S', 'B:C:H', 'B:F:D', 'B:F:H',
+        'B:F:M', 'B:F:X', 'B:G:Z', 'B:H:M', 'B:H:Z', 'B:I:W', 'B:L:W', 'B:M:F',
+        'B:M:G', 'B:O:Y', 'B:O:Z', 'B:P:K', 'B:P:U', 'B:P:Z', 'B:Q:E', 'B:Q:I',
+        'B:Y:H', 'B:Y:S', 'B:Y:T', 'B:Y:Z', 'C:C:Z', 'C:H:M', 'C:O:F', 'C:P:G',
+        'C:V:A', 'C:V:O', 'C:W:E', 'C:W:R', 'C:X:W', 'C:Y:K', 'C:Y:W', 'D:C:J',
+        'D:D:K', 'D:H:G', 'D:M:Q', 'D:M:Z', 'D:O:K', 'D:O:X', 'D:P:C', 'D:P:G',
         'D:P:H', 'D:P:I', 'D:P:M', 'D:P:N', 'D:V:E', 'D:V:I', 'D:Y:G', 'D:Y:Z',
         'E:C:B', 'E:C:J', 'E:F:B', 'E:G:C', 'E:M:K', 'E:M:V', 'E:O:F', 'E:O:K',
         'E:U:Y', 'E:Y:D', 'E:Y:I', 'F:C:P', 'F:C:V', 'F:H:Y', 'F:L:J', 'F:M:H',
-        'F:M:X', 'F:Y:C', 'F:Y:D', 'F:Y:H', 'F:Y:M', 'F:Y:W', 'G:D:K', 'G:G:U',
-        'G:K:B', 'G:K:D', 'G:L:Z', 'G:O:J', 'G:P:S', 'G:Y:M', 'G:Y:S', 'G:Y:U',
-        'G:Y:W', 'G:Y:Z', 'H:A:W', 'H:B:U', 'H:C:K', 'H:H:V', 'H:H:W', 'H:K:M',
-        'H:O:B', 'H:O:P', 'H:P:E', 'H:P:T', 'H:U:K', 'H:Y:P', 'H:Y:S', 'I:C:E',
-        'I:K:A', 'I:U:J', 'I:Y:X', 'J:D:G', 'J:D:W', 'J:I:W', 'J:K:N', 'J:M:N',
-        'J:O:K', 'J:P:M', 'J:X:K', 'J:Y:Z', 'K:B:N', 'K:C:U', 'K:D:B', 'K:F:D',
-        'K:F:W', 'K:H:F', 'K:H:Z', 'K:I:V', 'K:L:W', 'K:N:X', 'K:O:P', 'K:O:Y',
-        'K:P:O', 'K:U:F', 'K:U:V', 'K:Z:G', 'L:C:F', 'L:C:P', 'L:C:Y', 'L:G:Y',
-        'L:H:D', 'L:H:R', 'L:H:S', 'L:I:J', 'L:L:Q', 'L:L:W', 'L:M:J', 'L:M:K',
-        'L:O:X', 'L:O:Y', 'L:R:W', 'L:U:Z', 'M:A:W', 'M:B:N', 'M:C:J', 'M:F:J',
-        'M:G:J', 'M:H:Z', 'M:K:D', 'M:K:J', 'M:L:W', 'M:M:Q', 'N:B:Q', 'N:C:U',
-        'N:D:J', 'N:K:Y', 'N:L:X', 'N:L:Z', 'N:M:Z', 'N:O:J', 'N:O:K', 'N:O:Y',
-        'N:Q:D', 'N:Q:E', 'N:U:J', 'N:W:G', 'N:W:K', 'O:A:W', 'O:D:Z', 'O:F:G',
-        'O:H:A', 'O:K:G', 'O:K:M', 'O:K:Y', 'O:O:B', 'O:O:D', 'O:O:P', 'O:U:K',
-        'P:A:W', 'P:B:C', 'P:B:I', 'P:F:K', 'P:H:R', 'P:K:J', 'P:L:Z', 'P:O:J',
-        'P:O:X', 'P:P:M', 'P:Y:X', 'Q:A:K', 'Q:E:W', 'Q:F:Z', 'Q:H:O', 'Q:K:I',
-        'Q:L:Z', 'Q:N:W', 'Q:Y:C', 'R:B:G', 'R:B:H', 'R:C:Y', 'R:D:Y', 'R:G:H',
-        'R:H:K', 'R:H:N', 'R:H:P', 'R:K:D', 'R:L:K', 'R:L:Z', 'R:M:Q', 'R:N:K',
-        'R:O:F', 'R:P:S', 'R:V:D', 'R:V:T', 'R:Y:S', 'R:Y:W', 'S:B:D', 'S:B:K',
-        'S:G:J', 'S:H:Q', 'S:H:Y', 'S:K:J', 'S:M:F', 'S:M:K', 'S:M:V', 'S:O:Q',
+        'F:M:X', 'F:Y:C', 'F:Y:D', 'F:Y:H', 'F:Y:M', 'F:Y:W', 'G:D:K', 'G:F:P',
+        'G:G:U', 'G:K:B', 'G:K:D', 'G:L:Z', 'G:O:J', 'G:P:S', 'G:Y:M', 'G:Y:S',
+        'G:Y:U', 'G:Y:W', 'G:Y:Z', 'H:A:W', 'H:B:U', 'H:C:K', 'H:H:V', 'H:H:W',
+        'H:K:M', 'H:O:B', 'H:O:P', 'H:P:E', 'H:P:T', 'H:U:K', 'H:Y:P', 'H:Y:S',
+        'I:C:E', 'I:K:A', 'I:N:Z', 'I:O:V', 'I:O:Z', 'I:U:J', 'I:Y:X', 'J:D:G',
+        'J:D:W', 'J:I:W', 'J:K:N', 'J:M:N', 'J:O:K', 'J:P:M', 'J:X:K', 'J:Y:Z',
+        'K:B:N', 'K:C:U', 'K:D:B', 'K:F:D', 'K:F:W', 'K:H:F', 'K:H:Z', 'K:I:V',
+        'K:K:F', 'K:L:W', 'K:N:X', 'K:O:P', 'K:O:Y', 'K:P:O', 'K:U:F', 'K:U:V',
+        'K:X:S', 'K:Z:G', 'L:C:F', 'L:C:P', 'L:C:Y', 'L:G:Y', 'L:H:D', 'L:H:R',
+        'L:H:S', 'L:I:J', 'L:L:Q', 'L:L:W', 'L:M:J', 'L:M:K', 'L:O:X', 'L:O:Y',
+        'L:R:W', 'L:U:Z', 'M:A:W', 'M:B:N', 'M:C:J', 'M:F:J', 'M:G:J', 'M:H:Z',
+        'M:K:D', 'M:K:J', 'M:L:W', 'M:M:Q', 'M:Y:X', 'N:B:Q', 'N:C:U', 'N:D:J',
+        'N:K:Y', 'N:L:X', 'N:L:Z', 'N:M:G', 'N:M:Z', 'N:O:J', 'N:O:K', 'N:O:Y',
+        'N:Q:D', 'N:Q:E', 'N:U:C', 'N:U:J', 'N:W:G', 'N:W:K', 'O:A:W', 'O:D:Z',
+        'O:F:G', 'O:H:A', 'O:K:G', 'O:K:M', 'O:K:Y', 'O:O:B', 'O:O:D', 'O:O:P',
+        'O:U:K', 'P:A:W', 'P:B:C', 'P:B:I', 'P:F:K', 'P:F:Q', 'P:H:R', 'P:K:J',
+        'P:L:Z', 'P:O:J', 'P:O:X', 'P:P:M', 'P:Y:S', 'P:Y:X', 'Q:A:K', 'Q:E:W',
+        'Q:F:Z', 'Q:H:O', 'Q:K:I', 'Q:L:Z', 'Q:N:W', 'Q:O:B', 'Q:O:K', 'Q:Y:C',
+        'R:B:G', 'R:B:H', 'R:C:Y', 'R:D:Y', 'R:G:H', 'R:H:K', 'R:H:N', 'R:H:P',
+        'R:K:D', 'R:L:K', 'R:L:Z', 'R:M:Q', 'R:N:K', 'R:O:F', 'R:P:S', 'R:U:K',
+        'R:V:D', 'R:V:T', 'R:Y:S', 'R:Y:W', 'S:B:D', 'S:B:K', 'S:G:J', 'S:H:Q',
+        'S:H:Y', 'S:K:F', 'S:K:J', 'S:M:F', 'S:M:K', 'S:M:V', 'S:O:Q', 'S:P:D',
         'S:P:G', 'S:P:W', 'S:Y:C', 'S:Y:D', 'S:Y:V', 'S:Y:Z', 'T:B:I', 'T:D:W',
         'T:D:X', 'T:H:M', 'T:K:D', 'T:K:G', 'T:K:S', 'T:O:Y', 'T:R:Z', 'T:U:K',
         'T:V:A', 'T:V:G', 'T:Y:G', 'T:Y:K', 'T:Y:X', 'U:G:C', 'U:H:G', 'U:H:M',
@@ -406,6 +427,11 @@ final class StartEndWithLinksBuilder
             'commencant/' . strtolower($startLetter) . '/terminant/' . strtolower($endLetter)
         )?->canonicalUrl();
 
+        self::$duplicateContentKeySet ??= array_flip(self::DUPLICATE_CONTENT_KEYS);
+        self::$siblingDuplicateKeySet ??= array_flip(self::SIBLING_DUPLICATE_KEYS);
+        self::$crossDuplicateLengthKeySet ??= array_flip(self::CROSS_DUPLICATE_LENGTH_KEYS);
+        self::$externalDuplicateKeySet ??= array_flip(self::EXTERNAL_DUPLICATE_KEYS);
+
         $links = [];
 
         foreach ($statement as $row) {
@@ -427,7 +453,7 @@ final class StartEndWithLinksBuilder
             // identique a une page deja indexee.
             $key = strtoupper($startLetter) . ':' . strtoupper($endLetter) . ':' . strtoupper($letter);
 
-            if (in_array($key, self::DUPLICATE_CONTENT_KEYS, true)) {
+            if (isset(self::$duplicateContentKeySet[$key])) {
                 continue;
             }
 
@@ -435,7 +461,7 @@ final class StartEndWithLinksBuilder
             // "avec" du MEME panier produit exactement le meme sous-ensemble de mots -- voir
             // SIBLING_DUPLICATE_KEYS ci-dessus. La lettre alphabetiquement la plus petite du
             // groupe reste candidate (jamais exclue par ce filtre) ; les autres sont retirees ici.
-            if (in_array($key, self::SIBLING_DUPLICATE_KEYS, true)) {
+            if (isset(self::$siblingDuplicateKeySet[$key])) {
                 continue;
             }
 
@@ -443,13 +469,13 @@ final class StartEndWithLinksBuilder
             // LONGUEUR de ce meme panier {debut}:{fin} (App\Search\LengthLinksBuilder::byStartEnd)
             // contient EXACTEMENT le meme ensemble de mots -- voir CROSS_DUPLICATE_LENGTH_KEYS
             // ci-dessus. La variante LONGUEUR reste candidate, celle-ci (avec) est retiree.
-            if (in_array($key, self::CROSS_DUPLICATE_LENGTH_KEYS, true)) {
+            if (isset(self::$crossDuplicateLengthKeySet[$key])) {
                 continue;
             }
 
             // Doublon de contenu CROISE avec une famille EXTERIEURE au panier commencant+
             // terminant d'origine (D-041) : voir EXTERNAL_DUPLICATE_KEYS ci-dessus.
-            if (in_array($key, self::EXTERNAL_DUPLICATE_KEYS, true)) {
+            if (isset(self::$externalDuplicateKeySet[$key])) {
                 continue;
             }
 

@@ -8,6 +8,10 @@ declare(strict_types=1);
  * terminant -- 66 liens, D-017), chacune avec son compte reel. Corrige l'absence de lien
  * entrant vers ces pages, releve par l'audit SEO final (seo-technical-auditor, C4).
  *
+ * Quatrieme grille "Avec" (D-049) : 26 lettres, point d'entree OBLIGE du palier "avec nue"
+ * (BARE, sans longueur/prefixe/suffixe) -- aucune autre page parente n'existe pour ce cas, voir
+ * App\Search\ExploreHub pour le detail complet.
+ *
  * "Contenant" n'a JAMAIS de grille ici (App\Seo\Family::NEVER_SITEMAP, combinaisons
  * infinies) -- seulement un outil de recherche borne a 3 lettres (decision produit), qui
  * soumet en GET vers /mots?contenant=... (repli sans JavaScript deja cable par
@@ -86,6 +90,15 @@ use App\Search\ExploreHub;
       <h2>Terminant Par</h2>
       <div class="related-links">
 <?php foreach ($hub->byEnd as $entry): ?>
+        <a href="<?= e($entry['url']) ?>"><span class="explore-label"><?= e($entry['letter']) ?></span> <span class="explore-count">(<?= e(number_format($entry['count'], 0, ',', ' ')) ?>)</span></a>
+<?php endforeach; ?>
+      </div>
+    </section>
+
+    <section class="explore-group">
+      <h2>Avec</h2>
+      <div class="related-links">
+<?php foreach ($hub->byWith as $entry): ?>
         <a href="<?= e($entry['url']) ?>"><span class="explore-label"><?= e($entry['letter']) ?></span> <span class="explore-count">(<?= e(number_format($entry['count'], 0, ',', ' ')) ?>)</span></a>
 <?php endforeach; ?>
       </div>

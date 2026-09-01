@@ -21,6 +21,12 @@ use App\Database\Connection;
  */
 final class LetterCombinedLinksBuilder
 {
+    // CORRECTIF PERF (2026-09-01, meme pattern que AvecFourLettersLinksBuilder) : in_array($key,
+    // self::EXTERNAL_DUPLICATE_KEYS, true) est un parcours lineaire relance a CHAQUE ligne
+    // list_counts examinee dans build(). Table de hachage calculee UNE FOIS par process (cache
+    // statique), lookup O(1) au lieu de O(n) -- aucun changement de contenu.
+    private static ?array $externalDuplicateKeySet = null;
+
     /**
      * Doublons de contenu CROISÉS avec une famille EXTÉRIEURE à la variante commençant+terminant
      * SANS longueur (D-041, garde-fou structurel demandé par le constat C-4 du 4e audit consolidé,
@@ -46,14 +52,22 @@ final class LetterCombinedLinksBuilder
      * Liste figée : valable pour l'état actuel de storage/dictionary_fr.sqlite (838 180 termes,
      * inchangé depuis D-022). Une reconstruction future de la base devra revalider cette liste.
      *
+     * COMPLÉTÉE PAR D-047 (2026-08-31, balayage générique post-D-045/D-046) : +7 clés
+     * supplémentaires (extraites directement du lot storage/seo_fr.sqlite/word_list_combined déjà
+     * appliqué au registre, variante SANS longueur). Découverte tardive : ce lot avait été
+     * appliqué au registre réel dès sa découverte mais laissait ce builder générer des liens
+     * internes VIVANTS vers ces pages devenues noindex,follow (violation R5, confirmée en direct
+     * via HTTP avant correctif : /mots/commencant/a liait vers
+     * /mots/commencant/a/terminant/j, noindex depuis D-047). Voir docs/DECISIONS.md D-047/D-048.
+     *
      * @var list<string>
      */
     public const EXTERNAL_DUPLICATE_KEYS = [
-        'B:J', 'C:J', 'D:Q', 'F:J', 'F:Q', 'G:W', 'I:W', 'M:J',
-        'M:V', 'N:W', 'O:J', 'O:Q', 'O:W', 'P:V', 'Q:C', 'Q:Q',
-        'R:Q', 'R:W', 'S:V', 'T:J', 'T:Q', 'U:B', 'U:V', 'V:Q',
-        'V:V', 'W:L', 'X:O', 'X:U', 'Y:P', 'Y:Q', 'Y:V', 'Z:J',
-        'Z:Q',
+        'A:J', 'B:J', 'C:J', 'D:Q', 'E:J', 'F:J', 'F:Q', 'G:W',
+        'I:P', 'I:V', 'I:W', 'M:J', 'M:V', 'M:W', 'N:W', 'O:J',
+        'O:Q', 'O:W', 'P:V', 'Q:C', 'Q:P', 'Q:Q', 'R:Q', 'R:W',
+        'S:V', 'T:J', 'T:Q', 'U:B', 'U:K', 'U:V', 'V:Q', 'V:V',
+        'W:L', 'X:O', 'X:U', 'Y:P', 'Y:Q', 'Y:V', 'Z:J', 'Z:Q',
     ];
 
     public function __construct(
@@ -80,12 +94,14 @@ final class LetterCombinedLinksBuilder
         );
         $statement->execute([$likePattern]);
 
+        self::$externalDuplicateKeySet ??= array_flip(self::EXTERNAL_DUPLICATE_KEYS);
+
         $links = [];
 
         foreach ($statement as $row) {
             $key = (string) $row['list_key'];
 
-            if (in_array($key, self::EXTERNAL_DUPLICATE_KEYS, true)) {
+            if (isset(self::$externalDuplicateKeySet[$key])) {
                 continue;
             }
 

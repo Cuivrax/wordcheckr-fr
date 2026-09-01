@@ -543,7 +543,7 @@ return function (): void {
     // ensembles deja exclus.
     // ========================================================================================
     $externalDuplicateKeys = $reflection->getConstant('EXTERNAL_DUPLICATE_KEYS');
-    Assert::same(314, count($externalDuplicateKeys), 'exactement 314 doublons croises avec une famille exterieure attendus (D-041, balayage du 2026-08-21)');
+    Assert::same(338, count($externalDuplicateKeys), 'exactement 338 doublons croises avec une famille exterieure attendus (314 D-041, balayage du 2026-08-21, + 24 D-047, balayage du 2026-08-31 post-D-045/D-046)');
     Assert::same(count($externalDuplicateKeys), count(array_unique($externalDuplicateKeys)), 'aucun doublon dans la liste figee elle-meme');
     $externalDuplicateSet = array_fill_keys($externalDuplicateKeys, true);
     Assert::same(0, count(array_intersect_key($externalDuplicateSet, $degenerateKeys)), 'EXTERNAL_DUPLICATE_KEYS et les lignes degenerees D-032 doivent rester deux ensembles disjoints');
@@ -600,7 +600,7 @@ return function (): void {
     // deja verifie ligne par ligne ci-dessus. Volume total : exactement les lignes eligibles, ni
     // plus ni moins.
     $expectedEligibleCount = count($expected) - count($excludedKeys);
-    Assert::same(8848, $expectedEligibleCount, 'sanity check : 8 848 lignes eligibles (11 348 brutes - 1 198 degenerees D-032 - 227 doublons de contenu PARENT D-037 - 428 doublons de contenu SOEUR I-A - 333 doublons de contenu CROISES CORRECTIF 3 - 314 doublons croises famille exterieure D-041)');
+    Assert::same(8824, $expectedEligibleCount, 'sanity check : 8 824 lignes eligibles (11 348 brutes - 1 198 degenerees D-032 - 227 doublons de contenu PARENT D-037 - 428 doublons de contenu SOEUR I-A - 333 doublons de contenu CROISES CORRECTIF 3 - 338 doublons croises famille exterieure, 314 D-041 + 24 D-047)');
     Assert::same($expectedEligibleCount, $totalLinksProduced, 'total des liens produits doit egaler les lignes list_counts start_end_with eligibles (ni degenerees ni doublons de contenu parent/soeur/croise)');
     Assert::same($expectedEligibleCount, count($producedKeys), 'aucun doublon, chaque cle eligible produite une seule fois');
 
@@ -620,22 +620,22 @@ return function (): void {
     // Consigne produit deja connue (rapport de balayage complet, commencant-terminant-avec-full-
     // sweep.md), AJUSTEE apres exclusion des lignes degenerees (D-032), PUIS des doublons de
     // contenu PARENT (D-037), PUIS des doublons de contenu SOEUR (I-A), PUIS des doublons de
-    // contenu CROISES (CORRECTIF 3), PUIS des doublons croises famille exterieure (D-041) :
+    // contenu CROISES (CORRECTIF 3), PUIS des doublons croises famille exterieure (D-041 + D-047) :
     // 1 638 combinaisons a exactement 1 resultat parmi les 11 348 lignes precalculees brutes,
     // dont 91 degenerees (D-032), 162 doublons de contenu parent a exactement 1 resultat (parmi
     // les 227, ex. F:Q:A -- FAQ est le seul mot ET F:Q ne contient qu'un mot), 325 doublons de
     // contenu soeur a exactement 1 resultat (parmi les 428, ex. X:M:D/E/H/I/N/O/U -- XENODOCHIUM
     // est le seul mot du sous-ensemble partage par ces sept lettres), 306 doublons de contenu
     // croises a exactement 1 resultat (parmi les 333, ex. X:M:A -- XALAM est le seul mot partage
-    // avec la page longueur), et 306 doublons croises famille exterieure a exactement 1 resultat
-    // (parmi les 314, D-041) -- 1 638 - 91 - 162 - 325 - 306 - 306 = 448 restantes, effectivement
-    // produites par le builder.
+    // avec la page longueur), et 329 doublons croises famille exterieure a exactement 1 resultat
+    // (306 parmi les 314 D-041, + 23 parmi les 24 D-047 -- un seul, D:P:C, a plus d'un mot) --
+    // 1 638 - 91 - 162 - 325 - 306 - 329 = 425 restantes, effectivement produites par le builder.
     $expectedExactlyOneEligible = 0;
     foreach ($expected as $key => $count) {
         if ($count === 1 && !isset($excludedKeys[$key])) {
             $expectedExactlyOneEligible++;
         }
     }
-    Assert::same(448, $expectedExactlyOneEligible, 'sanity check : 448 combinaisons eligibles a exactement 1 resultat (1 638 brutes - 91 degenerees - 162 doublons de contenu parent - 325 doublons de contenu soeur - 306 doublons de contenu croises - 306 doublons croises famille exterieure)');
+    Assert::same(425, $expectedExactlyOneEligible, 'sanity check : 425 combinaisons eligibles a exactement 1 resultat (1 638 brutes - 91 degenerees - 162 doublons de contenu parent - 325 doublons de contenu soeur - 306 doublons de contenu croises - 329 doublons croises famille exterieure, 306 D-041 + 23 D-047)');
     Assert::same($expectedExactlyOneEligible, $exactlyOne, 'consigne produit deja connue (GARDEES, meme consigne que tous les paliers "avec" precedents)');
 };

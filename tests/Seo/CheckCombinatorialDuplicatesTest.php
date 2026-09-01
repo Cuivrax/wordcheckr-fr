@@ -50,8 +50,8 @@ return function (): void {
 
         $tileScores = Config::load('fr')->tileScores;
         $insertTerm = $dictionaryPdo->prepare(
-            'INSERT INTO terms (display_term, normalized, is_french, is_ods8, is_ods9, is_admitted, score, length, signature, reversed) '
-            . 'VALUES (?, ?, 1, 0, 0, 0, ?, ?, ?, ?)'
+            'INSERT INTO terms (display_term, normalized, is_french, is_ods8, is_ods9, is_admitted, score, length, signature, reversed, letter_mask) '
+            . 'VALUES (?, ?, 1, 0, 0, 0, ?, ?, ?, ?, ?)'
         );
 
         foreach (['XALAM', 'ZAZOU', 'AB'] as $word) {
@@ -62,6 +62,7 @@ return function (): void {
                 strlen($word),
                 Normalizer::signature($word),
                 Normalizer::reverse($word),
+                Normalizer::letterMask($word),
             ]);
         }
         unset($dictionaryPdo, $insertTerm);

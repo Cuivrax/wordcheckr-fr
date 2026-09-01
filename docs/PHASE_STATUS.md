@@ -25,14 +25,76 @@ Toutes les phases fonctionnelles (1 à 6) sont livrées, plus un enrichissement
                processus simultanés, hors périmètre de cette passe)
 ```
 
-Mis à jour le 2026-08-31 (D-045, commencant+avec étendu à 2/3 lettres + terminant+avec
-entièrement nouveau — 931 763 → 1 022 781 URL, dont 1 010 088 en index,follow, balayage
-générique croisé D-041 lancé après application, pas encore déployé sur o2switch en
-attente de son résultat ; D-044, ouverture longueur+préfixe/suffixe 1 et 2 lettres —
-924 408 → 931 763 URL, DÉPLOYÉ EN PRODUCTION sur wordcheckr.fr, confirmation explicite de
-l'utilisateur après tests verts ; D-043, définitions lexicales pilote intégré, 42/42
-tests ; D-042, domaine wordcheckr.fr fixé ; D-041, correctif C-4 appliqué en production).
-Audit formel code-reviewer/seo-technical-auditor de D-042 à D-045 : pas encore fait à ce
+Mis à jour le 2026-08-31 (D-048, "avec" palier 4 longueur+4 lettres — bug de canonical_path
+trouvé et corrigé en 4 passes avant toute application, voir D-048 pour le détail complet —
+1 022 781 → 1 146 338 URL, dont 1 116 412 en index,follow, sitemaps 45 → 49 fragments
+(avec-quad-0001/0002/0003/orphan.xml) ; D-047, correction des 2 903 doublons croisés trouvés
+par le balayage générique post-D-045/D-046 (11 familles touchées, détail dans D-047) ;
+D-046, correctif moteur WordListSolver (ancrage reversed, doublement de requête + index
+non couvrant, jusqu'à 20x plus rapide) ; D-045, commencant+avec étendu à 2/3 lettres +
+terminant+avec entièrement nouveau — 931 763 → 1 022 781 URL avant D-047/D-048 ; D-044,
+ouverture longueur+préfixe/suffixe 1 et 2 lettres — 924 408 → 931 763 URL, DÉPLOYÉ EN
+PRODUCTION sur wordcheckr.fr, confirmation explicite de l'utilisateur après tests verts ;
+D-043, définitions lexicales pilote intégré, 42/42 tests ; D-042, domaine wordcheckr.fr
+fixé ; D-041, correctif C-4 appliqué en production).
+D-045 à D-048 NON ENCORE DÉPLOYÉS sur o2switch (seul D-044 est en production à ce stade).
+
+D-049 APPLIQUÉ ET CORRIGÉ (2026-09-01) : "avec" SANS AUCUN ancrage (BARE, ni longueur ni préfixe
+ni suffixe) — demande produit explicite, preuve de volume réel Semrush. Convention de nom `BARE`
+alignée avec le dépôt allemand cousin. 1er audit seo-technical-auditor : **NO GO** (5 bloquants),
+tous corrigés le jour même — voir D-049bis dans docs/DECISIONS.md pour le détail complet :
+mauvais domaine canonical dans les sitemaps (régression propagée depuis D-047, corrigée),
+contrôle PARENT manquant sur le reliquat rejoué (323 doublons trouvés), 165 pages à 1 résultat
+les plus à risque mises en quarantaine (noindex en attendant le balayage), script de nettoyage
+versionné dans `scripts/` avec échéance ferme (2026-09-08), 3 erreurs arithmétiques dans
+l'entrée D-049 initiale corrigées. Registre final vérifié : 1 162 936 lignes, **1 132 295**
+en index,follow (pas 1 132 783 annoncé initialement). Sitemaps 49 → 53 fragments, régénérés
+avec le bon domaine (www). Bug de perf réel trouvé et corrigé au passage (`in_array()` linéaire
+sur des constantes à plusieurs milliers d'éléments, 17 builders concernés, gain 169,8x mesuré)
+plus un test resté périmé (`SuffixAvecLinksBuilderTest.php`) corrigé. 2e audit
+seo-technical-auditor PAS relancé avant déploiement (autorisation produit explicite : corriger
+les bloquants critiques suffit, investiguer le reste après si besoin).
+Correctif trouvé et déjà appliqué au passage (D-049) : `ExploreHubBuilder` lisait toute la
+table `list_counts` sans filtre (324 915 lignes) — TTFB `/mots` mesuré à 338,8 ms, corrigé en
+6,4 ms (requête préparée bornée, même défaut déjà trouvé et corrigé côté allemand). Correctif
+supplémentaire (titre/fil d'Ariane/H1) : `mb_convert_case(..., MB_CASE_TITLE, ...)` rabaissait
+la casse des séquences de lettres saisies par l'utilisateur ("AB" → "Ab") — corrigé en
+construisant le titre pièce par pièce, lettres forcées en majuscule ; même défaut confirmé et
+signalé aux dépôts allemand et espagnol cousins (correctif en cours chez eux aussi).
+
+Correctif qualité définitions (2026-09-01, post D-043) : 6 définitions auto-référentielles
+trouvées et corrigées (WEB, CORAN, CALEBOMBE, DALIT, ROQUERIE, BIFTON — le gabarit source
+citait le mot lui-même comme "variante orthographique de {MOT}", ex. "Système hypermédia
+mondial, variante orthographique de Web." pour WEB). Corrigé aux deux endroits : cache source
+versionné `data/generated/word_senses_cache.jsonl` (survit à un rebuild) ET
+`storage/dictionary_fr.sqlite` (effet immédiat). Scan élargi à tout le corpus (838 180 termes,
+418 774 sens) : plus aucune occurrence du motif. Scan complémentaire de doublons de texte
+exact entre mots différents (idée déjà posée dans le plan pilote définitions, jamais exécutée
+sur le corpus réel jusqu'ici) : propre, seuls doublons trouvés sont légitimes (gabarits
+`template`, variantes grammaticales masc/fém/sing/plur d'un même mot). A révélé en revanche
+une vingtaine de définitions `kaikki`/`llm-only` correctes mais très génériques (ex. "Relatif
+à cet étage géologique." répété sur 16 adjectifs sans jamais nommer l'étage) — bon candidat
+pour un futur enrichissement DeepSeek (définitions plus longues/riches), pas un bug.
+CONSIGNE POUR TOUT AJOUT FUTUR DE DÉFINITIONS : reproduire ces deux scans (auto-référence +
+doublon de texte exact) avant toute mise en production, ne pas supposer que le pipeline de
+génération/vérification existant les couvre déjà (il ne les couvrait pas).
+
+Point ouvert signalé par le dépôt espagnol cousin (audit orphelines K/W chez eux, 2026-09-01) :
+seul le sens SORTANT du maillage a été audité chez nous cette session (R5, D-047 — aucun
+builder ne doit lier vers une page noindex, vérifié et corrigé sur 9+ fichiers). Le sens
+INVERSE (est-ce que chaque page index,follow du registre a au moins un lien entrant depuis
+une autre page index,follow — risque d'orpheline) n'a jamais été audité pour FR. Vérifié en
+direct par comparaison : les 52 pages pivot pures à 1 lettre (commençant/terminant) sont
+toutes index,follow, donc pas d'équivalent direct du cas K/W espagnol (0 mot admis) — mais
+un audit d'accessibilité complet reste à faire. Décision utilisateur : reporté après le
+déploiement o2switch des chantiers en cours (D-045 à D-049), pas urgent.
+
+En attente de confirmation explicite de l'utilisateur avant tout déploiement, php tests/run.php
+doit repasser au vert avant toute proposition — mais autorisation explicite donnée le
+2026-09-01 pour déployer directement sur o2switch dès que D-045 à D-049 sont tous vérifiés
+(tests verts, sitemaps, métadonnées, indexation, audits GO), sans attendre de nouvelle
+confirmation ce soir-là (utilisateur indisponible).
+Audit formel code-reviewer/seo-technical-auditor de D-042 à D-048 : pas encore fait à ce
 stade.
 
 Décision explicite prise en cours de route (demande utilisateur) : construire
@@ -350,6 +412,46 @@ D-043    définitions lexicales (révise D-004) : nouvelle table word_senses
          storage/dictionary_fr.sqlite reconstruite avec le jeu complet,
          php tests/run.php : 42/42. Non audité par code-reviewer/
          seo-technical-auditor à ce stade.
+D-044    ouverture à l'indexation longueur+préfixe/suffixe de 1 et 2
+         lettres (seuls, sans "avec") — DÉPLOYÉ EN PRODUCTION sur
+         wordcheckr.fr, seule mise en ligne réelle de cette série à ce
+         stade. Registre 924 408 → 931 763.
+D-045    commençant/terminant+avec étendu (commençant : 2/3 lettres déjà
+         partiellement fait, complété ; terminant : entièrement nouveau,
+         1/2/3 lettres). Registre 931 763 → 1 022 781, 5 nouvelles
+         familles Family::WORD_LIST_COMMENCANT/TERMINANT_WITH_TWO/
+         THREE_LETTERS. Pas encore déployé sur o2switch.
+D-046    correctif moteur App\Search\WordListSolver::solveBounded(),
+         branche 'reversed' (ancrage suffixe) : doublement de requête
+         fusionné + nouvel index couvrant idx_terms_reversed_covering
+         (schema.sql) — jusqu'à 20x plus rapide isolément, p95 mesuré
+         3 493 ms → 98 ms sur les 621 pages palier 1 terminant+avec.
+         Bénéficie aussi aux pages déjà en production (ex. terminant/e,
+         226-260 ms → 25-48 ms). Registre inchangé (correctif moteur pur).
+D-047    correction des 2 903 doublons de contenu croisés trouvés par le
+         balayage générique (scripts/check_combinatorial_duplicates.php)
+         relancé après D-045/D-046, 11 familles touchées (détail dans
+         D-047). Registre inchangé en volume (2 903 lignes corrigées en
+         place, aucune supprimée), sitemaps rejoués (45 fragments,
+         1 007 185 URL à ce moment). DÉCOUVERTE TARDIVE (pendant D-048) :
+         corriger le registre seul ne suffit pas -- 9 builders de maillage
+         interne continuaient à produire des liens VIVANTS vers ces pages
+         devenues noindex (violation R5), leurs constantes
+         EXTERNAL_DUPLICATE_KEYS n'ayant jamais été mises à jour. Corrigé
+         (13 fichiers, vérification exhaustive 2 903/2 903), détail dans
+         D-047.
+D-048    ouverture à l'indexation du palier 4 de "avec" (longueur +
+         quatre lettres, /mots/{N}-lettres/avec/{W}/{X}/{Y}/{Z}),
+         nouvelle Family::WORD_LIST_AVEC_FOUR_LETTERS. Bug de
+         canonical_path trouvé pendant la vérification manuelle avant
+         application (jamais appliqué au registre tel quel) et corrigé
+         en 4 passes successives, chacune vérifiée avant la suivante —
+         détail complet dans D-048. Registre 1 022 781 → 1 146 338
+         (+123 557, dont 109 227 index,follow), sitemaps 45 → 49
+         fragments (avec-quad-0001/0002/0003/orphan.xml). Régularise
+         au passage la correction D-047 côté scripts/propose_seo_batch.php
+         (D041_EXCLUDED_ROUTE_PATHS['word_list_position'], 2 → 24
+         entrées, script resté idempotent avec le registre réel).
 ```
 
 Base de production reconstruite (D-022) : 838 180 termes inchangés,

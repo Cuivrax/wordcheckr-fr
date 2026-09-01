@@ -31,8 +31,8 @@ return function (): void {
     try {
         $pdo->exec(
             "INSERT INTO terms (display_term, normalized, is_french, is_ods8, is_ods9, "
-            . "score, length, signature, reversed) "
-            . "VALUES ('X', 'ZZZTESTONLY', 1, 0, 0, 1, 11, 'X', 'X')"
+            . "score, length, signature, reversed, letter_mask) "
+            . "VALUES ('X', 'ZZZTESTONLY', 1, 0, 0, 1, 11, 'X', 'X', 0)"
         );
     } catch (\Throwable) {
         $wrote = false;

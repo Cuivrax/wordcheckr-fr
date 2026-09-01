@@ -27,6 +27,20 @@ use App\Database\Connection;
  */
 final class LengthLinksBuilder
 {
+    // CORRECTIF PERF (2026-09-01, meme pattern que AvecFourLettersLinksBuilder) : in_array($key,
+    // ...KEYS, true) sur les constantes ci-dessous (locales ET celles referencees depuis
+    // PositionLinksBuilder / LengthCombinedLinksBuilder) est un parcours lineaire relance a
+    // CHAQUE ligne list_counts examinee dans build(). Tables de hachage calculees UNE FOIS par
+    // process (cache statique), lookups O(1) au lieu de O(n) -- aucun changement de contenu. Les
+    // deux caches cross-classe restent locaux a CETTE classe (private static, jamais accessible
+    // depuis PositionLinksBuilder/LengthCombinedLinksBuilder ni l'inverse) -- chacune de ces deux
+    // classes possede deja son propre cache pour son propre usage interne.
+    private static ?array $duplicateStartEndKeySet = null;
+    private static ?array $externalDuplicateWithKeySet = null;
+    private static ?array $externalDuplicateEndKeySet = null;
+    private static ?array $positionExternalDuplicateKeySet = null;
+    private static ?array $lengthCombinedExternalDuplicateKeySet = null;
+
     /**
      * Les 52 paires (longueur, debut, fin) a contenu strictement duplique identifiees par D-025
      * (I-1) : pour chacune, TOUS les mots commencant par {debut} et terminant par {fin} (toutes
@@ -82,6 +96,24 @@ final class LengthLinksBuilder
      */
     private const EXTERNAL_DUPLICATE_WITH_KEYS = ['2:W'];
 
+    /**
+     * Doublon de contenu CROISÉ avec une famille EXTÉRIEURE pour byEnd (D-047, balayage générique
+     * post-D-045/D-046, scripts/check_combinatorial_duplicates.php, 2026-08-31) -- même défaut
+     * structurel que EXTERNAL_DUPLICATE_WITH_KEYS ci-dessus (D-041), jamais couvert jusqu'ici pour
+     * la branche 'length_end' : AUCUN filtre n'y était appliqué avant ce correctif. Découverte
+     * tardive : ce lot (famille word_list_terminant, /mots/{N}-lettres/terminant/{lettre}) avait
+     * été appliqué au registre réel dès sa découverte mais laissait ce builder générer des liens
+     * internes VIVANTS depuis /mots/{N}-lettres vers ces pages devenues noindex,follow (violation
+     * R5, confirmée en direct via HTTP avant correctif : /mots/2-lettres liait vers
+     * /mots/2-lettres/terminant/l, noindex depuis D-047). "2:L" perd face à
+     * /mots/2-lettres/commencant/il (2 composants contre 3 -- IL est le seul mot admettant les
+     * deux lectures) ; "2:X" perd de même face à /mots/2-lettres/commencant/ex. Voir
+     * docs/DECISIONS.md D-047/D-048.
+     *
+     * @var list<string>
+     */
+    private const EXTERNAL_DUPLICATE_END_KEYS = ['2:L', '2:X'];
+
     public function __construct(
         private readonly Connection $connection,
     ) {
@@ -94,6 +126,12 @@ final class LengthLinksBuilder
             . " WHERE list_type IN ('length_start', 'length_end', 'length_with', 'length_with_position', 'length_start_end') AND list_key LIKE ?"
         );
         $statement->execute([$length . ':%']);
+
+        self::$duplicateStartEndKeySet ??= array_flip(self::DUPLICATE_START_END_KEYS);
+        self::$externalDuplicateWithKeySet ??= array_flip(self::EXTERNAL_DUPLICATE_WITH_KEYS);
+        self::$externalDuplicateEndKeySet ??= array_flip(self::EXTERNAL_DUPLICATE_END_KEYS);
+        self::$positionExternalDuplicateKeySet ??= array_flip(PositionLinksBuilder::EXTERNAL_DUPLICATE_KEYS);
+        self::$lengthCombinedExternalDuplicateKeySet ??= array_flip(LengthCombinedLinksBuilder::EXTERNAL_DUPLICATE_KEYS);
 
         $byStart = [];
         $byEnd = [];
@@ -122,7 +160,7 @@ final class LengthLinksBuilder
                 // PositionLinksBuilder::EXTERNAL_DUPLICATE_KEYS -- meme famille cible
                 // (Family::WORD_LIST_POSITION), source de verite unique referencee ici plutot que
                 // dupliquee.
-                if (in_array($key, PositionLinksBuilder::EXTERNAL_DUPLICATE_KEYS, true)) {
+                if (isset(self::$positionExternalDuplicateKeySet[$key])) {
                     continue;
                 }
 
@@ -141,7 +179,7 @@ final class LengthLinksBuilder
                 // (D-025, I-1) sont exclues explicitement : ces pages resteront noindex,follow en
                 // permanence (R3), inutile et trompeur de leur creer un lien depuis une page deja
                 // indexee.
-                if (in_array($key, self::DUPLICATE_START_END_KEYS, true)) {
+                if (isset(self::$duplicateStartEndKeySet[$key])) {
                     continue;
                 }
 
@@ -149,7 +187,7 @@ final class LengthLinksBuilder
                 // LengthCombinedLinksBuilder::EXTERNAL_DUPLICATE_KEYS -- meme famille cible
                 // (Family::WORD_LIST_COMBINED avec longueur), source de verite unique referencee
                 // ici plutot que dupliquee.
-                if (in_array($key, LengthCombinedLinksBuilder::EXTERNAL_DUPLICATE_KEYS, true)) {
+                if (isset(self::$lengthCombinedExternalDuplicateKeySet[$key])) {
                     continue;
                 }
 
@@ -178,6 +216,12 @@ final class LengthLinksBuilder
                     break;
 
                 case 'length_end':
+                    // Doublon de contenu CROISE avec une famille EXTERIEURE (D-047) : voir
+                    // EXTERNAL_DUPLICATE_END_KEYS.
+                    if (isset(self::$externalDuplicateEndKeySet[$key])) {
+                        break;
+                    }
+
                     $url = WordListFilters::fromPath($length . '-lettres/terminant/' . strtolower($letter))?->canonicalUrl();
 
                     if ($url !== null) {
@@ -188,7 +232,7 @@ final class LengthLinksBuilder
                 case 'length_with':
                     // Doublon de contenu CROISE avec une famille EXTERIEURE (D-041) : voir
                     // EXTERNAL_DUPLICATE_WITH_KEYS.
-                    if (in_array($key, self::EXTERNAL_DUPLICATE_WITH_KEYS, true)) {
+                    if (isset(self::$externalDuplicateWithKeySet[$key])) {
                         break;
                     }
 

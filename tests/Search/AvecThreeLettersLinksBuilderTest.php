@@ -369,7 +369,7 @@ return function (): void {
     // + disjonction) que les deux blocs precedents.
     // ========================================================================================
     $externalDuplicateKeysTriple = $reflection->getConstant('EXTERNAL_DUPLICATE_KEYS');
-    Assert::same(666, count($externalDuplicateKeysTriple), 'exactement 666 doublons croises avec une famille exterieure attendus (D-041, balayage du 2026-08-21)');
+    Assert::same(715, count($externalDuplicateKeysTriple), 'exactement 715 doublons croises avec une famille exterieure attendus (666 D-041, balayage du 2026-08-21, + 49 D-047, balayage du 2026-08-31 post-D-045/D-046)');
     Assert::same(count($externalDuplicateKeysTriple), count(array_unique($externalDuplicateKeysTriple)), 'aucun doublon dans la liste figee elle-meme');
     $externalDuplicateSetTriple = array_fill_keys($externalDuplicateKeysTriple, true);
     Assert::same(0, count(array_intersect_key($externalDuplicateSetTriple, $parentDuplicateSetTriple)), 'EXTERNAL_DUPLICATE_KEYS et DUPLICATE_PARENT_KEYS doivent rester deux ensembles disjoints');
@@ -422,7 +422,7 @@ return function (): void {
     // lignes eligibles, ni plus ni moins (chaque triplet compte UNE FOIS bien qu'accessible depuis
     // jusqu'a 3 ancres palier 2 distinctes).
     $expectedEligibleCountTriple = count($expectedTriple) - count($excludedKeysTriple);
-    Assert::same(27501, $expectedEligibleCountTriple, 'sanity check : 27 501 lignes eligibles (28 827 brutes - 426 doublons de contenu PARENT - 234 doublons de contenu SOEUR - 666 doublons croises famille exterieure D-041)');
+    Assert::same(27452, $expectedEligibleCountTriple, 'sanity check : 27 452 lignes eligibles (28 827 brutes - 426 doublons de contenu PARENT - 234 doublons de contenu SOEUR - 715 doublons croises famille exterieure, 666 D-041 + 49 D-047)');
     Assert::same($expectedEligibleCountTriple, $totalLinksProducedTriple, 'total des triplets distincts produits doit egaler les lignes list_counts length_with_triple eligibles');
 
     // Sens 2 -> 1 : chaque ligne list_counts length_with_triple eligible reelle est produite par le
@@ -439,7 +439,8 @@ return function (): void {
     // Consigne produit deja connue (D-031 : 1 682 combinaisons a exactement 1 resultat parmi les
     // 28 827 lignes precalculees brutes), AJUSTEE apres exclusion des doublons de contenu PARENT,
     // SOEUR, PUIS croises famille exterieure (D-041, 643 des 666 doublons croises ont exactement 1
-    // resultat) : 740 restantes, GARDEES (meme consigne produit que tous les paliers "avec"
+    // resultat ; D-047, 40 des 49 doublons croises supplementaires ont aussi exactement 1
+    // resultat) : 700 restantes, GARDEES (meme consigne produit que tous les paliers "avec"
     // precedents).
     $expectedExactlyOneEligibleTriple = 0;
     foreach ($expectedTriple as $key => $count) {
@@ -447,6 +448,6 @@ return function (): void {
             $expectedExactlyOneEligibleTriple++;
         }
     }
-    Assert::same(740, $expectedExactlyOneEligibleTriple, 'sanity check : 740 combinaisons eligibles a exactement 1 resultat (1 682 brutes - 299 exclues par les deux filtres precedents - 643 doublons croises famille exterieure)');
+    Assert::same(700, $expectedExactlyOneEligibleTriple, 'sanity check : 700 combinaisons eligibles a exactement 1 resultat (1 682 brutes - 299 exclues par les deux premiers filtres - 643 doublons croises D-041 - 40 doublons croises D-047)');
     Assert::same($expectedExactlyOneEligibleTriple, $exactlyOneTriple, 'consigne produit deja connue (GARDEES, meme consigne que tous les paliers "avec" precedents)');
 };

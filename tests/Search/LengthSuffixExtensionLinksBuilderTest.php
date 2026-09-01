@@ -41,7 +41,7 @@ return function (): void {
     // --- Doublons de contenu (D-044, verification EXTERNE faite AVANT application du lot SEO). ---
     $reflection = new ReflectionClass(LengthSuffixExtensionLinksBuilder::class);
     $externalDuplicateKeys = $reflection->getConstant('EXTERNAL_DUPLICATE_KEYS');
-    Assert::same(386, count($externalDuplicateKeys), 'exactement 386 doublons attendus (D-044, verification faite avant application du lot)');
+    Assert::same(515, count($externalDuplicateKeys), 'exactement 515 doublons attendus (386 D-044, verification faite avant application du lot, + 129 D-047, balayage du 2026-08-31 post-D-045/D-046)');
     Assert::same(count($externalDuplicateKeys), count(array_unique($externalDuplicateKeys)), 'aucun doublon dans la liste figee elle-meme');
 
     $rawTotal10G = (int) $pdo->query("SELECT COUNT(*) c FROM terms WHERE length = 10 AND normalized LIKE '%G'")->fetch()['c'];

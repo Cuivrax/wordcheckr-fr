@@ -70,3 +70,15 @@ def signature(normalized: str) -> str:
 def reverse(normalized: str) -> str:
     """Terme inversé : permet de traiter un suffixe comme un préfixe indexé."""
     return normalized[::-1]
+
+
+def letter_mask(normalized: str) -> int:
+    """Masque de bits (bit i = lettre chr(65+i) présente au moins une fois).
+
+    D-049quater : le runtime PHP calcule le même masque pour les lettres
+    SAISIES (WordListFilters/WordListSolver), jamais pour `normalized` —
+    seule cette fonction calcule le masque D'UN MOT, une fois au build."""
+    mask = 0
+    for letter in normalized:
+        mask |= 1 << (ord(letter) - 65)
+    return mask

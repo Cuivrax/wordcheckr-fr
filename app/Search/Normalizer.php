@@ -130,4 +130,21 @@ final class Normalizer
     {
         return strrev($normalized);
     }
+
+    /**
+     * Masque de bits (26 bits, un par lettre A-Z presente au moins une fois) -- D-049quater.
+     * Meme formule que scripts/lib/normalize.py::letter_mask() (D-007, source unique de verite
+     * cote build) ; cette methode sert aux fixtures de test qui construisent leur propre base
+     * synthetique en PHP, jamais au runtime lui-meme (qui lit la colonne deja precalculee).
+     */
+    public static function letterMask(string $normalized): int
+    {
+        $mask = 0;
+
+        foreach (str_split($normalized) as $letter) {
+            $mask |= 1 << (ord($letter) - 65);
+        }
+
+        return $mask;
+    }
 }

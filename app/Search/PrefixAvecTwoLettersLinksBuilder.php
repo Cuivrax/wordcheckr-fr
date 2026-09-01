@@ -22,6 +22,14 @@ use App\Database\Connection;
  */
 final class PrefixAvecTwoLettersLinksBuilder
 {
+    // CORRECTIF PERF (2026-09-01, meme pattern que AvecFourLettersLinksBuilder) : in_array($key,
+    // self::X_KEYS, true) sur ces trois constantes est un parcours lineaire relance a CHAQUE
+    // ligne list_counts examinee dans build(). Tables de hachage calculees UNE FOIS par process
+    // (cache statique), lookups O(1) au lieu de O(n) -- aucun changement de contenu.
+    private static ?array $duplicateParentKeySet = null;
+    private static ?array $siblingDuplicateKeySet = null;
+    private static ?array $externalDuplicateKeySet = null;
+
     /**
      * Doublons de contenu avec la page PARENTE palier 1 (D-045, meme methodologie que
      * App\Search\AvecTwoLettersLinksBuilder::DUPLICATE_PARENT_KEYS) : une ligne 'start_with_pair'
@@ -68,11 +76,43 @@ final class PrefixAvecTwoLettersLinksBuilder
 
     /**
      * Doublons de contenu CROISES avec une famille EXTERIEURE (D-045, meme discipline D-041) --
-     * voir docs/DECISIONS.md D-045.
+     * remplie par D-047 (balayage generique complet post-D-045/D-046,
+     * scripts/check_combinatorial_duplicates.php, 209 cles trouvees pour cette famille,
+     * word_list_commencant_with_two_letters) -- ce lot avait ete applique au registre reel des
+     * sa decouverte mais laissait ce builder generer des liens internes VIVANTS vers ces pages
+     * devenues noindex,follow (violation R5). Voir docs/DECISIONS.md D-047/D-048.
      *
      * @var list<string>
      */
-    private const EXTERNAL_DUPLICATE_KEYS = [];
+    private const EXTERNAL_DUPLICATE_KEYS = [
+        'A:F:Z', 'A:G:W', 'A:W:Z', 'B:J:X', 'B:J:Z', 'C:J:K', 'C:J:Z', 'C:K:X',
+        'C:K:Z', 'C:W:X', 'D:F:W', 'D:J:Z', 'D:K:X', 'D:W:Z', 'D:X:Z', 'E:G:K',
+        'E:J:Z', 'E:K:Q', 'E:K:X', 'E:W:Y', 'F:J:X', 'F:J:Z', 'F:K:X', 'F:K:Z',
+        'F:P:Z', 'F:Q:X', 'F:Q:Z', 'F:V:Z', 'F:W:Z', 'F:X:Z', 'G:B:X', 'G:D:X',
+        'G:H:X', 'G:J:Z', 'G:K:X', 'G:K:Y', 'G:P:X', 'G:W:X', 'H:J:Z', 'H:K:X',
+        'I:B:K', 'I:D:J', 'I:G:W', 'I:J:X', 'I:J:Z', 'I:K:V', 'I:K:Z', 'I:P:Z',
+        'I:Q:Z', 'I:V:Z', 'I:W:Y', 'I:W:Z', 'J:B:Z', 'J:D:F', 'J:D:W', 'J:D:X',
+        'J:D:Z', 'J:K:X', 'J:K:Z', 'J:M:W', 'J:O:W', 'J:R:W', 'J:V:X', 'J:X:Y',
+        'J:X:Z', 'K:B:F', 'K:D:V', 'K:D:X', 'K:F:Q', 'K:F:X', 'K:G:V', 'K:H:X',
+        'K:W:Y', 'K:X:Y', 'K:X:Z', 'K:Y:Z', 'L:J:P', 'L:J:Z', 'L:K:Z', 'L:X:Z',
+        'M:B:J', 'M:F:J', 'M:F:Z', 'M:J:X', 'M:J:Z', 'M:K:X', 'M:W:X', 'N:B:X',
+        'N:D:X', 'N:F:W', 'N:F:X', 'N:G:X', 'N:J:M', 'N:J:Z', 'N:K:P', 'N:K:X',
+        'N:U:W', 'N:W:Y', 'N:X:Y', 'N:X:Z', 'N:Y:Z', 'O:C:W', 'O:F:W', 'O:F:Z',
+        'O:J:W', 'O:J:X', 'O:J:Z', 'O:V:W', 'P:F:W', 'P:J:X', 'P:J:Z', 'P:K:X',
+        'P:K:Z', 'P:M:W', 'P:X:Z', 'Q:B:Z', 'Q:C:X', 'Q:G:H', 'Q:G:V', 'Q:G:X',
+        'Q:G:Z', 'Q:I:W', 'Q:I:X', 'Q:J:X', 'Q:K:P', 'Q:L:X', 'Q:M:X', 'Q:N:W',
+        'Q:N:X', 'Q:P:X', 'Q:P:Z', 'Q:R:W', 'Q:S:W', 'Q:T:X', 'Q:W:Z', 'Q:X:Z',
+        'Q:Y:Z', 'R:K:X', 'S:J:Z', 'S:X:Z', 'T:C:W', 'T:J:X', 'T:J:Y', 'T:W:Z',
+        'U:B:D', 'U:B:K', 'U:D:Z', 'U:F:X', 'U:G:K', 'U:G:V', 'U:G:W', 'U:G:Z',
+        'U:M:Z', 'U:P:V', 'U:P:X', 'U:P:Z', 'U:Q:Z', 'U:V:X', 'U:V:Z', 'U:X:Y',
+        'U:Y:Z', 'V:B:K', 'V:D:X', 'V:F:Z', 'V:G:J', 'V:H:Z', 'V:J:Y', 'V:J:Z',
+        'V:K:Y', 'V:X:Y', 'W:A:X', 'W:B:P', 'W:C:X', 'W:C:Y', 'W:D:V', 'W:F:Q',
+        'W:F:V', 'W:F:Z', 'W:L:X', 'W:P:Z', 'W:Q:V', 'W:V:Z', 'X:F:S', 'X:L:Z',
+        'Y:A:X', 'Y:B:D', 'Y:C:X', 'Y:D:G', 'Y:D:X', 'Y:E:X', 'Y:F:K', 'Y:G:J',
+        'Y:J:S', 'Y:L:Z', 'Y:O:X', 'Y:P:X', 'Y:Q:V', 'Z:B:K', 'Z:B:X', 'Z:C:X',
+        'Z:D:X', 'Z:F:W', 'Z:G:X', 'Z:H:J', 'Z:H:K', 'Z:J:S', 'Z:K:Q', 'Z:R:X',
+        'Z:W:Y',
+    ];
 
     public function __construct(
         private readonly Connection $connection,
@@ -87,15 +127,19 @@ final class PrefixAvecTwoLettersLinksBuilder
         );
         $statement->execute([$prefix . ':' . $letter . ':%', $prefix . ':%:' . $letter]);
 
+        self::$duplicateParentKeySet ??= array_flip(self::DUPLICATE_PARENT_KEYS);
+        self::$siblingDuplicateKeySet ??= array_flip(self::SIBLING_DUPLICATE_KEYS);
+        self::$externalDuplicateKeySet ??= array_flip(self::EXTERNAL_DUPLICATE_KEYS);
+
         $links = [];
 
         foreach ($statement as $row) {
             $key = (string) $row['list_key'];
 
             if (
-                in_array($key, self::DUPLICATE_PARENT_KEYS, true)
-                || in_array($key, self::SIBLING_DUPLICATE_KEYS, true)
-                || in_array($key, self::EXTERNAL_DUPLICATE_KEYS, true)
+                isset(self::$duplicateParentKeySet[$key])
+                || isset(self::$siblingDuplicateKeySet[$key])
+                || isset(self::$externalDuplicateKeySet[$key])
             ) {
                 continue;
             }

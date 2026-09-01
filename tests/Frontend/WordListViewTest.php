@@ -142,7 +142,7 @@ return function (): void {
     Assert::true(str_contains($htmlWithLinks, '(9 663)'), 'compte terminant formate attendu');
     Assert::true(!str_contains($htmlWithLinks, 'Mots De 13 Lettres Avec'), 'byWith vide -- aucune section rendue (jamais de groupe vide)');
     Assert::true(str_contains($htmlWithLinks, 'Mots De 13 Lettres Par Position De Lettre'), 'titre position attendu (C1, audit D-028)');
-    Assert::true(str_contains($htmlWithLinks, '<summary>3e Lettre (1)</summary>'), 'sommaire replie par groupe de position attendu');
+    Assert::true(str_contains($htmlWithLinks, '<p class="explore-subgroup-label">3e Lettre (1)</p>'), 'label toujours visible par groupe de position attendu (D-036bis / commit 36ecef4 : <details>/<summary> remplace par un label visible, coherence visuelle demandee par retour utilisateur)');
     Assert::true(str_contains($htmlWithLinks, 'href="/mots/13-lettres/position/3/r"'), 'URL du lien position attendue');
     Assert::true(str_contains($htmlWithLinks, 'href="/mots">Toutes Les Longueurs Et Lettres</a>'), 'lien hub vers /mots attendu quand $lengthLinks est fourni');
 

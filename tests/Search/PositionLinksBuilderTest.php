@@ -65,12 +65,15 @@ return function (): void {
     // Doublons de contenu CROISES avec une famille EXTERIEURE a "position" (D-041, garde-fou
     // structurel demande par le constat C-4 du 4e audit consolide, docs/DECISIONS.md D-040) --
     // balayage GENERIQUE de tout le registre (scripts/check_combinatorial_duplicates.php, balayage
-    // du 2026-08-21 : 1 656 groupes, 2 089 pages en exces). Voir
-    // PositionLinksBuilder::EXTERNAL_DUPLICATE_KEYS pour le detail complet des deux cles.
+    // du 2026-08-21 : 1 656 groupes, 2 089 pages en exces), COMPLETE par D-047 (2026-08-31,
+    // balayage post-D-045/D-046, +22 cles). Voir PositionLinksBuilder::EXTERNAL_DUPLICATE_KEYS
+    // pour le detail complet des 24 cles.
     // ============================================================================================
     $reflection = new ReflectionClass(PositionLinksBuilder::class);
     $externalDuplicateKeys = $reflection->getConstant('EXTERNAL_DUPLICATE_KEYS');
-    Assert::same(['13:W:10', '15:W:10'], $externalDuplicateKeys, 'exactement 2 doublons croises avec une famille exterieure attendus (D-041, balayage du 2026-08-21)');
+    Assert::same(24, count($externalDuplicateKeys), 'exactement 24 doublons croises avec une famille exterieure attendus (2 D-041 + 22 D-047)');
+    Assert::true(in_array('13:W:10', $externalDuplicateKeys, true) && in_array('15:W:10', $externalDuplicateKeys, true), 'les 2 cles D-041 originales doivent rester presentes');
+    Assert::same(count($externalDuplicateKeys), count(array_unique($externalDuplicateKeys)), 'aucun doublon dans la liste figee elle-meme');
 
     // --- 13-lettres/position/10/w perd face a 13-lettres/commencant/c/terminant/h
     // --- (Family::WORD_LIST_COMBINED avec longueur, 3 composants, "commencant" precede "position"

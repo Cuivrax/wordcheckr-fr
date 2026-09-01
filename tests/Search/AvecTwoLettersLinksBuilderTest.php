@@ -258,7 +258,7 @@ return function (): void {
     // + disjonction) que DUPLICATE_PARENT_KEYS/SIBLING_DUPLICATE_KEYS ci-dessus.
     // ========================================================================================
     $externalDuplicateKeys = $reflection->getConstant('EXTERNAL_DUPLICATE_KEYS');
-    Assert::same(138, count($externalDuplicateKeys), 'exactement 138 doublons croises avec une famille exterieure attendus (D-041, balayage du 2026-08-21)');
+    Assert::same(140, count($externalDuplicateKeys), 'exactement 140 doublons croises avec une famille exterieure attendus (138 D-041, balayage du 2026-08-21, + 2 D-047, balayage du 2026-08-31 post-D-045/D-046)');
     Assert::same(count($externalDuplicateKeys), count(array_unique($externalDuplicateKeys)), 'aucun doublon dans la liste figee elle-meme');
     $externalDuplicateSet = array_fill_keys($externalDuplicateKeys, true);
     Assert::same(0, count(array_intersect_key($externalDuplicateSet, $parentDuplicateSet)), 'EXTERNAL_DUPLICATE_KEYS et DUPLICATE_PARENT_KEYS doivent rester deux ensembles disjoints');
@@ -311,7 +311,7 @@ return function (): void {
     // lignes eligibles, ni plus ni moins (chaque paire comptee UNE FOIS bien qu'accessible depuis
     // ses deux ancres palier 1).
     $expectedEligibleCount = count($expected) - count($excludedKeys);
-    Assert::same(4134, $expectedEligibleCount, 'sanity check : 4 134 lignes eligibles (4 276 brutes - 4 doublons de contenu PARENT - 0 doublon de contenu SOEUR - 138 doublons croises famille exterieure D-041)');
+    Assert::same(4132, $expectedEligibleCount, 'sanity check : 4 132 lignes eligibles (4 276 brutes - 4 doublons de contenu PARENT - 0 doublon de contenu SOEUR - 140 doublons croises famille exterieure, 138 D-041 + 2 D-047)');
     Assert::same($expectedEligibleCount, $totalLinksProduced, 'total des paires distinctes produites doit egaler les lignes list_counts length_with_pair eligibles');
 
     // Sens 2 -> 1 : chaque ligne list_counts length_with_pair eligible reelle est produite par le
@@ -329,7 +329,9 @@ return function (): void {
     // 4 276 lignes precalculees brutes), AJUSTEE apres exclusion des 4 doublons de contenu PARENT
     // (dont 2 -- 2:A:Z et 2:U:W -- valent exactement 1 : 132 - 2 = 130), PUIS des 138 doublons
     // croises famille exterieure (D-041, dont 122 valent exactement 1) : 130 - 122 = 8 restantes,
-    // GARDEES (meme consigne produit que tous les paliers "avec" precedents).
+    // GARDEES (meme consigne produit que tous les paliers "avec" precedents). D-047 (2026-08-31)
+    // ajoute 2 doublons croises supplementaires (3:P:Z compte 3, 7:J:W compte 2) -- NI l'un ni
+    // l'autre ne vaut exactement 1, le total de 8 reste inchange.
     $expectedExactlyOneEligible = 0;
     foreach ($expected as $key => $count) {
         if ($count === 1 && !isset($excludedKeys[$key])) {

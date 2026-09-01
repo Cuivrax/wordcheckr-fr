@@ -602,6 +602,25 @@ final class WordListSolver
             $params[] = $filters->positionLetter;
         }
 
+        if ($filters->withLetters !== []) {
+            // Masque de bits (D-049quater) : condition NECESSAIRE (presence, quel que soit
+            // minCount) ajoutee AVANT les predicats par lettre ci-dessous -- jamais un
+            // remplacement, un ET binaire est mesure ~2x moins cher qu'une chaine de instr()
+            // sur le cas sans aucun ancrage indexe (49 ms contre 112-152 ms, voir schema.sql et
+            // docs/DECISIONS.md D-049quater), et permet a SQLite de choisir
+            // idx_terms_letter_mask (couvrant) plutot qu'un parcours de sqlite_autoindex_terms_1
+            // quand aucun autre ancrage n'existe. Ne suffit jamais seul quand une lettre est
+            // exigee plusieurs fois (minCount >= 2) : les predicats residuels ci-dessous restent
+            // necessaires pour verifier le COMPTE exact, le masque ne prouve que la presence.
+            $requiredMask = 0;
+            foreach (array_keys($filters->withLetters) as $letter) {
+                $requiredMask |= 1 << (ord($letter) - 65);
+            }
+            $conditions[] = '(letter_mask & CAST(? AS INTEGER)) = CAST(? AS INTEGER)';
+            $params[] = $requiredMask;
+            $params[] = $requiredMask;
+        }
+
         foreach ($filters->withLetters as $letter => $minCount) {
             if ($minCount === 1) {
                 // Cas ecrasement majoritaire (une seule occurrence exigee) : simple presence,
