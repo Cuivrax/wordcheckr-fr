@@ -438,6 +438,18 @@ if ($path === '/mots' || preg_match('#^/mots(/.*)$#u', $path, $matches) === 1) {
         return;
     }
 
+    // Racine de famille SANS argument (/mots/avec, /mots/commencant, /mots/terminant,
+    // /mots/position, /mots/contenant, /mots/sans, /mots/motif) : jamais une page valide --
+    // WordListFilters::fromPath() exige toujours au moins un argument (une lettre, une
+    // longueur...), WordListSolver::solve() renverrait null, donc un 404 sec. Plutot que de
+    // perdre ce clic/lien entrant (URL tapee a la main, lien externe perime), redirection vers
+    // le hub /mots -- meme principe que /mot et /mot/ vers /mots plus haut dans ce fichier.
+    if (in_array(rtrim($rest, '/'), ['/avec', '/commencant', '/terminant', '/position', '/contenant', '/sans', '/motif'], true)) {
+        $redirect('/mots', 301);
+
+        return;
+    }
+
     // Page hub /mots (audit SEO final, seo-technical-auditor, C4 : les pages /mots/... sans
     // aucun lien entrant depuis le site) : trois grilles completes vers les familles deja
     // indexees (longueur, commencant, terminant -- 66 liens au total, D-017), construites

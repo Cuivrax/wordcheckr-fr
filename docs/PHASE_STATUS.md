@@ -64,9 +64,23 @@ seo_fr.sqlite 1 162 936 → 1 170 949 lignes, 1 139 936 en index,follow, sitemap
 (54 fragments). commencant_terminant_multilettres (2 943 URL) et 11 candidats > 25
 résultats (5 avec_three_letters, 6 combined_with_letter) EXPLICITEMENT REPORTÉS —
 nécessitent le balayage exhaustif scripts/check_combinatorial_duplicates.php (~5h), voir
-D-055 pour le détail complet. php tests/run.php en cours de revérification complète avant
-tout commit/déploiement — seul ProposeSeoBatchCommencantTerminantMultilettresTest.php doit
-rester rouge (famille reportée), tout le reste doit repasser au vert.
+D-055 pour le détail complet. php tests/run.php reverifié en entier : 54 réussis / 1 échoué
+(ProposeSeoBatchCommencantTerminantMultilettresTest.php, exactement l'échec attendu, famille
+reportée) — aucune régression ailleurs.
+
+D-051 À D-055 DÉPLOYÉS SUR O2SWITCH le 2026-09-02 (commit 1fbedb3, poussé sur
+github.com/Cuivrax/wordcheckr-fr avant déploiement — code via git archive, les deux bases
+storage/dictionary_fr.sqlite et storage/seo_fr.sqlite via scp + bascule atomique, intégrité
+ET comptes vérifiés sur les deux avant bascule : dictionary_fr.sqlite 844 961 lignes,
+seo_fr.sqlite 1 170 949 lignes / 1 139 936 en index,follow — identiques aux mesures locales
+D-051/D-055). Routes témoins vérifiées 200 en direct sur https://www.wordcheckr.fr (/,
+/mot/steppes, /mot/aberdeen, /mots/7-lettres, /sitemap-index.xml, deux fragments sitemap
+régénérés) ; /verifier/steppes en 302 ; storage/dictionary_fr.sqlite en 404 (non exposé) ;
+non-www en 301. Contenu réel vérifié dans le HTML servi : /mot/aberdeen affiche la phrase
+"Réponse Directe" catégorie 'obsolete' (D-054) et sa définition D-052 ; /mot/aalborg affiche
+la phrase catégorie 'proper_noun'. TTFB : 836-1068 ms sur les 2 premières requêtes juste
+après bascule (cache froid, même variance transitoire déjà documentée en D-049quater), puis
+stabilisé à 175-181 ms sur les requêtes suivantes — dans le budget CLAUDE.md (p95 < 250 ms).
 
 D-049 APPLIQUÉ ET CORRIGÉ (2026-09-01) : "avec" SANS AUCUN ancrage (BARE, ni longueur ni préfixe
 ni suffixe) — demande produit explicite, preuve de volume réel Semrush. Convention de nom `BARE`

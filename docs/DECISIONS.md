@@ -4896,3 +4896,71 @@ storage/seo_fr.sqlite modifie UNIQUEMENT en local (hors depot git, D-007) -- auc
   production tant qu'un deploiement manuel n'est pas fait. public/sitemaps/*.xml et
   public/sitemap-index.xml SONT versionnes et font partie de ce commit.
 ```
+
+## D-056 — Racines De Famille Sans Argument (`/mots/avec`, `/mots/commencant`...) Redirigées Vers Le Hub
+
+Date : 2026-09-02
+Statut : accepté et appliqué
+
+Contexte :
+
+```text
+analyse du depot cousin espagnol (ES-074, demande utilisateur) : leur session avait ajoute
+  une section "Con Letras" sur le hub /palabras -- verifie ici que l'equivalent FR existait
+  deja et AVANT eux (D-049, App\Search\ExploreHub::$byWith, section "Avec" du hub /mots, 26
+  liens) -- rien a repliquer sur ce point precis.
+audit complementaire (meme demande) : les 20 familles indexables de App\Seo\Family
+  tracees une par une par hop-count depuis le hub /mots -- aucune ne correspond au meme
+  schema de trou que celui ferme par ES-074 (une grille plate ~26 elements, index,follow,
+  atteignable seulement par un lien lateral facile a manquer). Les familles a 2+ sauts sont
+  la structure "entonnoir" deliberee du site (chaque palier n'a qu'un seul parent logique
+  possible, ex. /mots/{N}-lettres/avec/{X}/{Y}/{Z}/{W} n'existe qu'une fois {X}{Y}{Z} fixe)
+  -- pas une omission accidentelle.
+question separee posee par l'utilisateur en cours de route : les racines de famille SANS
+  argument (/mots/avec, /mots/commencant, /mots/terminant, /mots/position, /mots/contenant,
+  /mots/sans, /mots/motif) repondent-elles reellement 404 ? Verifie en direct sur
+  https://www.wordcheckr.fr : les 7 en 404 (WordListFilters::fromPath() exige toujours au
+  moins un argument, WordListSolver::solve() renvoie donc null pour ces 7 chemins).
+```
+
+Décision :
+
+```text
+public/index.php (fichier partage, modification directe session principale) : nouveau
+  garde-fou juste apres le controle de longueur (MAX_RAW_WORDLIST_PATH_LENGTH) et avant le
+  rendu du hub -- si $rest (partie apres /mots, slash de fin retire) correspond exactement a
+  l'une des 7 racines de famille nues, redirection 301 vers /mots plutot que le 404 que
+  WordListSolver::solve() aurait produit. Meme principe deja en place pour /mot et /mot/ vers
+  /mots plus haut dans le meme fichier (ce correctif-la, laisse tel quel a la demande de
+  l'utilisateur en attendant une comparaison avec un chantier similaire cote ES, non lie a
+  cette decision).
+aucun changement sur les vraies pages de famille (/mots/avec/{X}, /mots/commencant/{X}...) --
+  le garde-fou ne matche que la forme EXACTE sans aucun argument, verifie explicitement pour
+  ne pas intercepter /mots/avec/a ni /mots/commencant/a.
+```
+
+Mesures :
+
+```text
+php -l public/index.php : propre.
+serveur PHP integre local (php -S 127.0.0.1:8213 -t public, arrete apres) : les 7 racines
+  nues (avec, commencant, terminant, position, contenant, sans, motif), avec et sans slash
+  de fin, redirigent toutes en 301 vers /mots -- verifie code HTTP ET en-tete Location.
+  /mots/avec/a, /mots/commencant/a et /mots lui-meme restent inchanges (200, aucune
+  redirection) -- verifie explicitement pour exclure une regression sur les vraies pages.
+aucun test dedie existant sur le routage de public/index.php (fichier partage, meme
+  convention que le correctif /mot -> /mots deja en place : verification manuelle serveur
+  local, pas de suite PHPUnit-like sur ce fichier).
+```
+
+Conséquences :
+
+```text
+recupere le lien/clic au lieu d'un 404 sec sur ces 7 chemins (URL tapee a la main d'apres le
+  nom de la famille, lien externe perime) -- benefice mineur mais gratuit, 0 risque sur le
+  reste du routage.
+transmis en parallele aux sessions cousines ES et DE (meme demande utilisateur) : verifier
+  si le meme trou existe sur /palabras/... et son equivalent allemand, et appliquer le meme
+  correctif s'il y a lieu -- decision et mise en oeuvre laissees a ces sessions, pas actees
+  ici.
+```
