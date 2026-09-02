@@ -82,6 +82,12 @@ la phrase catégorie 'proper_noun'. TTFB : 836-1068 ms sur les 2 premières requ
 après bascule (cache froid, même variance transitoire déjà documentée en D-049quater), puis
 stabilisé à 175-181 ms sur les requêtes suivantes — dans le budget CLAUDE.md (p95 < 250 ms).
 
+D-056 DÉPLOYÉ SUR O2SWITCH le 2026-09-03 (commit fd3f50c, code seul via git archive, aucune
+base transférée — pur correctif de routage). Les 7 racines de famille sans argument
+(/mots/avec, /mots/commencant, /mots/terminant, /mots/position, /mots/contenant, /mots/sans,
+/mots/motif) vérifiées 301 → /mots en direct sur https://www.wordcheckr.fr ; /mots/avec/a et
+/mots eux-mêmes vérifiés 200, inchangés.
+
 D-049 APPLIQUÉ ET CORRIGÉ (2026-09-01) : "avec" SANS AUCUN ancrage (BARE, ni longueur ni préfixe
 ni suffixe) — demande produit explicite, preuve de volume réel Semrush. Convention de nom `BARE`
 alignée avec le dépôt allemand cousin. 1er audit seo-technical-auditor : **NO GO** (5 bloquants),
