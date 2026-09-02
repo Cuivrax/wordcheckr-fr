@@ -39,6 +39,12 @@ use Tests\Support\Assert;
  * /mots/commencant/w/avec/j (2 composants), /mots/commencant/w/terminant/l (2 composants) et
  * /mots/commencant/webj (préfixe multi-lettres, 1 composant -- gagnant). commencant/w/avec/j perd
  * (2 composants > 1) -- 0 page à 1 résultat après ce correctif.
+ *
+ * D-051 (2026-09-02) : le complément kaikki a rempli trois paniers commençant/avec auparavant
+ * vides (R5, 0 résultat jamais proposé) -- V+W (2 mots), X+J (1 mot) et X+K (1 mot). Ce cas ne
+ * repose sur aucune liste statique (contrairement aux paliers "avec" purs) : les contrôles C-1/
+ * I-A sont recalculés dynamiquement contre list_counts/terms à chaque exécution, donc ces trois
+ * routes réapparaissent automatiquement, sans correctif de code. 642 -> 645 lignes.
  */
 return function (): void {
     $root = __DIR__ . '/../..';
@@ -60,7 +66,7 @@ return function (): void {
     $exitCode = proc_close($process);
 
     Assert::same(0, $exitCode, "propose_seo_batch.php commencant_avec aurait du reussir : {$stderr}");
-    Assert::true(str_contains($stderr, '642 ligne(s) proposee(s)'), $stderr);
+    Assert::true(str_contains($stderr, '645 ligne(s) proposee(s)'), $stderr);
 
     $tmpFile = tempnam(sys_get_temp_dir(), 'commencant_avec_batch_');
     file_put_contents($tmpFile, $stdout);
@@ -69,7 +75,9 @@ return function (): void {
         $batch = require $tmpFile;
 
         Assert::true(str_starts_with($batch['batch_id'], 'commencant_avec-proposed-'), 'batch_id dynamique attendu (nouvelle proposition)');
-        Assert::same(642, count($batch['rows']), '676 combinaisons brutes moins 26 diagonales (D-032) moins 4 a 0 resultat moins 4 (D-041, doublons croises)');
+        // D-051 (2026-09-02) : V+W, X+J et X+K desormais >= 1 resultat (complement kaikki),
+        // remesure directe sur le nouveau lot.
+        Assert::same(645, count($batch['rows']), '676 combinaisons brutes moins 26 diagonales (D-032) moins 1 a 0 resultat (D-051 revalide) moins 4 (D-041, doublons croises)');
 
         // --- Forme exacte de la route : commencant + avec, chacun d'une seule lettre, SANS
         // --- longueur, SANS terminant -- et jamais la lettre "avec" degeneree (D-032). ---
@@ -101,8 +109,9 @@ return function (): void {
             }
         }
 
-        Assert::same(0, $singleResultCount, '0 page a exactement 1 resultat -- W+J (seul cas a 1 resultat avant D-041) exclu, voir docblock de fichier');
-        Assert::same(150, $cappedCount, '150/642 combinaisons plafonnees a ROW_EXAMINATION_CEILING (reports/query-plans/commencant-avec-maillage.md), inchange par D-041 (aucune combinaison plafonnee n\'est concernee)');
+        // D-051 (2026-09-02) : X+J et X+K, remesure directe (V+W a 2 resultats, pas 1).
+        Assert::same(2, $singleResultCount, '2 pages a exactement 1 resultat -- X+J et X+K (complement kaikki), GARDEES (docs/05, jamais sur le seul compteur)');
+        Assert::same(150, $cappedCount, '150/645 combinaisons plafonnees a ROW_EXAMINATION_CEILING (reports/query-plans/commencant-avec-maillage.md), inchange par D-041 et D-051 (aucune combinaison plafonnee n\'est concernee)');
 
         // --- Cas connus, verifies contre list_counts (voir le rapport AFTER pour la
         // --- verification independante complete, agent seo-registry). ---
@@ -120,9 +129,15 @@ return function (): void {
         Assert::true(!isset($byPath['/mots/commencant/w/avec/j']), 'D-041 : doublon de contenu avec /mots/commencant/webj (moins de composants)');
         Assert::true(isset($byPath['/mots/commencant/r/avec/e']));
         Assert::same(10_000, $byPath['/mots/commencant/r/avec/e']['result_count'], 'plafonne (ROW_EXAMINATION_CEILING, D-019 -- 219 076 mots reels)');
-        Assert::true(!isset($byPath['/mots/commencant/v/avec/w']), 'V+W, 0 resultat, jamais proposee (R5)');
-        Assert::true(!isset($byPath['/mots/commencant/x/avec/j']), 'X+J, 0 resultat, jamais proposee (R5)');
-        Assert::true(!isset($byPath['/mots/commencant/x/avec/k']), 'X+K, 0 resultat, jamais proposee (R5)');
+        // --- D-051 (2026-09-02) : V+W, X+J, X+K etaient a 0 resultat (R5, jamais proposees) --
+        // --- le complement kaikki leur a donne au moins un mot chacune, desormais presentes.
+        // --- X+W reste a 0 resultat, inchangee. ---
+        Assert::true(isset($byPath['/mots/commencant/v/avec/w']), 'D-051 : liberee, V+W a desormais 2 mots (etait 0)');
+        Assert::same(2, $byPath['/mots/commencant/v/avec/w']['result_count']);
+        Assert::true(isset($byPath['/mots/commencant/x/avec/j']), 'D-051 : liberee, X+J a desormais 1 mot (etait 0)');
+        Assert::same(1, $byPath['/mots/commencant/x/avec/j']['result_count']);
+        Assert::true(isset($byPath['/mots/commencant/x/avec/k']), 'D-051 : liberee, X+K a desormais 1 mot (etait 0)');
+        Assert::same(1, $byPath['/mots/commencant/x/avec/k']['result_count']);
         Assert::true(!isset($byPath['/mots/commencant/x/avec/w']), 'X+W, 0 resultat, jamais proposee (R5)');
 
         // --- Regression C-1 (audit consolide, bloquant) : recalcule independamment, directement

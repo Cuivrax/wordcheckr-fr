@@ -47,6 +47,27 @@ D-049quater pour le détail complet, y compris la variance initiale liée au cac
 après bascule). Balayage de nettoyage (scripts/build_avec_bare_candidates.php) terminé avant
 déploiement — plus de reliquat non testé.
 
+Mis à jour le 2026-09-02 (D-051 à D-055, complément kaikki + revalidation SEO croisée) :
+D-051, complément kaikki, 6 781 formes françaises supplémentaires (toponymes/noms propres/
+sigles + registre marqué), storage/dictionary_fr.sqlite 838 180 → 844 961 termes ; D-052,
+sens (pos/gender/definition) de ces 6 781 formes, 7 486 lignes word_senses ; D-053,
+revalidation des listes figées PARENT/SIBLING de 13 fichiers App\Search\*LinksBuilder*.php
+post-D-051/D-052 (0 divergence, deux méthodes indépendantes) ; D-054, colonne
+terms.non_admitted_category (10 valeurs) + phrase "Réponse Directe" spécifique par
+catégorie sur /mot/{mot} pour un mot français non admis ; D-055, résolution des doublons
+de contenu croisés entre 7 des 8 familles combinatoires déjà indexées (avec_single_letter,
+avec_two_letters, avec_three_letters, combined_with_length, combined_with_letter,
+commencant_avec, position) suite au même delta de +6 781 mots — DuplicatePageResolver
+(D-041/D-047) réutilisé sans nouvelle règle, balayage croisé BORNÉ (result_count ≤ 25,
+813 groupes trouvés, 0 anomalie), 0 régression sur une page déjà indexée. storage/
+seo_fr.sqlite 1 162 936 → 1 170 949 lignes, 1 139 936 en index,follow, sitemaps régénérés
+(54 fragments). commencant_terminant_multilettres (2 943 URL) et 11 candidats > 25
+résultats (5 avec_three_letters, 6 combined_with_letter) EXPLICITEMENT REPORTÉS —
+nécessitent le balayage exhaustif scripts/check_combinatorial_duplicates.php (~5h), voir
+D-055 pour le détail complet. php tests/run.php en cours de revérification complète avant
+tout commit/déploiement — seul ProposeSeoBatchCommencantTerminantMultilettresTest.php doit
+rester rouge (famille reportée), tout le reste doit repasser au vert.
+
 D-049 APPLIQUÉ ET CORRIGÉ (2026-09-01) : "avec" SANS AUCUN ancrage (BARE, ni longueur ni préfixe
 ni suffixe) — demande produit explicite, preuve de volume réel Semrush. Convention de nom `BARE`
 alignée avec le dépôt allemand cousin. 1er audit seo-technical-auditor : **NO GO** (5 bloquants),

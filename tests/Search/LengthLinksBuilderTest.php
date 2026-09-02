@@ -52,15 +52,34 @@ return function (): void {
     Assert::same('/mots/13-lettres/avec/k', $withK[0]['url']);
 
     // --- byWith, doublon de contenu CROISE avec une famille EXTERIEURE (D-041, balayage du
-    // --- 2026-08-21) : "2-lettres/avec/w" (WU, seul mot) perd face a "terminant/wu" (1 composant)
-    // --- -- ne doit jamais etre produit par byWith depuis /mots/2-lettres. ---
+    // --- 2026-08-21) : "2-lettres/avec/w" (WU, seul mot a 838 180 termes) perdait face a
+    // --- "terminant/wu" (1 composant). REVALIDE D-051/D-052 (2026-09-02) : le complement kaikki a
+    // --- ajoute WE et WI (2 lettres, avec W sans U) -- "2:W" vaut desormais 4 mots contre 1 seul
+    // --- cote "terminant/wu" (WU reste l'unique mot se terminant par WU) : relation CASSEE, "2:W"
+    // --- doit desormais etre PRODUIT normalement. ---
     $externalWithKeys = (new ReflectionClass(LengthLinksBuilder::class))->getConstant('EXTERNAL_DUPLICATE_WITH_KEYS');
-    Assert::same(['2:W'], $externalWithKeys, 'exactement 1 doublon croise avec une famille exterieure attendu pour byWith (D-041)');
+    Assert::same([], $externalWithKeys, 'aucun doublon croise avec une famille exterieure attendu pour byWith (D-051/D-052, etait ["2:W"])');
     $links2 = $builder->build(2);
     $withW = array_values(array_filter($links2->byWith, static fn (array $l): bool => $l['letter'] === 'W'));
-    Assert::true($withW === [], '2:W est un doublon de contenu croise (D-041, perd face a terminant/wu) -- ne doit jamais etre produit');
+    Assert::true(count($withW) === 1, '2:W n\'est plus un doublon de contenu croise depuis D-051/D-052 (WE/WI cassent la relation avec terminant/wu) -- doit desormais etre produit');
     $rawCount2W = (int) $pdo->query("SELECT count FROM list_counts WHERE list_type = 'length_with' AND list_key = '2:W'")->fetch()['count'];
-    Assert::true($rawCount2W > 0, 'sanity check : 2:W existe bien dans list_counts (precalcul brut inchange, seule la sortie du builder est filtree)');
+    Assert::same(4, $rawCount2W, 'sanity check : 2:W vaut desormais 4 mots (WE, WI, WU, WW -- D-051/D-052, etait 1)');
+    Assert::same($rawCount2W, $withW[0]['count'], 'compte produit par le builder identique au precalcul brut');
+    $endsWithWu = (int) $pdo->query("SELECT COUNT(*) c FROM terms WHERE normalized LIKE '%WU'")->fetch()['c'];
+    Assert::same(1, $endsWithWu, 'sanity check : WU reste l\'unique mot se terminant par WU (cote oppose de la relation cassee)');
+
+    // --- byEnd, meme famille de correctif (D-047), meme revalidation D-051/D-052 : "2:L" (terminant
+    // --- L, longueur 2) valait 1 seul mot (IL) a 838 180 termes, egal a "commencant/il" -- le
+    // --- complement kaikki a ajoute EL et OL, "2:L" vaut desormais 3 : relation CASSEE, SORTIE de
+    // --- la liste, doit desormais etre PRODUIT. "2:X" (EX, toujours seul) reste exclu (inchange). ---
+    $externalEndKeys = (new ReflectionClass(LengthLinksBuilder::class))->getConstant('EXTERNAL_DUPLICATE_END_KEYS');
+    Assert::same(['2:X'], $externalEndKeys, 'exactement 1 doublon croise avec une famille exterieure attendu pour byEnd (D-051/D-052, etait ["2:L", "2:X"])');
+    $endL = array_values(array_filter($links2->byEnd, static fn (array $l): bool => $l['letter'] === 'L'));
+    Assert::true(count($endL) === 1, '2:L n\'est plus un doublon de contenu croise depuis D-051/D-052 (EL/OL cassent la relation avec commencant/il) -- doit desormais etre produit');
+    $rawCount2L = (int) $pdo->query("SELECT count FROM list_counts WHERE list_type = 'length_end' AND list_key = '2:L'")->fetch()['count'];
+    Assert::same(3, $rawCount2L, 'sanity check : 2:L vaut desormais 3 mots (EL, IL, OL -- D-051/D-052, etait 1)');
+    $endX = array_values(array_filter($links2->byEnd, static fn (array $l): bool => $l['letter'] === 'X'));
+    Assert::true($endX === [], '2:X reste un doublon de contenu croise (EX toujours seul mot, relation intacte) -- ne doit jamais etre produit');
 
     // --- byPosition (C1, audit D-028) : groupe par position, verifie par force brute avec
     // --- substr(). ---
@@ -121,12 +140,13 @@ return function (): void {
 
     Assert::true($links->byStartEnd !== [], 'sanity check : longueur 13 a des paires commencant/terminant');
 
-    // --- Reflection sur la liste figee des 52 doublons (D-025, I-1) -- meme pattern deja
-    // --- accepte sur ce projet pour verifier un detail d'implementation prive (reports/
-    // --- query-plans/combined-with-length-full-sweep.md, EXPLAIN QUERY PLAN par reflexion). ---
+    // --- Reflection sur la liste figee des 42 doublons (D-025, I-1, REVALIDEE D-051/D-052 le
+    // --- 2026-09-02 : etait 52 sur 838 180 termes) -- meme pattern deja accepte sur ce projet
+    // --- pour verifier un detail d'implementation prive (reports/query-plans/
+    // --- combined-with-length-full-sweep.md, EXPLAIN QUERY PLAN par reflexion). ---
     $reflection = new ReflectionClass(LengthLinksBuilder::class);
     $duplicateKeys = $reflection->getConstant('DUPLICATE_START_END_KEYS');
-    Assert::same(52, count($duplicateKeys), 'exactement 52 paires dupliquees attendues (D-025, I-1)');
+    Assert::same(42, count($duplicateKeys), 'exactement 42 paires dupliquees attendues (D-025, I-1, D-051/D-052, etait 52)');
     Assert::same(count($duplicateKeys), count(array_unique($duplicateKeys)), 'aucun doublon dans la liste figee elle-meme');
 
     // --- Verification independante de la liste figee, recalculee depuis list_counts (0

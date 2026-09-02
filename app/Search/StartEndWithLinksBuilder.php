@@ -41,17 +41,18 @@ final class StartEndWithLinksBuilder
     private static ?array $externalDuplicateKeySet = null;
 
     /**
-     * Les 227 triples (debut, fin, lettre) a contenu strictement DUPLIQUE avec leur page parente
+     * Les 207 triples (debut, fin, lettre) a contenu strictement DUPLIQUE avec leur page parente
      * /mots/commencant/{debut}/terminant/{fin} (sans "avec") -- distinct du collapse D-032
      * (lettre "avec" == debut ou fin, deja gere par la comparaison $url !== $parentUrl ci-dessous,
      * jamais reintroduit ici) : ici l'URL enfant EST DIFFERENTE de l'URL parente (lettre "avec"
      * ni debut ni fin), mais TOUS les mots de la paire commencant+terminant contiennent deja
      * cette lettre -- ajouter la contrainte "avec" ne retire aucun mot, le contenu reste
-     * identique. Exemple trouve par l'audit consolide (2026-08-18, NO GO) : la paire F:Q (longueur
-     * 3) ne contient que FAQ -- /mots/commencant/f/terminant/q/avec/a liste EXACTEMENT le meme
-     * contenu que /mots/commencant/f/terminant/q (deja indexee). Autre exemple : la paire X:O ne
-     * contient que XIPHO -- /mots/commencant/x/terminant/o/avec/h, .../avec/i et .../avec/p sont
-     * TOUTES identiques entre elles ET a leur parent /mots/commencant/x/terminant/o.
+     * identique. Exemple historique trouve par l'audit consolide (2026-08-18, NO GO) : la paire
+     * X:O (longueur 5) ne contient que XIPHO -- /mots/commencant/x/terminant/o/avec/h, .../avec/i
+     * et .../avec/p sont TOUTES identiques entre elles ET a leur parent
+     * /mots/commencant/x/terminant/o (exemple TOUJOURS VALIDE apres D-051/D-052). L'AUTRE exemple
+     * historique, la paire F:Q (qui ne contenait que FAQ) N'EST PLUS un doublon de contenu depuis
+     * D-051/D-052 (voir la note de revalidation ci-dessous) -- F:Q:A retiree de cette liste.
      *
      * Regle de detection (meme patron que App\Search\LengthLinksBuilder::
      * DUPLICATE_START_END_KEYS, et que le cas 'combined_with_length' de scripts/
@@ -63,51 +64,56 @@ final class StartEndWithLinksBuilder
      *
      * Verifie par DEUX methodes independantes (meme discipline que les 52 paires D-025/I-1) :
      * 1. comparaison list_counts ('start_end_with' vs 'start_end', count enfant === count parent),
-     *    sur les 11 348 lignes 'start_end_with' non degenerees D-032 (1 198 exclues avant
-     *    comparaison, meme raison que ci-dessus) -- 227 trouvees
+     *    sur les 11 964 lignes 'start_end_with' non degenerees D-032 (1 239 exclues avant
+     *    comparaison, meme raison que ci-dessus) -- 207 trouvees
      * 2. balayage complet et INDEPENDANT (sans partir de list_counts), requete directe sur `terms`
-     *    pour les 26 lettres x 611 paires commencant+terminant reelles (15 886 combinaisons, hors
-     *    degenerees) : COUNT(*) WHERE debut ET fin ET instr(normalized, lettre) > 0, compare a
-     *    COUNT(*) WHERE debut ET fin seuls -- 227 trouvees, 0 divergence dans les deux sens avec
+     *    pour les 26 lettres x 632 paires commencant+terminant reelles, compare a
+     *    COUNT(*) WHERE debut ET fin seuls -- 207 trouvees, 0 divergence dans les deux sens avec
      *    la methode 1
-     * Les deux exemples cites par l'audit (F:Q:A, X:O:H/I/P) confirmes presents dans la liste.
      *
-     * Liste figee : valable pour l'etat actuel de storage/dictionary_fr.sqlite (838 180 termes,
-     * inchange depuis D-022, integrity_check = ok). Une reconstruction future de la base devra
-     * revalider cette liste (meme avertissement que DUPLICATE_START_END_KEYS).
+     * REVALIDATION D-051/D-052 (2026-09-02, 838 180 -> 844 961 termes, 227 -> 207) : le complement
+     * kaikki a ajoute des sigles/toponymes courts qui cassent plusieurs relations -- ex. F:Q
+     * (commencant F, terminant Q) valait 1 seul mot (FAQ) a 838 180 termes, vaut desormais 4
+     * (FAQ, FITEQ, FLQ, FTQ -- tous des sigles) : F:Q:A (compte 1, seul FAQ a A) ne correspond
+     * plus au panier complet (4) -- CASSE, "F:Q:A" SORTIE de la liste. Confirme par la monotonie
+     * de l'ajout de mots (D-051, AJOUTE uniquement) : une relation PARENT ne peut que se BRISER en
+     * ajoutant des mots -- mais RECALCUL COMPLET effectue (pas un simple diff de l'ancienne liste,
+     * voir App\Search\LengthLinksBuilder::DUPLICATE_START_END_KEYS pour un exemple ou de nouvelles
+     * paires commencant+terminant inexistantes auparavant peuvent aussi apparaitre).
+     *
+     * Liste figee : valable pour l'etat actuel de storage/dictionary_fr.sqlite (844 961 termes,
+     * D-051/D-052, integrity_check = ok). Une reconstruction future de la base devra revalider
+     * cette liste (meme avertissement que DUPLICATE_START_END_KEYS).
      *
      * @var list<string>
      */
     private const DUPLICATE_CONTENT_KEYS = [
-        'A:J:D', 'B:J:D', 'B:J:O', 'B:J:R', 'B:Q:C', 'C:J:D', 'C:J:I', 'C:W:O',
-        'D:Q:A', 'D:Q:C', 'D:Q:R', 'D:W:A', 'F:J:E', 'F:J:U', 'F:Q:A', 'F:W:L',
-        'F:W:O', 'G:W:O', 'H:J:A', 'H:Z:E', 'I:B:C', 'I:B:E', 'I:B:L', 'I:B:N',
-        'I:B:R', 'I:B:T', 'I:B:U', 'I:Q:A', 'I:Q:U', 'I:W:E', 'I:W:N', 'I:W:R',
-        'I:W:T', 'I:W:V', 'I:Z:E', 'J:F:I', 'J:H:O', 'J:X:U', 'K:C:A', 'K:J:A',
-        'K:J:M', 'K:J:N', 'K:J:R', 'K:J:U', 'K:V:I', 'K:V:L', 'M:J:A', 'M:V:A',
-        'M:V:H', 'M:V:O', 'M:V:S', 'M:W:A', 'M:W:H', 'M:W:L', 'M:W:O', 'M:W:R',
-        'M:W:S', 'M:Z:E', 'N:H:A', 'N:H:L', 'N:P:A', 'N:P:B', 'N:P:I', 'N:P:O',
-        'N:P:R', 'N:W:A', 'N:W:D', 'N:W:T', 'N:Z:E', 'O:J:I', 'O:J:N', 'O:Q:C',
-        'O:Q:E', 'O:Q:I', 'O:Q:R', 'O:Q:S', 'O:Q:U', 'O:W:A', 'O:W:L', 'O:W:T',
-        'O:W:U', 'O:Z:E', 'P:Z:E', 'Q:D:U', 'Q:K:U', 'Q:L:U', 'Q:O:U', 'Q:P:C',
-        'Q:P:E', 'Q:P:I', 'Q:P:K', 'Q:P:S', 'Q:P:T', 'Q:P:U', 'Q:X:U', 'R:Q:C',
-        'R:Q:E', 'R:Q:M', 'R:Q:O', 'R:Q:S', 'R:Q:T', 'R:W:A', 'R:W:C', 'R:W:H',
-        'R:W:I', 'R:W:K', 'R:W:S', 'S:V:A', 'S:V:C', 'S:V:I', 'T:J:A', 'T:J:K',
-        'T:J:O', 'T:Q:A', 'T:Q:C', 'T:Q:E', 'T:Q:H', 'T:Q:M', 'T:W:A', 'T:W:H',
-        'T:W:K', 'T:W:L', 'T:W:O', 'T:W:S', 'U:B:S', 'U:G:I', 'U:G:N', 'U:K:B',
-        'U:K:E', 'U:K:Z', 'U:V:I', 'U:V:N', 'U:Z:E', 'V:B:C', 'V:B:D', 'V:B:E',
-        'V:B:I', 'V:B:L', 'V:B:O', 'V:B:U', 'V:K:L', 'V:Q:C', 'V:Q:D', 'V:Q:E',
-        'V:Q:I', 'V:Q:O', 'V:V:A', 'V:Z:E', 'W:C:O', 'W:L:A', 'W:L:B', 'W:L:E',
-        'W:L:J', 'W:L:N', 'W:L:O', 'W:L:R', 'W:L:U', 'W:O:R', 'W:X:A', 'X:C:A',
+        'A:J:D', 'B:J:D', 'B:J:O', 'B:J:R', 'C:J:I', 'C:W:O', 'D:Q:C', 'D:W:A',
+        'F:W:L', 'F:W:O', 'G:Q:O', 'G:W:O', 'H:J:A', 'H:Q:B', 'H:Q:U', 'H:Z:E',
+        'I:B:C', 'I:B:E', 'I:B:L', 'I:B:N', 'I:B:R', 'I:B:T', 'I:B:U', 'I:W:E',
+        'I:W:N', 'I:W:R', 'I:W:T', 'I:W:V', 'J:X:U', 'K:C:A', 'K:J:A', 'K:J:M',
+        'K:J:N', 'K:J:R', 'K:J:U', 'K:Q:A', 'K:Q:J', 'K:Q:U', 'L:Q:C', 'L:Q:E',
+        'L:W:O', 'M:J:A', 'M:Q:C', 'M:Q:N', 'M:Q:O', 'M:V:A', 'M:V:H', 'M:V:O',
+        'M:W:A', 'M:W:H', 'M:W:L', 'M:W:O', 'M:W:R', 'M:W:S', 'N:H:A', 'N:H:L',
+        'N:V:E', 'N:W:A', 'N:W:D', 'N:W:T', 'N:Z:E', 'O:J:I', 'O:J:N', 'O:Q:C',
+        'O:Q:E', 'O:Q:I', 'O:Q:R', 'O:Q:S', 'O:Q:U', 'Q:D:U', 'Q:K:U', 'Q:L:U',
+        'Q:O:U', 'Q:P:C', 'Q:P:E', 'Q:P:I', 'Q:P:K', 'Q:P:S', 'Q:P:T', 'Q:P:U',
+        'Q:X:U', 'R:Q:C', 'R:Q:E', 'R:Q:M', 'R:Q:O', 'R:Q:S', 'R:Q:T', 'R:W:A',
+        'R:W:K', 'T:J:A', 'T:J:K', 'T:J:O', 'T:Q:A', 'T:Q:C', 'T:Q:E', 'T:Q:H',
+        'T:Q:M', 'T:W:A', 'T:W:H', 'T:W:K', 'T:W:L', 'T:W:O', 'T:W:S', 'U:B:S',
+        'U:G:I', 'U:G:N', 'U:V:I', 'U:V:N', 'U:Y:R', 'U:Z:E', 'V:B:C', 'V:B:D',
+        'V:B:E', 'V:B:I', 'V:B:L', 'V:B:O', 'V:B:U', 'V:J:E', 'V:J:N', 'V:J:O',
+        'V:J:R', 'V:Q:C', 'V:Q:D', 'V:Q:I', 'V:Q:O', 'V:V:A', 'W:C:O', 'W:L:A',
+        'W:L:E', 'W:O:R', 'W:Q:C', 'W:Q:E', 'W:Q:I', 'W:Q:R', 'W:Q:V', 'X:C:A',
         'X:C:D', 'X:C:E', 'X:C:G', 'X:C:I', 'X:C:N', 'X:C:O', 'X:C:S', 'X:C:T',
-        'X:G:A', 'X:G:I', 'X:G:N', 'X:O:H', 'X:O:I', 'X:O:P', 'X:R:E', 'X:R:O',
-        'X:T:A', 'X:T:G', 'X:T:H', 'X:T:I', 'X:T:O', 'X:T:P', 'X:T:R', 'X:U:G',
-        'X:U:I', 'X:U:N', 'X:U:O', 'X:X:A', 'X:X:C', 'X:X:E', 'X:X:I', 'X:X:N',
-        'X:X:O', 'X:X:R', 'X:X:S', 'X:X:T', 'X:X:U', 'X:Z:A', 'X:Z:E', 'X:Z:G',
-        'X:Z:H', 'X:Z:I', 'X:Z:O', 'X:Z:P', 'X:Z:R', 'Y:G:A', 'Y:G:N', 'Y:P:O',
-        'Y:P:U', 'Y:Q:E', 'Y:Q:L', 'Y:V:O', 'Y:V:U', 'Y:X:U', 'Y:Y:A', 'Y:Y:O',
-        'Y:Z:E', 'Z:J:B', 'Z:J:D', 'Z:J:E', 'Z:J:O', 'Z:J:U', 'Z:Q:D', 'Z:Q:E',
-        'Z:Q:I', 'Z:Q:N', 'Z:X:U',
+        'X:G:A', 'X:G:I', 'X:G:N', 'X:O:H', 'X:O:I', 'X:O:P', 'X:R:E', 'X:T:A',
+        'X:T:G', 'X:T:H', 'X:T:I', 'X:T:O', 'X:T:P', 'X:T:R', 'X:U:G', 'X:U:I',
+        'X:U:N', 'X:U:O', 'X:X:A', 'X:X:C', 'X:X:E', 'X:X:I', 'X:X:N', 'X:X:O',
+        'X:X:R', 'X:X:S', 'X:X:T', 'X:X:U', 'X:Z:A', 'X:Z:E', 'X:Z:G', 'X:Z:H',
+        'X:Z:I', 'X:Z:O', 'X:Z:P', 'X:Z:R', 'Y:C:A', 'Y:C:F', 'Y:C:I', 'Y:C:N',
+        'Y:F:O', 'Y:F:S', 'Y:F:U', 'Y:G:A', 'Y:G:N', 'Y:P:O', 'Y:P:U', 'Y:Q:E',
+        'Y:Q:L', 'Y:V:O', 'Y:V:U', 'Y:Y:A', 'Y:Y:O', 'Z:J:B', 'Z:J:D', 'Z:J:E',
+        'Z:J:O', 'Z:J:U', 'Z:Q:D', 'Z:Q:E', 'Z:Q:I', 'Z:Q:N', 'Z:X:U',
     ];
 
     /**
@@ -116,10 +122,15 @@ final class StartEndWithLinksBuilder
      * (comparaison a la page PARENTE, sans "avec") -- ici, DEUX lettres "avec" DIFFERENTES du
      * MEME panier commencant+terminant (ni l'une ni l'autre egale au panier complet, donc aucune
      * des deux n'est detectee par DUPLICATE_CONTENT_KEYS) isolent neanmoins EXACTEMENT le meme
-     * SOUS-ENSEMBLE de mots -- ex. la paire A:B (6 mots : AB, ACHEB, AEROCLUB, ANTIPUB, APLOMB,
-     * AUTOLUB) : "avec/c" et "avec/e" listent toutes deux EXACTEMENT {ACHEB, AEROCLUB}, ni plus
-     * ni moins -- /mots/commencant/a/terminant/b/avec/c et .../avec/e afficheraient un contenu
-     * strictement identique sous deux URL distinctes, aucune des deux n'etant la page parente.
+     * SOUS-ENSEMBLE de mots -- ex. la paire A:B (7 mots apres D-051/D-052 : AB, ACHAB, ACHEB,
+     * AEROCLUB, ANTIPUB, APLOMB, AUTOLUB) : "avec/l" et "avec/o" listent toutes deux EXACTEMENT
+     * {AEROCLUB, APLOMB, AUTOLUB} -- L (plus petite alphabetiquement) reste candidate, O est
+     * exclue ici. (Exemple historique a 838 180 termes : "avec/c" et "avec/e" isolaient {ACHEB,
+     * AEROCLUB} -- CASSE par D-051/D-052, le complement kaikki a ajoute ACHAB, qui contient C mais
+     * pas E, voir la note de revalidation ci-dessous. Un autre couple, I/N, isole desormais lui
+     * aussi EXACTEMENT {ANTIPUB} mais A:B:I est par ailleurs deja exclu par
+     * EXTERNAL_DUPLICATE_KEYS pour une raison sans rapport, D-041 -- L/O reste l'exemple le plus
+     * clair, non confondu avec un autre filtre.)
      *
      * Regle de detection : pour une paire {debut}:{fin} donnee, deux lettres "avec" Z1 et Z2
      * (toutes deux SURVIVANTES du filtre D-032 + DUPLICATE_CONTENT_KEYS ci-dessus, c-a-d
@@ -140,78 +151,81 @@ final class StartEndWithLinksBuilder
      * 2. regroupement par PROPRIETE DE COINCIDENCE, algorithme different (suggere par l'audit) :
      *    pour chaque paire de lettres candidates (Z1, Z2) du meme panier, teste si presence(Z1)
      *    == presence(Z2) pour TOUS les mots du panier (union-find sur cette relation binaire)
-     * 0 divergence entre les deux methodes sur l'integralite des 611 paires reelles (pas un
-     * echantillon) -- 283 groupes trouves (169 paires affectees), 428 lettres a exclure au
-     * total (unicite verifiee : aucune lettre n'appartient a deux groupes differents). Un
-     * troisieme sondage manuel direct contre `terms` (A:B, W:Z, X:I) confirme les listes de mots
-     * exactes. Aucun cas trouve sur l'axe 4 (voir PrefixAvecLinksBuilder::SIBLING_DUPLICATE_KEYS,
-     * liste vide) -- les paniers mono-lettre restent trop grands pour qu'une paire de lettres y
-     * soit toujours liee.
+     * 0 divergence entre les deux methodes sur l'integralite des 632 paires reelles (pas un
+     * echantillon) -- 292 groupes trouves (172 paires affectees), 446 lettres a exclure au
+     * total (unicite verifiee : aucune lettre n'appartient a deux groupes differents) -- REVALIDE
+     * D-051/D-052 (2026-09-02, etait 283 groupes/169 paires/428 lettres sur 838 180 termes,
+     * RECALCUL COMPLET depuis `terms`, pas un patch de l'ancienne liste). Aucun cas trouve sur
+     * l'axe 4 (voir PrefixAvecLinksBuilder::SIBLING_DUPLICATE_KEYS, liste vide) -- les paniers
+     * mono-lettre restent trop grands pour qu'une paire de lettres y soit toujours liee.
      *
-     * Rapport complet (liste des 283 groupes, paires/prefixes concernes, mots impliques) :
-     * reports/query-plans/avec-doublons-soeurs-correctif.md
+     * Rapport complet a 838 180 termes (liste des 283 groupes d'origine, paires/prefixes
+     * concernes, mots impliques) : reports/query-plans/avec-doublons-soeurs-correctif.md -- PAS
+     * regenere pour D-051/D-052, la liste figee ci-dessous est la source de verite courante.
      *
-     * Liste figee : valable pour l'etat actuel de storage/dictionary_fr.sqlite (838 180 termes,
-     * inchange depuis D-022). Une reconstruction future devra revalider cette liste (meme
-     * avertissement que DUPLICATE_CONTENT_KEYS ci-dessus).
+     * Liste figee : valable pour l'etat actuel de storage/dictionary_fr.sqlite (844 961 termes,
+     * D-051/D-052). Une reconstruction future devra revalider cette liste (meme avertissement que
+     * DUPLICATE_CONTENT_KEYS ci-dessus).
      *
      * @var list<string>
      */
     private const SIBLING_DUPLICATE_KEYS = [
-        'A:B:E', 'A:B:N', 'A:B:O', 'A:K:S', 'A:K:U', 'A:M:Z', 'A:V:N', 'A:Y:O',
-        'B:B:R', 'B:B:T', 'B:Q:N', 'B:Q:P', 'B:Q:T', 'B:W:G', 'B:W:L', 'B:W:N',
-        'B:W:O', 'B:W:U', 'B:Y:L', 'C:B:U', 'C:H:W', 'C:V:N', 'C:V:U', 'C:W:L',
-        'D:B:I', 'D:B:O', 'D:B:W', 'D:C:P', 'D:H:I', 'D:H:O', 'D:H:T', 'D:K:T',
-        'D:P:T', 'E:H:C', 'E:H:S', 'E:K:F', 'E:K:L', 'E:K:N', 'E:K:O', 'E:K:R',
-        'E:K:T', 'E:K:U', 'E:P:C', 'E:P:S', 'E:V:R', 'E:V:U', 'E:Y:U', 'F:B:L',
-        'F:B:M', 'F:B:N', 'F:B:S', 'F:B:U', 'F:C:Q', 'F:H:P', 'F:K:S', 'F:P:D',
-        'F:P:H', 'F:P:M', 'F:P:R', 'F:P:S', 'F:Y:O', 'G:B:U', 'G:C:S', 'G:C:U',
-        'G:C:Z', 'G:G:T', 'G:H:N', 'G:H:R', 'G:K:S', 'H:B:J', 'H:C:R', 'H:C:V',
-        'H:D:V', 'H:F:T', 'H:F:Y', 'H:H:Z', 'H:K:L', 'H:Y:U', 'I:C:M', 'I:C:N',
-        'I:C:P', 'I:D:J', 'I:G:R', 'I:H:N', 'I:K:L', 'I:K:O', 'I:K:T', 'I:K:V',
-        'I:Q:M', 'I:Q:P', 'I:Y:G', 'I:Y:N', 'I:Y:O', 'I:Y:R', 'I:Y:U', 'J:C:F',
-        'J:C:I', 'J:F:C', 'J:G:H', 'J:G:N', 'J:G:S', 'J:H:P', 'J:H:S', 'J:K:L',
-        'J:K:R', 'J:K:S', 'J:K:T', 'J:K:U', 'J:K:Y', 'J:L:Y', 'J:M:L', 'J:M:T',
-        'J:O:L', 'J:O:R', 'J:O:V', 'J:P:K', 'J:P:O', 'J:Y:T', 'K:C:P', 'K:C:S',
-        'K:D:L', 'K:F:L', 'K:F:S', 'K:F:T', 'K:G:P', 'K:G:T', 'K:G:X', 'K:H:N',
-        'K:M:R', 'K:M:V', 'K:M:Z', 'K:P:B', 'K:P:H', 'K:P:T', 'K:V:H', 'K:V:N',
-        'K:V:O', 'K:X:R', 'K:X:V', 'K:Y:P', 'L:B:I', 'L:B:M', 'L:B:P', 'L:B:U',
-        'L:H:M', 'L:K:M', 'L:K:U', 'L:P:E', 'L:P:H', 'L:P:R', 'L:P:S', 'L:V:O',
-        'L:V:T', 'M:B:R', 'M:B:T', 'M:P:G', 'M:P:L', 'M:P:S', 'M:P:T', 'N:B:H',
-        'N:B:L', 'N:B:T', 'N:C:G', 'N:G:C', 'N:G:H', 'N:G:L', 'N:G:T', 'N:H:G',
-        'N:H:I', 'N:H:R', 'N:H:U', 'N:Q:H', 'N:Q:M', 'N:Q:S', 'N:Q:T', 'N:Q:U',
-        'N:Q:V', 'N:U:K', 'N:Y:O', 'N:Y:U', 'O:C:F', 'O:C:I', 'O:C:M', 'O:C:T',
-        'O:F:Y', 'O:G:V', 'O:H:E', 'O:H:K', 'O:H:P', 'O:H:R', 'O:H:S', 'O:H:Y',
-        'O:K:N', 'O:K:Z', 'O:P:I', 'O:P:N', 'O:P:R', 'O:P:S', 'O:P:T', 'O:P:U',
-        'O:Y:I', 'O:Y:J', 'O:Y:N', 'O:Y:R', 'O:Y:W', 'P:B:M', 'P:H:V', 'P:W:H',
-        'P:W:I', 'P:W:L', 'P:W:O', 'P:W:S', 'P:Y:H', 'Q:G:H', 'Q:G:N', 'Q:G:O',
-        'Q:G:S', 'Q:H:D', 'Q:H:I', 'Q:H:P', 'Q:K:E', 'Q:K:R', 'Q:K:T', 'Q:M:I',
-        'Q:O:H', 'Q:U:M', 'Q:U:R', 'Q:Y:I', 'Q:Y:N', 'Q:Y:T', 'Q:Y:W', 'R:B:T',
-        'R:G:D', 'R:K:Z', 'R:P:M', 'R:P:O', 'R:P:V', 'R:V:O', 'R:V:S', 'R:V:U',
-        'S:W:U', 'S:Y:W', 'T:B:M', 'T:B:P', 'T:B:R', 'T:B:Y', 'T:H:P', 'T:K:J',
-        'T:P:L', 'T:P:W', 'T:Y:H', 'T:Y:V', 'U:C:I', 'U:C:L', 'U:C:S', 'U:C:T',
-        'U:D:G', 'U:D:I', 'U:D:L', 'U:D:P', 'U:D:R', 'U:D:S', 'U:D:T', 'U:F:C',
-        'U:F:E', 'U:F:L', 'U:G:O', 'U:G:P', 'U:G:W', 'U:G:X', 'U:G:Y', 'U:M:X',
-        'U:O:N', 'U:P:E', 'U:P:F', 'U:P:I', 'U:P:L', 'U:P:N', 'U:P:R', 'V:C:M',
-        'V:C:U', 'V:C:Y', 'V:F:N', 'V:F:S', 'V:G:O', 'V:G:T', 'V:H:C', 'V:H:L',
-        'V:H:S', 'V:K:I', 'V:K:P', 'V:K:U', 'V:P:D', 'V:P:L', 'V:P:M', 'V:P:U',
-        'V:Y:U', 'W:A:M', 'W:B:N', 'W:B:S', 'W:B:T', 'W:B:U', 'W:C:D', 'W:C:E',
-        'W:C:I', 'W:C:K', 'W:C:L', 'W:C:R', 'W:D:H', 'W:D:P', 'W:F:N', 'W:F:P',
-        'W:F:S', 'W:G:S', 'W:G:U', 'W:H:T', 'W:H:U', 'W:K:C', 'W:K:E', 'W:K:M',
-        'W:K:R', 'W:K:T', 'W:K:U', 'W:M:C', 'W:M:E', 'W:M:N', 'W:O:D', 'W:O:E',
-        'W:O:I', 'W:O:P', 'W:O:T', 'W:P:O', 'W:T:K', 'W:U:N', 'W:U:P', 'W:U:S',
-        'W:U:Z', 'W:X:E', 'W:X:H', 'W:X:R', 'W:Y:I', 'W:Y:K', 'W:Y:L', 'W:Y:S',
-        'W:Z:K', 'W:Z:M', 'W:Z:O', 'X:A:P', 'X:I:G', 'X:I:H', 'X:I:O', 'X:I:P',
-        'X:I:R', 'X:I:Y', 'X:L:N', 'X:L:R', 'X:L:S', 'X:M:D', 'X:M:E', 'X:M:H',
-        'X:M:I', 'X:M:L', 'X:M:N', 'X:M:O', 'X:M:U', 'X:R:G', 'X:R:H', 'X:R:I',
-        'X:R:P', 'X:R:Y', 'X:T:Y', 'X:Z:Y', 'Y:D:L', 'Y:G:H', 'Y:G:L', 'Y:G:R',
-        'Y:G:T', 'Y:H:E', 'Y:H:R', 'Y:H:T', 'Y:H:U', 'Y:K:M', 'Y:L:E', 'Y:L:T',
-        'Y:M:E', 'Y:M:R', 'Y:M:T', 'Y:M:U', 'Y:O:I', 'Y:O:J', 'Y:O:T', 'Y:R:H',
-        'Y:R:K', 'Y:T:Q', 'Y:U:G', 'Y:U:M', 'Y:U:N', 'Y:U:P', 'Y:U:S', 'Y:X:K',
-        'Y:X:N', 'Y:X:R', 'Y:X:T', 'Y:Y:M', 'Y:Y:N', 'Y:Y:R', 'Z:B:R', 'Z:C:G',
-        'Z:C:R', 'Z:C:S', 'Z:C:T', 'Z:C:Y', 'Z:D:I', 'Z:D:M', 'Z:D:R', 'Z:F:N',
-        'Z:F:R', 'Z:F:U', 'Z:H:O', 'Z:H:Y', 'Z:K:C', 'Z:K:N', 'Z:K:W', 'Z:M:L',
-        'Z:M:P', 'Z:M:R', 'Z:M:Y', 'Z:O:V',
+        'A:B:N', 'A:B:O', 'A:K:V', 'A:K:X', 'A:Q:K', 'A:Q:L', 'A:Q:U', 'A:V:E',
+        'A:V:M', 'A:V:T', 'B:B:H', 'B:F:V', 'B:Q:N', 'B:Q:P', 'B:Q:T', 'B:V:I',
+        'B:V:L', 'B:V:N', 'B:V:R', 'B:V:S', 'B:W:G', 'B:W:L', 'B:W:N', 'B:W:O',
+        'B:W:U', 'C:H:W', 'C:V:N', 'C:V:U', 'C:W:L', 'D:B:I', 'D:B:O', 'D:B:W',
+        'D:P:T', 'D:Q:H', 'D:Q:N', 'D:Q:O', 'D:Q:R', 'D:V:H', 'D:V:K', 'D:V:R',
+        'D:V:T', 'E:G:M', 'E:G:O', 'E:G:U', 'E:K:F', 'E:K:L', 'E:K:N', 'E:K:O',
+        'E:P:C', 'E:P:S', 'E:V:R', 'E:V:U', 'F:B:M', 'F:B:N', 'F:B:S', 'F:B:U',
+        'F:H:P', 'F:J:U', 'F:P:H', 'F:P:M', 'F:P:R', 'F:P:S', 'F:Q:I', 'G:B:D',
+        'G:B:F', 'G:B:L', 'G:B:O', 'G:B:R', 'G:B:U', 'G:C:S', 'G:G:T', 'G:H:N',
+        'G:H:R', 'G:K:S', 'G:K:T', 'G:P:N', 'H:B:J', 'H:C:V', 'H:D:V', 'H:F:T',
+        'H:F:Y', 'H:H:Z', 'H:K:L', 'H:Q:E', 'H:Q:L', 'H:Q:O', 'I:C:M', 'I:C:N',
+        'I:C:S', 'I:D:J', 'I:G:U', 'I:H:M', 'I:H:O', 'I:H:T', 'I:H:U', 'I:H:V',
+        'I:K:T', 'I:P:O', 'I:P:R', 'I:Q:M', 'I:Q:P', 'I:V:T', 'I:Y:G', 'I:Y:N',
+        'I:Y:O', 'I:Y:U', 'J:C:F', 'J:F:C', 'J:G:H', 'J:G:N', 'J:G:S', 'J:H:K',
+        'J:H:L', 'J:H:N', 'J:H:S', 'J:H:T', 'J:H:V', 'J:K:L', 'J:K:R', 'J:K:S',
+        'J:K:T', 'J:K:U', 'J:K:Y', 'J:M:H', 'J:O:R', 'J:P:K', 'J:P:O', 'K:C:S',
+        'K:D:L', 'K:F:L', 'K:F:T', 'K:G:P', 'K:G:X', 'K:M:N', 'K:M:V', 'K:M:Z',
+        'K:P:B', 'K:P:H', 'K:P:T', 'K:V:U', 'K:W:B', 'K:W:I', 'K:W:N', 'K:X:V',
+        'K:Y:L', 'L:B:I', 'L:B:M', 'L:B:P', 'L:B:U', 'L:D:H', 'L:K:M', 'L:P:E',
+        'L:P:G', 'L:P:N', 'L:P:R', 'L:P:S', 'L:V:O', 'L:V:T', 'M:P:G', 'M:P:S',
+        'M:Q:U', 'M:V:K', 'M:V:L', 'N:B:H', 'N:B:L', 'N:B:T', 'N:G:H', 'N:G:L',
+        'N:G:T', 'N:H:G', 'N:H:I', 'N:H:R', 'N:H:U', 'N:P:I', 'N:P:M', 'N:P:O',
+        'N:P:S', 'N:Q:H', 'N:Q:M', 'N:Q:S', 'N:Q:T', 'N:Q:U', 'N:Q:V', 'N:V:O',
+        'N:V:S', 'N:V:T', 'N:V:U', 'O:D:W', 'O:F:Y', 'O:G:V', 'O:H:E', 'O:H:K',
+        'O:H:P', 'O:H:R', 'O:H:S', 'O:H:Y', 'O:K:J', 'O:K:X', 'O:K:Z', 'O:P:R',
+        'O:P:T', 'O:P:U', 'O:W:L', 'O:W:S', 'O:W:T', 'O:W:U', 'O:Y:J', 'O:Y:T',
+        'O:Y:W', 'P:B:D', 'P:B:J', 'P:B:M', 'P:B:N', 'P:H:V', 'P:W:H', 'P:W:I',
+        'P:W:L', 'P:W:O', 'P:W:S', 'Q:C:G', 'Q:C:I', 'Q:C:L', 'Q:C:N', 'Q:C:U',
+        'Q:C:V', 'Q:G:H', 'Q:G:N', 'Q:G:O', 'Q:G:S', 'Q:H:D', 'Q:H:I', 'Q:H:L',
+        'Q:H:T', 'Q:K:E', 'Q:K:R', 'Q:K:T', 'Q:M:H', 'Q:M:I', 'Q:O:H', 'Q:Q:U',
+        'Q:U:M', 'Q:U:R', 'Q:Y:N', 'Q:Y:W', 'R:F:K', 'R:K:V', 'R:K:Y', 'R:K:Z',
+        'R:P:O', 'R:P:V', 'R:V:O', 'R:V:S', 'R:V:U', 'R:W:H', 'R:W:I', 'R:W:S',
+        'S:F:Z', 'S:Q:I', 'S:Q:L', 'S:Q:O', 'S:Q:U', 'S:V:C', 'S:V:O', 'S:W:U',
+        'T:B:M', 'T:B:P', 'T:B:R', 'T:B:Y', 'T:H:J', 'T:K:J', 'T:P:L', 'T:P:W',
+        'T:V:E', 'T:V:H', 'T:V:R', 'U:C:L', 'U:C:S', 'U:D:G', 'U:D:I', 'U:D:L',
+        'U:D:P', 'U:D:R', 'U:D:S', 'U:D:T', 'U:F:E', 'U:F:L', 'U:G:O', 'U:G:P',
+        'U:G:W', 'U:G:X', 'U:G:Y', 'U:H:T', 'U:K:E', 'U:K:L', 'U:K:R', 'U:K:S',
+        'U:K:Z', 'U:M:X', 'U:O:N', 'U:P:E', 'U:P:F', 'U:P:I', 'U:P:L', 'U:P:N',
+        'U:P:R', 'U:Y:G', 'V:C:Y', 'V:F:N', 'V:F:S', 'V:H:C', 'V:H:L', 'V:H:S',
+        'V:K:N', 'V:K:R', 'V:K:S', 'V:P:D', 'V:P:M', 'V:P:U', 'V:V:K', 'V:V:L',
+        'V:V:S', 'V:V:Y', 'W:B:N', 'W:B:R', 'W:B:T', 'W:B:U', 'W:C:D', 'W:C:E',
+        'W:C:K', 'W:C:L', 'W:C:R', 'W:D:H', 'W:D:P', 'W:D:S', 'W:D:T', 'W:F:N',
+        'W:F:P', 'W:F:S', 'W:G:U', 'W:K:C', 'W:K:E', 'W:K:M', 'W:K:R', 'W:K:T',
+        'W:K:U', 'W:L:F', 'W:L:J', 'W:L:O', 'W:L:R', 'W:L:T', 'W:M:E', 'W:M:N',
+        'W:O:D', 'W:O:E', 'W:O:I', 'W:O:T', 'W:P:O', 'W:T:K', 'W:U:N', 'W:U:P',
+        'W:U:S', 'W:U:T', 'W:U:Z', 'W:X:E', 'W:X:H', 'W:X:R', 'W:Y:K', 'W:Y:S',
+        'W:Z:K', 'W:Z:O', 'X:A:P', 'X:I:G', 'X:I:H', 'X:I:O', 'X:I:P', 'X:I:R',
+        'X:I:Y', 'X:L:N', 'X:L:R', 'X:L:S', 'X:M:D', 'X:M:E', 'X:M:H', 'X:M:I',
+        'X:M:L', 'X:M:N', 'X:M:O', 'X:M:U', 'X:R:H', 'X:R:I', 'X:R:P', 'X:R:Y',
+        'X:T:Y', 'X:Z:Y', 'Y:D:L', 'Y:G:H', 'Y:G:J', 'Y:G:L', 'Y:G:R', 'Y:G:T',
+        'Y:H:R', 'Y:H:U', 'Y:H:V', 'Y:H:Z', 'Y:K:M', 'Y:L:E', 'Y:L:T', 'Y:M:E',
+        'Y:M:R', 'Y:M:T', 'Y:M:U', 'Y:O:J', 'Y:R:H', 'Y:R:K', 'Y:T:Q', 'Y:U:G',
+        'Y:U:M', 'Y:U:N', 'Y:U:P', 'Y:U:S', 'Y:X:N', 'Y:X:T', 'Y:Y:M', 'Y:Y:N',
+        'Y:Y:R', 'Y:Z:N', 'Z:B:R', 'Z:C:R', 'Z:C:S', 'Z:C:T', 'Z:C:Y', 'Z:D:I',
+        'Z:D:M', 'Z:D:R', 'Z:D:T', 'Z:F:D', 'Z:F:N', 'Z:F:S', 'Z:H:R', 'Z:H:U',
+        'Z:H:V', 'Z:H:Y', 'Z:K:N', 'Z:K:W', 'Z:L:P', 'Z:M:W',
     ];
 
     /**
@@ -221,9 +235,9 @@ final class StartEndWithLinksBuilder
      *   terminant/{Y}", D-027/D-035, apres exclusion des 52 doublons D-025/I-1) -- tranche le
      *   panier {debut}:{fin} PAR LONGUEUR
      * - axe 2 (ce builder, "/mots/commencant/{X}/terminant/{Y}/avec/{Z}", D-033/D-035/D-037/D-038,
-     *   apres exclusion des 1198 lignes degenerees D-032, des 227 doublons-parent DUPLICATE_
-     *   CONTENT_KEYS et des 428 doublons-soeurs SIBLING_DUPLICATE_KEYS) -- tranche le MEME panier
-     *   PAR LETTRE "avec"
+     *   apres exclusion des 1239 lignes degenerees D-032, des 207 doublons-parent DUPLICATE_
+     *   CONTENT_KEYS et des 446 doublons-soeurs SIBLING_DUPLICATE_KEYS, D-051/D-052) -- tranche le
+     *   MEME panier PAR LETTRE "avec"
      * DUPLICATE_CONTENT_KEYS et SIBLING_DUPLICATE_KEYS ci-dessus comparent chacun une page "avec"
      * a une autre page "avec" (parente ou soeur) DE LA MEME FAMILLE -- aucun des deux ne compare
      * jamais a l'AUTRE famille (byStartEnd). Preuve sur pieces (audit) : la paire X:M (2 mots au
@@ -246,77 +260,85 @@ final class StartEndWithLinksBuilder
      * (axe 1, LengthLinksBuilder) reste candidate a l'indexation ; la variante "avec" (axe 2, CE
      * builder) est retiree ici. LengthLinksBuilder n'est PAS modifie par ce correctif.
      *
-     * Verifie par DEUX methodes independantes sur les 611 paires reelles :
+     * Verifie par DEUX methodes independantes sur les 632 paires reelles (REVALIDE D-051/D-052,
+     * 2026-09-02, RECALCUL COMPLET depuis `terms`/list_counts, pas un patch de l'ancienne liste --
+     * DOIT etre recalcule APRES App\Search\LengthLinksBuilder::DUPLICATE_START_END_KEYS, dont
+     * l'axe 1 de cette comparaison depend directement : un premier essai fait dans le mauvais ordre
+     * a produit 344, corrige a 354 en recalculant apres la mise a jour de l'axe 1) :
      * 1. appel des VRAIS builders (LengthLinksBuilder::build($length) pour les 14 longueurs 2-15,
-     *    puis StartEndWithLinksBuilder::build($start,$end) pour les 611 paires), regroupement par
+     *    puis StartEndWithLinksBuilder::build($start,$end) pour les 632 paires), regroupement par
      *    paire, puis pour chaque couple (longueur survivante, lettre survivante) de la MEME paire :
      *    panier recupere une seule fois par paire (ORDER BY normalized), tranche par longueur
-     *    (strlen()) et par lettre (str_contains()), comparaison de tableau complete (===) --
-     *    559 paires ont des survivants sur les deux axes a la fois, 101 383 couples (longueur,
-     *    lettre) compares, 333 egalites trouvees
-     * 2. pour chacun des 333 couples trouves par la methode 1, requete SQL DIRECTE et INDEPENDANTE
+     *    (strlen()) et par lettre (str_contains()), comparaison de tableau complete (===) -- 354
+     *    egalites trouvees (etait 333 sur 838 180 termes)
+     * 2. pour chacun des 354 couples trouves par la methode 1, requete SQL DIRECTE et INDEPENDANTE
      *    (COUNT(length=L), COUNT(instr(normalized,Z)>0), COUNT(length=L AND instr(normalized,Z)>0)
      *    sur le panier {debut}:{fin}) : les trois comptes DOIVENT etre strictement egaux entre eux
      *    ET egaux au compte de mots trouve par la methode 1 -- une egalite triple prouve une
      *    egalite d'ensemble (sous-ensemble dans les deux sens) sans jamais comparer de tableaux --
-     *    333/333 confirmes, 0 divergence
-     * Les 9 exemples cites par l'audit (X:M x2, B:W x2, U:P x2, E:K x1, W:K x2) confirmes presents
-     * dans la liste. Rapport complet (methodologie detaillee, liste des 333 couples, mots
-     * impliques) : reports/query-plans/avec-doublons-croises-longueur-correctif.md.
+     *    354/354 confirmes, 0 divergence
+     * L'exemple X:M (XALAM/XENODOCHIUM) cite par l'audit d'origine confirme TOUJOURS present dans
+     * la liste apres D-051/D-052. Rapport complet a 838 180 termes (methodologie detaillee, liste
+     * des 333 couples d'origine, mots impliques) : reports/query-plans/
+     * avec-doublons-croises-longueur-correctif.md -- PAS regenere pour D-051/D-052, la liste figee
+     * ci-dessous est la source de verite courante.
      *
      * Disjoint par construction de DUPLICATE_CONTENT_KEYS et SIBLING_DUPLICATE_KEYS ci-dessus
      * (verifie explicitement, 0 intersection dans les deux sens) : cette liste ne compare jamais
      * une page "avec" a une autre page "avec", uniquement a une page LONGUEUR de l'autre famille.
      *
-     * Liste figee : valable pour l'etat actuel de storage/dictionary_fr.sqlite (838 180 termes,
-     * inchange depuis D-022). Une reconstruction future devra revalider cette liste (meme
-     * avertissement que DUPLICATE_CONTENT_KEYS/SIBLING_DUPLICATE_KEYS ci-dessus).
+     * Liste figee : valable pour l'etat actuel de storage/dictionary_fr.sqlite (844 961 termes,
+     * D-051/D-052). Une reconstruction future devra revalider cette liste (meme avertissement que
+     * DUPLICATE_CONTENT_KEYS/SIBLING_DUPLICATE_KEYS ci-dessus).
      *
      * @var list<string>
      */
     private const CROSS_DUPLICATE_LENGTH_KEYS = [
-        'A:B:H', 'A:B:M', 'A:B:R', 'A:B:T', 'A:F:Y', 'A:K:F', 'A:K:H', 'A:K:L',
-        'A:P:M', 'A:P:O', 'A:V:D', 'A:V:I', 'A:Y:U', 'B:B:C', 'B:B:E', 'B:K:D',
-        'B:K:Z', 'B:Q:Y', 'B:W:A', 'B:W:M', 'C:B:K', 'C:B:N', 'C:B:P', 'C:H:D',
-        'C:K:Y', 'C:P:K', 'C:P:S', 'C:Q:A', 'C:Q:I', 'C:W:M', 'D:B:C', 'D:B:K',
-        'D:B:M', 'D:C:G', 'D:C:H', 'D:H:B', 'D:J:E', 'D:K:M', 'D:O:V', 'D:P:B',
-        'D:P:K', 'D:W:U', 'D:Y:X', 'E:C:F', 'E:G:A', 'E:G:I', 'E:H:M', 'E:H:R',
-        'E:K:C', 'E:P:A', 'E:P:Q', 'E:V:O', 'E:Y:L', 'F:B:C', 'F:B:H', 'F:C:H',
-        'F:F:Q', 'F:H:D', 'F:M:S', 'F:P:A', 'F:P:E', 'F:P:L', 'F:P:T', 'F:Y:P',
-        'G:B:H', 'G:B:I', 'G:C:N', 'G:G:K', 'G:H:D', 'G:K:P', 'G:K:V', 'G:P:F',
+        'A:B:H', 'A:B:M', 'A:B:R', 'A:B:T', 'A:F:Y', 'A:P:O', 'A:Q:D', 'A:Q:G',
+        'A:V:B', 'A:V:D', 'A:V:N', 'A:V:S', 'A:Y:P', 'B:B:C', 'B:B:E', 'B:H:D',
+        'B:K:Z', 'B:Q:Y', 'B:V:D', 'B:V:H', 'B:V:J', 'B:W:A', 'B:W:M', 'C:B:K',
+        'C:B:N', 'C:B:P', 'C:H:D', 'C:J:D', 'C:P:S', 'C:Q:I', 'C:W:M', 'D:B:C',
+        'D:B:K', 'D:B:M', 'D:C:G', 'D:J:E', 'D:K:T', 'D:P:B', 'D:P:K', 'D:Q:A',
+        'D:Q:E', 'D:V:B', 'D:W:U', 'E:C:F', 'E:G:A', 'E:G:B', 'E:G:P', 'E:H:B',
+        'E:H:D', 'E:H:M', 'E:H:N', 'E:K:C', 'E:K:I', 'E:K:Z', 'E:P:A', 'E:P:Q',
+        'E:V:L', 'E:V:O', 'F:B:C', 'F:B:H', 'F:C:H', 'F:F:Q', 'F:J:D', 'F:J:E',
+        'F:P:A', 'F:P:E', 'F:P:L', 'F:Q:E', 'F:Y:P', 'G:B:A', 'G:B:H', 'G:B:I',
+        'G:C:V', 'G:G:K', 'G:H:D', 'G:H:V', 'G:K:H', 'G:K:L', 'G:K:P', 'G:K:V',
         'H:B:D', 'H:C:M', 'H:C:S', 'H:F:D', 'H:G:P', 'H:K:B', 'H:K:F', 'H:P:L',
-        'H:Y:T', 'I:C:R', 'I:D:G', 'I:D:H', 'I:D:P', 'I:D:S', 'I:D:U', 'I:G:A',
-        'I:G:L', 'I:G:T', 'I:G:V', 'I:H:D', 'I:H:E', 'I:K:H', 'I:K:R', 'I:Q:L',
-        'I:Q:N', 'I:Y:A', 'I:Y:E', 'J:C:D', 'J:C:M', 'J:C:T', 'J:D:H', 'J:F:A',
-        'J:F:N', 'J:G:B', 'J:G:T', 'J:H:D', 'J:H:E', 'J:K:B', 'J:K:O', 'J:L:B',
-        'J:M:B', 'J:M:I', 'J:O:I', 'J:O:Y', 'J:P:H', 'J:X:D', 'J:X:P', 'J:Y:I',
-        'K:B:E', 'K:C:E', 'K:C:J', 'K:D:A', 'K:D:O', 'K:F:N', 'K:G:R', 'K:H:M',
-        'K:J:D', 'K:M:B', 'K:M:C', 'K:P:A', 'K:P:C', 'K:P:L', 'K:P:R', 'K:V:A',
-        'K:V:E', 'K:Y:B', 'K:Y:T', 'K:Y:U', 'L:B:A', 'L:B:D', 'L:B:O', 'L:D:J',
-        'L:K:T', 'L:P:T', 'L:V:M', 'L:Y:D', 'L:Y:I', 'L:Y:U', 'L:Y:V', 'M:B:D',
-        'M:B:G', 'M:B:J', 'M:B:Y', 'M:C:H', 'M:F:P', 'M:G:Z', 'M:K:S', 'M:P:D',
-        'N:B:G', 'N:B:M', 'N:C:E', 'N:C:F', 'N:F:P', 'N:F:V', 'N:G:B', 'N:G:E',
-        'N:G:M', 'N:G:O', 'N:G:S', 'N:H:C', 'N:H:E', 'N:M:S', 'N:Q:I', 'N:Y:H',
-        'N:Y:S', 'O:C:A', 'O:C:P', 'O:C:S', 'O:D:S', 'O:F:M', 'O:G:A', 'O:G:E',
-        'O:G:H', 'O:H:B', 'O:H:G', 'O:H:L', 'O:H:M', 'O:M:C', 'O:O:V', 'O:O:X',
-        'O:P:E', 'O:P:G', 'O:Y:B', 'O:Y:E', 'O:Y:L', 'P:B:L', 'P:G:M', 'P:H:J',
-        'P:K:Q', 'P:P:D', 'P:P:S', 'P:W:A', 'P:W:E', 'P:Y:K', 'P:Y:M', 'P:Y:Q',
-        'P:Y:V', 'Q:F:C', 'Q:F:N', 'Q:G:A', 'Q:G:L', 'Q:H:A', 'Q:K:B', 'Q:M:C',
-        'Q:M:T', 'Q:M:V', 'Q:U:D', 'Q:Y:S', 'R:B:L', 'R:B:S', 'R:K:B', 'R:P:C',
-        'R:P:D', 'R:V:K', 'R:X:Q', 'S:B:P', 'S:H:B', 'S:H:F', 'S:W:C', 'S:W:D',
-        'S:W:Q', 'T:B:H', 'T:C:G', 'T:C:Q', 'T:F:P', 'T:G:Z', 'T:H:V', 'T:K:Q',
-        'T:P:U', 'T:U:Q', 'T:Y:S', 'U:C:H', 'U:C:Q', 'U:D:E', 'U:D:F', 'U:D:H',
-        'U:F:A', 'U:G:B', 'U:G:L', 'U:O:D', 'U:O:L', 'U:P:D', 'U:P:M', 'U:U:T',
-        'V:C:L', 'V:C:S', 'V:F:G', 'V:G:A', 'V:G:D', 'V:G:H', 'V:G:K', 'V:H:B',
-        'V:H:T', 'V:K:A', 'V:K:G', 'V:M:F', 'V:M:P', 'V:P:E', 'V:Y:H', 'V:Y:R',
-        'W:B:E', 'W:B:I', 'W:C:B', 'W:C:H', 'W:D:B', 'W:D:C', 'W:F:D', 'W:F:E',
-        'W:F:Q', 'W:G:C', 'W:H:G', 'W:K:B', 'W:K:L', 'W:M:F', 'W:O:B', 'W:O:L',
-        'W:P:K', 'W:X:C', 'W:X:M', 'W:Y:R', 'X:L:P', 'X:M:A', 'X:M:C', 'X:N:M',
-        'X:R:A', 'X:R:F', 'Y:D:E', 'Y:D:S', 'Y:G:I', 'Y:H:G', 'Y:I:J', 'Y:K:T',
-        'Y:L:D', 'Y:L:K', 'Y:L:W', 'Y:O:A', 'Y:O:G', 'Y:U:B', 'Y:U:Z', 'Y:X:C',
-        'Y:Y:B', 'Y:Y:E', 'Z:C:B', 'Z:C:D', 'Z:C:P', 'Z:D:E', 'Z:D:G', 'Z:F:A',
-        'Z:F:I', 'Z:F:O', 'Z:G:P', 'Z:G:W', 'Z:K:B', 'Z:K:M', 'Z:K:U', 'Z:M:C',
-        'Z:M:D', 'Z:M:G', 'Z:M:H', 'Z:R:C', 'Z:Y:C',
+        'H:Q:A', 'H:Q:C', 'H:Y:T', 'I:D:H', 'I:D:P', 'I:G:K', 'I:G:L', 'I:G:V',
+        'I:H:B', 'I:H:D', 'I:H:E', 'I:H:K', 'I:P:N', 'I:Q:L', 'I:Q:N', 'I:Q:R',
+        'I:Q:S', 'I:V:C', 'I:Y:A', 'I:Y:E', 'I:Y:V', 'J:B:C', 'J:C:D', 'J:C:M',
+        'J:C:S', 'J:D:T', 'J:F:A', 'J:F:E', 'J:F:N', 'J:G:B', 'J:G:T', 'J:H:C',
+        'J:K:B', 'J:K:O', 'J:L:Y', 'J:M:B', 'J:M:L', 'J:O:V', 'J:O:Y', 'J:P:H',
+        'J:X:D', 'J:X:P', 'J:Y:T', 'K:B:E', 'K:C:E', 'K:D:A', 'K:D:O', 'K:F:M',
+        'K:G:H', 'K:H:N', 'K:J:D', 'K:M:B', 'K:M:C', 'K:M:G', 'K:P:A', 'K:P:C',
+        'K:P:L', 'K:P:R', 'K:V:M', 'K:V:N', 'K:Y:C', 'K:Y:I', 'L:B:A', 'L:B:D',
+        'L:B:O', 'L:C:G', 'L:K:T', 'L:P:C', 'L:P:T', 'L:Q:O', 'L:Q:R', 'L:V:M',
+        'M:B:D', 'M:B:J', 'M:B:Y', 'M:F:P', 'M:G:Z', 'M:P:D', 'M:Q:T', 'M:V:I',
+        'M:V:S', 'N:B:G', 'N:B:M', 'N:C:H', 'N:F:D', 'N:F:P', 'N:F:V', 'N:G:C',
+        'N:G:O', 'N:G:S', 'N:H:C', 'N:H:E', 'N:M:S', 'N:P:D', 'N:Q:I', 'N:V:G',
+        'N:V:M', 'N:Y:C', 'N:Y:G', 'N:Y:H', 'O:C:F', 'O:C:P', 'O:F:M', 'O:G:A',
+        'O:G:E', 'O:G:H', 'O:H:B', 'O:H:G', 'O:H:L', 'O:H:M', 'O:K:V', 'O:M:C',
+        'O:P:G', 'O:P:N', 'O:W:A', 'O:W:M', 'P:B:A', 'P:B:L', 'P:H:B', 'P:H:J',
+        'P:K:F', 'P:P:D', 'P:P:S', 'P:W:A', 'P:W:E', 'Q:C:A', 'Q:C:B', 'Q:D:S',
+        'Q:F:C', 'Q:F:N', 'Q:G:A', 'Q:G:L', 'Q:H:A', 'Q:H:E', 'Q:K:B', 'Q:M:E',
+        'Q:M:T', 'Q:M:V', 'Q:Q:T', 'Q:U:D', 'Q:Y:S', 'R:B:L', 'R:B:S', 'R:H:B',
+        'R:O:V', 'R:P:C', 'R:P:M', 'R:V:K', 'R:W:C', 'R:W:O', 'R:X:Q', 'S:B:P',
+        'S:H:B', 'S:H:F', 'S:Q:C', 'S:Q:M', 'S:V:A', 'S:V:E', 'S:V:K', 'S:W:C',
+        'S:W:D', 'S:W:Q', 'T:B:H', 'T:F:P', 'T:H:V', 'T:K:Q', 'T:P:U', 'T:V:K',
+        'T:Y:V', 'U:C:H', 'U:C:Q', 'U:D:E', 'U:D:F', 'U:D:H', 'U:F:C', 'U:G:B',
+        'U:G:L', 'U:H:A', 'U:K:A', 'U:K:B', 'U:O:D', 'U:O:L', 'U:P:D', 'U:P:M',
+        'U:Y:A', 'U:Y:T', 'V:C:M', 'V:C:S', 'V:G:D', 'V:G:H', 'V:G:K', 'V:G:T',
+        'V:H:B', 'V:H:T', 'V:K:G', 'V:K:J', 'V:K:U', 'V:M:P', 'V:P:E', 'V:Q:E',
+        'V:V:I', 'V:Y:H', 'W:B:A', 'W:B:S', 'W:C:B', 'W:C:H', 'W:C:N', 'W:D:M',
+        'W:F:D', 'W:F:E', 'W:F:Q', 'W:G:C', 'W:H:K', 'W:K:B', 'W:K:L', 'W:L:G',
+        'W:L:U', 'W:O:P', 'W:P:K', 'W:X:C', 'W:X:M', 'W:Y:N', 'X:G:J', 'X:L:P',
+        'X:M:A', 'X:M:C', 'X:N:M', 'X:R:F', 'X:R:G', 'X:R:V', 'Y:D:E', 'Y:D:S',
+        'Y:F:E', 'Y:G:B', 'Y:H:G', 'Y:H:K', 'Y:H:P', 'Y:I:J', 'Y:K:T', 'Y:L:D',
+        'Y:L:K', 'Y:L:S', 'Y:L:W', 'Y:O:G', 'Y:U:B', 'Y:U:Z', 'Y:X:K', 'Y:Y:B',
+        'Y:Y:E', 'Z:B:G', 'Z:C:G', 'Z:C:P', 'Z:D:G', 'Z:D:L', 'Z:F:A', 'Z:F:B',
+        'Z:F:I', 'Z:F:U', 'Z:G:B', 'Z:G:W', 'Z:H:B', 'Z:K:C', 'Z:L:G', 'Z:M:C',
+        'Z:M:D', 'Z:Y:C',
     ];
 
     /**
@@ -339,10 +361,21 @@ final class StartEndWithLinksBuilder
      * "avec", voir AvecThreeLettersLinksBuilder::EXTERNAL_DUPLICATE_KEYS).
      *
      * 314 clés (format "{début}:{fin}:{lettre}"), recalculées indépendamment par échantillonnage
-     * direct contre `terms` (voir le rapport AFTER de cette tâche) : 0 divergence.
+     * direct contre `terms` (voir le rapport AFTER de cette tâche) : 0 divergence -- à 838 180
+     * termes.
      *
-     * Liste figée : valable pour l'état actuel de storage/dictionary_fr.sqlite (838 180 termes,
-     * inchangé depuis D-022). Une reconstruction future de la base devra revalider cette liste.
+     * Liste figée : valable pour l'état actuel de storage/dictionary_fr.sqlite au moment de sa
+     * construction (838 180 termes, D-022 à D-048). PAS REVALIDÉE par le passage à 844 961 termes
+     * (D-051/D-052, 2026-09-02) : contrairement à App\Search\PrefixAvecLinksBuilder::
+     * EXTERNAL_DUPLICATE_KEYS (4 clés, adversaires nommés individuellement), ces 338 clés n'ont
+     * jamais eu leur adversaire exact consigné ici -- seul le résultat du balayage générique
+     * (scripts/check_combinatorial_duplicates.php contre storage/seo_fr.sqlite) l'identifie. Cette
+     * liste dépend donc du registre SEO complet, reconstruit et revalidé séparément (hors périmètre
+     * data-engine à ce stade). Choix délibéré (même raisonnement que partout ailleurs sur cette
+     * série de correctifs) : laisser une clé DEDANS à tort coûte au plus quelques liens manqués, en
+     * retirer une à tort réintroduirait un lien vivant vers une page potentiellement noindex
+     * (violation R5) -- liste INCHANGÉE ici, à revalider par un balayage générique complet dès que
+     * le registre sera reconstruit.
      *
      * COMPLÉTÉE PAR D-047 (2026-08-31, balayage générique post-D-045/D-046) : +24 clés
      * supplémentaires (extraites directement du lot storage/seo_fr.sqlite/word_list_combined_

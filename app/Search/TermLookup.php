@@ -86,11 +86,14 @@ final class TermLookup
             pos: $found ? $row['pos'] : null,
             posSecondary: $found ? $row['pos_secondary'] : null,
             gender: $found ? $row['gender'] : null,
+            // D-054 : meme regle que pos/posSecondary/gender ci-dessus -- uniquement pour un
+            // terme trouve, sinon toujours null (jamais de categorie sur une fiche "inconnu").
+            nonAdmittedCategory: $found ? $row['non_admitted_category'] : null,
         );
     }
 
     /**
-     * @return array{display_term: string, score: string|int, length: string|int, is_ods8: string|int, is_ods9: string|int, pos: string|null, pos_secondary: string|null, gender: string|null}|null
+     * @return array{display_term: string, score: string|int, length: string|int, is_ods8: string|int, is_ods9: string|int, pos: string|null, pos_secondary: string|null, gender: string|null, non_admitted_category: string|null}|null
      */
     private function lookupRow(string $normalized): ?array
     {
@@ -98,10 +101,11 @@ final class TermLookup
         // SQLite supplementaire (meme requete, meme plan que Phase 1 : recherche sur
         // l'index unique sqlite_autoindex_terms_1, puis lecture de la ligne complete,
         // deja necessaire pour display_term/score qui ne sont pas non plus couverts par
-        // cet index).
+        // cet index). D-054 : non_admitted_category ajoutee au meme SELECT, meme raisonnement
+        // -- toujours ZERO requete SQLite supplementaire, la ligne complete est deja lue.
         $statement = $this->connection->pdo()->prepare(
-            'SELECT display_term, score, length, is_ods8, is_ods9, pos, pos_secondary, gender '
-            . 'FROM terms WHERE normalized = ? LIMIT 1'
+            'SELECT display_term, score, length, is_ods8, is_ods9, pos, pos_secondary, gender, '
+            . 'non_admitted_category FROM terms WHERE normalized = ? LIMIT 1'
         );
         $statement->execute([$normalized]);
         $row = $statement->fetch();

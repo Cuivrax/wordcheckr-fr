@@ -86,7 +86,9 @@ return function (): void {
             }
         }
 
-        Assert::same(1, $singleResultCount, '1 page a exactement 1 resultat (/mots/2-lettres/avec/z, ZA) -- avec/w (WU) exclu par D-041, voir ci-dessous');
+        // D-051 (2026-09-02) : le complement kaikki a ajoute OZ et DZ, 2-lettres/avec/z passe de
+        // 1 (ZA seul) a 3 mots -- plus aucune page a exactement 1 resultat sur ce palier.
+        Assert::same(0, $singleResultCount, 'D-051 : plus aucune page a 1 resultat depuis OZ/DZ (2-lettres/avec/z = 3 mots desormais)');
 
         // --- Cas connus, verifies ligne par ligne (deja mesures dans reports/query-plans/
         // --- avec-length-1-letter-full-sweep.md). ---
@@ -101,7 +103,7 @@ return function (): void {
         Assert::true(!isset($byPath['/mots/2-lettres/avec/w']), 'D-041 : doublon de contenu avec /mots/terminant/wu (WU, seul mot), la forme la plus generale (terminant, 1 composant) gagne');
 
         Assert::true(isset($byPath['/mots/2-lettres/avec/z']));
-        Assert::same(1, $byPath['/mots/2-lettres/avec/z']['result_count'], 'ZA, seul mot de 2 lettres avec un Z');
+        Assert::same(3, $byPath['/mots/2-lettres/avec/z']['result_count'], 'D-051 : OZ, ZA, DZ (etait ZA seul avant)');
 
         Assert::true(isset($byPath['/mots/10-lettres/avec/z']));
         Assert::same(10_000, $byPath['/mots/10-lettres/avec/z']['result_count'], 'plafonne (13 959 correspondances reelles), pire cas mesure du balayage');

@@ -50,87 +50,103 @@ final class AvecBareFourLettersLinksBuilder
      * voir docs/DECISIONS.md D-049).
      * SOURCE DE VERITE = scripts/seo-batches/avec-bare-four-letters-2026-09-01.php.
      *
+     * REVALIDATION D-051/D-052 (2026-09-02) : recalculee depuis list_counts (avec_bare_quad /
+     * avec_bare_triple, apres repopulation par scripts/build_explore_hub_counts.php) suite au
+     * passage de la base a 844 961 termes (+6 781 formes kaikki, D-051/D-052). 302 -> 381
+     * entrees. Methode : scratchpad/recompute_fast.php (scope 'bare', une requete SELECT
+     * normalized FROM terms par candidat SIBLING regroupe -- ici uniquement le passage PARENT,
+     * une comparaison directe list_counts avec_bare_quad vs avec_bare_triple, cout marginal).
+     * Verifiee deux fois de suite (memes 381 entrees a chaque run) + 15 controles ponctuels
+     * SQL directs sur `terms` (0 divergence) -- methode independante du script de recalcul.
+     *
      * @var list<string>
      */
     private const DUPLICATE_PARENT_KEYS = [
-        'A:B:J:Q', 'A:B:J:W', 'A:B:J:Y', 'A:D:J:W', 'A:D:K:X', 'A:E:J:W', 'A:F:J:Q', 'A:F:J:X',
-        'A:F:P:W', 'A:F:Q:W', 'A:F:V:W', 'A:G:H:J', 'A:H:K:X', 'A:I:J:W', 'A:J:K:Q', 'A:J:K:V',
-        'A:J:L:W', 'A:J:L:X', 'A:J:M:W', 'A:J:N:W', 'A:J:O:W', 'A:J:P:Q', 'A:J:P:X', 'A:J:P:Y',
-        'A:J:Q:X', 'A:J:R:W', 'A:J:S:W', 'A:J:T:W', 'A:J:U:W', 'A:J:V:X', 'A:J:W:Y', 'A:J:W:Z',
-        'A:K:M:X', 'A:K:P:X', 'A:K:Q:U', 'A:K:V:W', 'A:K:V:X', 'A:K:X:Z', 'A:M:Q:W', 'A:M:V:W',
-        'A:N:W:X', 'A:Q:U:V', 'A:Q:U:X', 'A:T:W:X', 'A:W:X:Y', 'B:D:Q:U', 'B:E:F:W', 'B:E:P:V',
-        'B:E:P:W', 'B:E:Q:X', 'B:E:W:X', 'B:E:X:Z', 'B:F:Q:U', 'B:G:Q:U', 'B:I:J:V', 'B:J:K:X',
-        'B:J:L:W', 'B:J:O:W', 'B:J:Q:U', 'B:J:S:W', 'B:J:U:W', 'B:J:U:X', 'B:J:W:Y', 'B:K:Q:U',
-        'B:P:R:W', 'B:Q:R:U', 'B:Q:U:V', 'B:Q:U:X', 'B:Q:U:Y', 'B:Q:U:Z', 'B:R:W:X', 'B:S:W:X',
-        'B:U:W:X', 'C:E:V:W', 'C:F:V:W', 'C:G:Q:U', 'C:I:V:W', 'C:J:K:Q', 'C:J:Q:U', 'C:K:Q:U',
-        'C:O:V:W', 'C:P:W:X', 'C:Q:U:W', 'C:Q:U:X', 'C:Q:U:Y', 'C:Q:U:Z', 'C:Q:V:W', 'D:E:J:X',
-        'D:E:K:Q', 'D:E:K:X', 'D:E:Q:W', 'D:E:V:W', 'D:E:W:Z', 'D:G:Q:U', 'D:G:V:W', 'D:H:J:Y',
-        'D:H:V:W', 'D:I:J:W', 'D:I:J:X', 'D:I:V:W', 'D:J:N:W', 'D:J:R:Y', 'D:J:U:X', 'D:K:Q:U',
-        'D:K:Q:W', 'D:L:Q:U', 'D:L:V:W', 'D:M:Q:U', 'D:N:V:W', 'D:O:Q:W', 'D:O:V:W', 'D:P:Q:U',
-        'D:P:Q:W', 'D:Q:T:U', 'D:Q:U:W', 'D:Q:U:X', 'D:Q:U:Y', 'D:R:V:W', 'D:S:V:W', 'D:U:V:W',
-        'E:F:G:Q', 'E:F:G:Z', 'E:F:J:M', 'E:F:J:P', 'E:F:J:Q', 'E:F:K:Q', 'E:F:K:V', 'E:F:K:Z',
-        'E:F:P:W', 'E:F:P:Z', 'E:F:Q:U', 'E:F:Q:V', 'E:F:Q:Y', 'E:F:V:W', 'E:F:V:Z', 'E:F:W:Z',
-        'E:F:X:Z', 'E:F:Y:Z', 'E:G:P:W', 'E:G:Q:U', 'E:G:Q:V', 'E:G:Q:W', 'E:G:Q:X', 'E:G:Q:Z',
-        'E:G:V:W', 'E:G:V:Z', 'E:G:W:X', 'E:G:X:Z', 'E:H:J:Q', 'E:H:J:V', 'E:H:J:Y', 'E:H:J:Z',
-        'E:H:K:Q', 'E:H:M:Q', 'E:H:Q:V', 'E:H:Q:W', 'E:H:Q:X', 'E:H:Q:Y', 'E:H:Q:Z', 'E:H:V:W',
-        'E:H:V:X', 'E:H:W:X', 'E:J:K:Q', 'E:J:K:V', 'E:J:K:X', 'E:J:K:Z', 'E:J:L:W', 'E:J:O:W',
-        'E:J:P:Q', 'E:J:P:Z', 'E:J:Q:U', 'E:J:Q:V', 'E:J:Q:Z', 'E:J:R:W', 'E:J:T:W', 'E:J:U:W',
-        'E:J:V:Z', 'E:J:X:Z', 'E:K:L:Q', 'E:K:P:Q', 'E:K:Q:U', 'E:K:Q:V', 'E:K:Q:W', 'E:K:Q:Y',
-        'E:K:Q:Z', 'E:K:V:W', 'E:K:V:X', 'E:K:V:Y', 'E:K:X:Z', 'E:L:W:X', 'E:L:W:Z', 'E:L:X:Z',
-        'E:M:Q:W', 'E:M:Q:Z', 'E:M:V:W', 'E:P:Q:W', 'E:P:W:Y', 'E:P:W:Z', 'E:P:X:Z', 'E:Q:T:W',
-        'E:Q:U:X', 'E:Q:V:W', 'E:Q:V:X', 'E:Q:V:Y', 'E:Q:V:Z', 'E:Q:W:Y', 'E:Q:W:Z', 'E:Q:X:Y',
-        'E:Q:X:Z', 'E:R:W:X', 'E:S:X:Z', 'E:T:V:W', 'E:U:V:W', 'E:U:W:X', 'E:V:W:Z', 'F:G:I:V',
-        'F:G:J:U', 'F:G:Q:U', 'F:I:J:P', 'F:I:J:Q', 'F:I:K:Q', 'F:I:K:V', 'F:I:Q:V', 'F:I:Q:X',
-        'F:I:V:W', 'F:I:W:Y', 'F:J:N:Q', 'F:J:N:X', 'F:J:O:P', 'F:J:O:X', 'F:J:Q:U', 'F:J:T:X',
-        'F:K:N:V', 'F:K:O:V', 'F:K:Q:U', 'F:K:U:X', 'F:L:Q:U', 'F:M:Q:U', 'F:N:Q:U', 'F:N:V:W',
-        'F:O:P:W', 'F:O:V:W', 'F:P:R:W', 'F:Q:R:U', 'F:Q:T:U', 'F:Q:U:V', 'F:Q:U:X', 'F:Q:U:Y',
-        'F:T:V:W', 'F:U:V:W', 'G:H:Q:U', 'G:I:J:K', 'G:I:J:Y', 'G:I:K:Q', 'G:I:P:W', 'G:I:Q:W',
-        'G:I:V:W', 'G:I:W:X', 'G:J:K:O', 'G:J:O:Y', 'G:J:Q:U', 'G:J:U:Y', 'G:K:Q:U', 'G:L:Q:U',
-        'G:L:W:X', 'G:N:V:W', 'G:O:W:X', 'G:P:Q:U', 'G:Q:R:U', 'G:Q:T:U', 'G:Q:U:V', 'G:Q:U:W',
-        'G:Q:U:X', 'G:Q:U:Y', 'G:Q:U:Z', 'G:R:W:X', 'G:S:V:W', 'G:S:W:X', 'H:I:K:Q', 'H:I:V:W',
-        'H:I:W:X', 'H:J:O:Q', 'H:J:O:V', 'H:J:Q:U', 'H:J:R:Y', 'H:J:T:V', 'H:K:Q:U', 'H:K:Q:W',
-        'H:K:U:X', 'H:L:Q:U', 'H:N:V:W', 'H:O:V:W', 'H:P:Q:W', 'H:Q:R:U', 'H:Q:U:V', 'H:Q:U:W',
-        'H:Q:U:X', 'H:Q:U:Y', 'H:Q:U:Z', 'H:R:V:W', 'H:S:V:W', 'I:J:K:V', 'I:J:P:Q', 'I:J:Q:U',
-        'I:J:Q:V', 'I:J:Q:X', 'I:J:S:W', 'I:J:T:W', 'I:J:W:Y', 'I:K:Q:U', 'I:K:Q:V', 'I:K:Q:W',
-        'I:K:V:X', 'I:K:V:Y', 'I:K:W:Y', 'I:M:Q:W', 'I:M:V:W', 'I:P:Q:U', 'I:P:Q:W', 'I:Q:U:X',
-        'I:Q:V:W', 'I:T:V:W', 'I:U:V:W', 'I:U:W:X', 'I:V:W:Z', 'I:W:X:Y', 'I:W:Y:Z', 'J:K:N:Q',
-        'J:K:N:V', 'J:K:O:Q', 'J:K:O:X', 'J:K:P:V', 'J:K:Q:S', 'J:K:Q:U', 'J:K:U:X', 'J:L:N:W',
-        'J:L:O:W', 'J:L:Q:U', 'J:L:R:W', 'J:L:U:W', 'J:L:U:X', 'J:M:N:W', 'J:M:O:W', 'J:M:Q:U',
-        'J:M:W:Z', 'J:N:Q:U', 'J:N:U:W', 'J:N:W:Z', 'J:O:Q:U', 'J:O:Q:V', 'J:O:R:W', 'J:O:S:W',
-        'J:O:T:W', 'J:O:U:W', 'J:O:W:Y', 'J:O:W:Z', 'J:O:X:Y', 'J:P:Q:U', 'J:P:U:X', 'J:Q:S:U',
-        'J:Q:T:U', 'J:Q:U:V', 'J:Q:U:X', 'J:Q:U:Z', 'J:R:T:W', 'J:R:U:W', 'J:U:V:X', 'J:U:X:Y',
-        'K:L:Q:U', 'K:L:Q:W', 'K:L:V:Y', 'K:L:X:Z', 'K:M:Q:U', 'K:N:Q:U', 'K:N:X:Z', 'K:O:Q:U',
-        'K:O:Q:V', 'K:O:Q:W', 'K:O:Q:Z', 'K:O:X:Z', 'K:P:Q:U', 'K:P:Q:W', 'K:P:T:X', 'K:P:U:X',
-        'K:Q:R:U', 'K:Q:R:Z', 'K:Q:S:U', 'K:Q:T:U', 'K:Q:U:V', 'K:Q:U:W', 'K:Q:U:Y', 'K:Q:U:Z',
-        'K:R:V:W', 'L:M:Q:U', 'L:O:V:W', 'L:P:Q:U', 'L:P:Q:W', 'L:Q:R:U', 'L:Q:T:U', 'L:Q:U:V',
-        'L:Q:U:X', 'L:Q:U:Z', 'L:U:W:X', 'M:N:Q:W', 'M:Q:U:V', 'M:Q:U:W', 'M:Q:U:X', 'M:Q:U:Y',
-        'M:Q:U:Z', 'N:O:W:X', 'N:Q:U:V', 'N:Q:U:W', 'N:Q:U:X', 'N:Q:U:Y', 'N:T:W:X', 'N:V:W:Z',
-        'O:P:Q:W', 'O:P:W:X', 'O:Q:U:W', 'O:Q:U:X', 'O:Q:U:Y', 'O:Q:U:Z', 'O:Q:V:W', 'O:U:W:X',
-        'P:Q:R:U', 'P:Q:T:U', 'P:Q:U:V', 'P:Q:U:W', 'P:Q:U:X', 'P:Q:U:Y', 'P:Q:U:Z', 'Q:R:U:V',
-        'Q:R:U:X', 'Q:R:V:W', 'Q:R:W:Z', 'Q:S:U:V', 'Q:S:U:X', 'Q:S:V:W', 'Q:T:U:V', 'Q:T:U:X',
-        'Q:T:W:Z', 'Q:U:V:W', 'Q:U:V:X', 'Q:U:V:Y', 'Q:U:V:Z', 'Q:U:X:Y', 'Q:U:X:Z', 'Q:U:Y:Z',
-        'R:U:W:X', 'S:U:W:X', 'T:V:W:Z', 'T:W:X:Y',
+        'A:B:J:Q', 'A:B:J:W', 'A:B:J:Y', 'A:D:J:W', 'A:D:K:X', 'A:E:J:W', 'A:F:J:Q', 'A:F:J:X', 'A:F:P:W',
+        'A:F:Q:W', 'A:F:V:W', 'A:H:J:W', 'A:H:K:X', 'A:I:J:W', 'A:J:K:Q', 'A:J:K:V', 'A:J:K:W', 'A:J:L:W',
+        'A:J:L:X', 'A:J:M:W', 'A:J:N:W', 'A:J:O:W', 'A:J:P:Q', 'A:J:P:X', 'A:J:P:Y', 'A:J:Q:X', 'A:J:R:W',
+        'A:J:S:W', 'A:J:T:W', 'A:J:U:W', 'A:J:V:X', 'A:J:W:Y', 'A:J:W:Z', 'A:K:M:X', 'A:K:P:X', 'A:K:Q:U',
+        'A:K:V:W', 'A:K:V:X', 'A:K:X:Z', 'A:M:Q:W', 'A:N:W:X', 'A:Q:U:V', 'A:Q:U:X', 'A:T:W:X', 'A:W:X:Y',
+        'B:D:Q:U', 'B:E:F:W', 'B:E:P:V', 'B:E:P:W', 'B:E:Q:X', 'B:E:W:X', 'B:E:X:Z', 'B:F:Q:U', 'B:G:Q:U',
+        'B:J:K:X', 'B:J:L:W', 'B:J:O:W', 'B:J:Q:U', 'B:J:U:W', 'B:J:U:X', 'B:J:W:Y', 'B:K:Q:U', 'B:P:R:W',
+        'B:Q:R:U', 'B:Q:U:V', 'B:Q:U:X', 'B:Q:U:Y', 'B:Q:U:Z', 'B:R:W:X', 'B:U:W:X', 'C:F:V:W', 'C:I:V:W',
+        'C:J:Q:U', 'C:K:Q:U', 'C:P:W:X', 'C:Q:U:X', 'C:Q:U:Y', 'C:Q:U:Z', 'C:Q:V:W', 'D:E:J:X', 'D:E:K:Q',
+        'D:E:K:X', 'D:E:Q:W', 'D:E:V:W', 'D:E:W:Z', 'D:G:Q:U', 'D:G:V:W', 'D:H:J:Y', 'D:H:V:W', 'D:I:J:W',
+        'D:I:J:X', 'D:I:V:W', 'D:J:N:W', 'D:J:R:Y', 'D:J:U:X', 'D:K:Q:U', 'D:K:Q:W', 'D:L:Q:U', 'D:L:V:W',
+        'D:M:Q:U', 'D:N:V:W', 'D:O:Q:W', 'D:O:V:W', 'D:P:Q:U', 'D:P:Q:W', 'D:Q:T:U', 'D:Q:U:W', 'D:Q:U:X',
+        'D:Q:U:Y', 'D:R:V:W', 'D:S:V:W', 'D:U:V:W', 'E:F:G:Q', 'E:F:G:Z', 'E:F:J:M', 'E:F:J:P', 'E:F:J:Q',
+        'E:F:K:Q', 'E:F:Q:V', 'E:F:Q:Y', 'E:F:V:W', 'E:F:V:Z', 'E:F:X:Z', 'E:F:Y:Z', 'E:G:P:W', 'E:G:Q:U',
+        'E:G:Q:V', 'E:G:Q:W', 'E:G:Q:X', 'E:G:Q:Z', 'E:G:V:W', 'E:G:W:X', 'E:H:J:Q', 'E:H:J:V', 'E:H:J:Y',
+        'E:H:J:Z', 'E:H:K:Q', 'E:H:M:Q', 'E:H:Q:V', 'E:H:Q:X', 'E:H:Q:Y', 'E:H:Q:Z', 'E:H:V:W', 'E:H:V:X',
+        'E:H:W:X', 'E:J:K:W', 'E:J:K:X', 'E:J:K:Z', 'E:J:L:W', 'E:J:P:Q', 'E:J:Q:U', 'E:J:Q:V', 'E:J:Q:Z',
+        'E:J:R:W', 'E:J:U:W', 'E:J:V:Z', 'E:J:X:Z', 'E:K:P:Q', 'E:K:Q:U', 'E:K:Q:V', 'E:K:Q:W', 'E:K:Q:Y',
+        'E:K:Q:Z', 'E:K:V:W', 'E:K:V:X', 'E:K:X:Z', 'E:L:W:X', 'E:L:X:Z', 'E:M:Q:W', 'E:M:Q:Z', 'E:M:V:W',
+        'E:P:Q:W', 'E:P:X:Z', 'E:Q:U:X', 'E:Q:V:W', 'E:Q:V:X', 'E:Q:V:Y', 'E:Q:V:Z', 'E:Q:W:Y', 'E:Q:W:Z',
+        'E:Q:X:Y', 'E:Q:X:Z', 'E:R:W:X', 'E:S:X:Z', 'E:U:V:W', 'E:U:W:X', 'E:V:W:Z', 'F:G:I:V', 'F:G:J:U',
+        'F:G:Q:U', 'F:I:J:P', 'F:I:J:Q', 'F:I:K:Q', 'F:I:K:V', 'F:I:Q:V', 'F:I:Q:X', 'F:I:V:W', 'F:I:W:Y',
+        'F:J:N:Q', 'F:J:N:X', 'F:J:O:P', 'F:J:O:X', 'F:J:Q:U', 'F:J:T:X', 'F:K:N:V', 'F:K:O:V', 'F:K:Q:U',
+        'F:K:U:X', 'F:M:Q:U', 'F:N:Q:U', 'F:N:V:W', 'F:O:P:W', 'F:O:V:W', 'F:P:R:W', 'F:Q:R:U', 'F:Q:U:V',
+        'F:Q:U:X', 'F:Q:U:Y', 'F:T:V:W', 'F:U:V:W', 'G:I:J:K', 'G:I:J:Y', 'G:I:P:W', 'G:I:Q:W', 'G:I:W:X',
+        'G:J:K:O', 'G:J:Q:U', 'G:K:Q:U', 'G:L:Q:U', 'G:L:W:X', 'G:O:W:X', 'G:P:Q:U', 'G:Q:R:U', 'G:Q:T:U',
+        'G:Q:U:V', 'G:Q:U:W', 'G:Q:U:X', 'G:Q:U:Y', 'G:Q:U:Z', 'G:R:W:X', 'G:S:W:X', 'H:I:J:W', 'H:I:K:Q',
+        'H:I:V:W', 'H:I:W:X', 'H:J:O:Q', 'H:J:Q:U', 'H:J:R:Y', 'H:J:T:W', 'H:K:Q:U', 'H:K:Q:W', 'H:K:U:X',
+        'H:P:Q:W', 'H:Q:R:U', 'H:Q:U:V', 'H:Q:U:W', 'H:Q:U:X', 'H:Q:U:Y', 'H:Q:U:Z', 'H:S:V:W', 'I:J:K:W',
+        'I:J:P:Q', 'I:J:Q:U', 'I:J:Q:V', 'I:J:Q:X', 'I:J:S:W', 'I:J:T:W', 'I:J:W:Y', 'I:K:Q:U', 'I:K:Q:V',
+        'I:K:Q:W', 'I:K:W:Y', 'I:M:Q:W', 'I:P:Q:W', 'I:Q:U:X', 'I:Q:V:W', 'I:T:V:W', 'I:U:V:W', 'I:U:W:X',
+        'I:W:X:Y', 'J:K:M:W', 'J:K:O:X', 'J:K:Q:U', 'J:K:S:W', 'J:K:U:X', 'J:L:N:W', 'J:L:O:W', 'J:L:Q:U',
+        'J:L:R:W', 'J:L:U:W', 'J:L:U:X', 'J:M:Q:U', 'J:M:W:Z', 'J:N:Q:U', 'J:N:U:W', 'J:N:W:Z', 'J:O:Q:U',
+        'J:O:Q:V', 'J:O:R:W', 'J:O:U:W', 'J:O:W:Y', 'J:O:W:Z', 'J:O:X:Y', 'J:P:Q:U', 'J:P:U:X', 'J:Q:S:U',
+        'J:Q:T:U', 'J:Q:U:V', 'J:Q:U:X', 'J:Q:U:Z', 'J:R:U:W', 'J:U:V:X', 'J:U:X:Y', 'K:L:Q:U', 'K:L:Q:W',
+        'K:L:X:Z', 'K:M:Q:U', 'K:N:Q:U', 'K:N:X:Z', 'K:O:Q:U', 'K:O:Q:V', 'K:O:Q:W', 'K:O:X:Z', 'K:P:Q:U',
+        'K:P:Q:W', 'K:P:T:X', 'K:P:U:X', 'K:Q:R:U', 'K:Q:R:Z', 'K:Q:S:U', 'K:Q:T:U', 'K:Q:U:V', 'K:Q:U:W',
+        'K:Q:U:Y', 'K:Q:U:Z', 'L:M:Q:U', 'L:P:Q:W', 'L:Q:U:V', 'L:Q:U:X', 'L:Q:U:Z', 'L:U:W:X', 'M:N:Q:W',
+        'M:Q:U:V', 'M:Q:U:W', 'M:Q:U:X', 'M:Q:U:Y', 'M:Q:U:Z', 'N:O:W:X', 'N:Q:U:V', 'N:Q:U:W', 'N:Q:U:X',
+        'N:Q:U:Y', 'N:T:W:X', 'O:P:Q:W', 'O:P:W:X', 'O:Q:U:W', 'O:Q:U:X', 'O:Q:U:Y', 'O:Q:U:Z', 'O:U:W:X',
+        'P:Q:U:V', 'P:Q:U:W', 'P:Q:U:X', 'P:Q:U:Y', 'P:Q:U:Z', 'Q:R:U:X', 'Q:R:V:W', 'Q:R:W:Z', 'Q:S:U:V',
+        'Q:S:U:X', 'Q:T:U:V', 'Q:T:U:X', 'Q:T:W:Z', 'Q:U:V:X', 'Q:U:V:Y', 'Q:U:V:Z', 'Q:U:X:Y', 'Q:U:X:Z',
+        'Q:U:Y:Z', 'R:U:W:X', 'T:W:X:Y',
     ];
 
     /**
      * Doublons de contenu entre pages SOEURS du meme palier (D-049, empreinte SQL reelle).
      *
+     * REVALIDATION D-051/D-052 (2026-09-02) : recalculee (base 844 961 termes) via
+     * scratchpad/recompute_fast.php (scope 'bare' -- regroupement par (count), empreinte
+     * SQL reelle sur `terms`, gagnant = cle alphabetiquement la plus petite du groupe). 56 -> 97
+     * entrees. Brut du script : 246 candidats ; 149 d'entre eux se sont reveles DEJA presents
+     * dans EXTERNAL_DUPLICATE_KEYS (non retouchee, cf. sa propre note ci-dessous) -- retires ici
+     * pour preserver l'invariant de disjonction des trois ensembles verifie par le test associe
+     * (un meme couple ne doit pas etre a la fois "soeur interne" et "doublon externe"). Aucun
+     * impact fonctionnel : build() exclut deja une cle des qu'elle appartient a N'IMPORTE LEQUEL
+     * des cinq ensembles, donc le retrait ne change ni les liens produits ni les liens exclus --
+     * seule la categorisation change, exactement comme DUPLICATE_PARENT_KEYS est deja prioritaire
+     * sur ce meme calcul de SIBLING (cf. scratchpad/recompute_fast.php, `if (isset($parentSet
+     * [$key])) continue;`). 15 controles ponctuels SQL directs sur `terms` (0 divergence).
+     *
      * @var list<string>
      */
     private const SIBLING_DUPLICATE_KEYS = [
-        'A:H:W:X', 'B:F:I:W', 'B:F:N:W', 'B:J:N:W', 'B:J:R:W', 'C:E:W:X', 'C:F:G:W', 'C:H:W:X',
-        'C:I:W:X', 'C:R:W:X', 'D:F:G:W', 'D:P:U:W', 'E:J:W:Z', 'F:G:T:W', 'F:G:U:W', 'F:H:K:Y',
-        'F:H:V:Y', 'F:I:K:X', 'F:J:M:X', 'F:J:U:X', 'F:K:M:V', 'F:K:T:V', 'F:K:T:Y', 'F:P:V:Y',
-        'G:J:K:R', 'G:K:P:Q', 'G:K:Q:Y', 'G:Q:R:W', 'H:K:L:Q', 'H:K:L:X', 'H:K:N:X', 'H:K:O:X',
-        'H:K:T:X', 'H:P:U:W', 'H:R:W:X', 'H:U:W:Z', 'I:J:R:W', 'I:K:P:X', 'J:L:U:Y', 'J:N:Q:V',
-        'J:N:Q:X', 'J:N:R:W', 'J:O:Q:X', 'J:Q:R:V', 'J:Q:T:V', 'J:T:X:Y', 'K:L:S:X', 'K:M:P:W',
-        'K:N:V:X', 'K:O:P:X', 'K:O:X:Y', 'K:P:U:W', 'K:S:V:X', 'L:M:Q:W', 'M:N:W:X', 'M:O:Q:W',
-        'M:Q:R:W', 'M:Q:S:W', 'M:Q:T:W', 'M:T:W:X',
+        'A:H:W:X', 'B:F:I:W', 'B:F:N:W', 'B:J:N:W', 'B:J:R:W', 'C:E:W:X', 'C:F:G:W', 'C:F:W:Z', 'C:H:W:X',
+        'C:I:W:X', 'C:P:W:Z', 'C:R:W:X', 'D:F:G:W', 'D:P:U:W', 'E:J:K:Q', 'F:G:T:W', 'F:G:U:W', 'F:H:K:Y',
+        'F:H:P:W', 'F:H:V:Y', 'F:H:W:Z', 'F:I:K:X', 'F:J:M:X', 'F:J:U:X', 'F:K:M:V', 'F:K:P:W', 'F:K:P:Z',
+        'F:K:T:V', 'F:K:T:Y', 'F:P:V:Y', 'G:J:K:R', 'G:K:P:Q', 'G:K:Q:Y', 'G:K:V:W', 'G:Q:R:W', 'G:S:V:W',
+        'G:V:W:Z', 'H:J:N:V', 'H:K:L:Q', 'H:K:L:X', 'H:K:N:X', 'H:K:O:X', 'H:K:P:Z', 'H:K:T:X', 'H:O:V:W',
+        'H:P:W:Z', 'H:R:V:W', 'H:R:W:X', 'H:U:W:Z', 'I:J:M:W', 'I:J:R:W', 'I:K:P:X', 'I:M:V:W', 'J:K:L:V',
+        'J:K:N:Q', 'J:K:O:Q', 'J:K:P:V', 'J:K:Q:S', 'J:K:T:V', 'J:M:O:W', 'J:M:S:W', 'J:N:Q:V', 'J:N:Q:X',
+        'J:N:R:W', 'J:O:Q:X', 'J:O:S:W', 'J:O:T:W', 'J:Q:R:V', 'J:Q:T:V', 'J:R:T:W', 'J:T:X:Y', 'K:M:P:W',
+        'K:N:V:W', 'K:N:V:X', 'K:O:P:X', 'K:O:V:X', 'K:O:X:Y', 'K:P:U:W', 'K:P:W:Z', 'K:R:V:X', 'K:S:V:X',
+        'K:T:W:Y', 'K:U:W:Y', 'L:M:Q:W', 'M:N:W:X', 'M:O:Q:W', 'M:Q:R:W', 'M:Q:S:W', 'M:Q:T:W', 'M:T:W:X',
+        'M:V:W:Z', 'N:V:W:Z', 'P:U:W:Y', 'Q:S:V:W', 'Q:U:V:W', 'T:U:W:Y', 'T:V:W:Z',
     ];
 
     /**
      * Doublons de contenu CROISES avec une famille EXTERIEURE deja indexee (D-049, meme
      * discipline D-041).
+     *
+     * PAS REVALIDEE pour D-051/D-052 : necessite le registre SEO complet
+     * (storage/seo_fr.sqlite) et scripts/check_combinatorial_duplicates.php (D-041), hors
+     * perimetre data-engine pour une revalidation limitee a dictionary_fr.sqlite -- laissee
+     * inchangee par prudence (risque residuel documente dans le rapport de revalidation D-053).
      *
      * @var list<string>
      */

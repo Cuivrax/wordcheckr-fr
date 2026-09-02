@@ -80,27 +80,35 @@ return function (): void {
         Assert::same($qFromR[0]['url'], $rFromQ[0]['url'], 'reciprocite Q<->R : meme URL canonique dans les deux sens');
     }
 
-    // --- Cas limite mesure (palier 1) : "2-lettres/avec/w" n'a qu'un seul mot (WU). Son unique
-    // --- partenaire palier 2 possible serait U (paire "2:U:W") -- mais TOUS les mots de 2 lettres
-    // --- avec W contiennent deja U (WU est le seul), donc "avec/u/w" est un doublon de CONTENU
-    // --- strict de la page parente "avec/w" (App\Search\AvecTwoLettersLinksBuilder::
-    // --- DUPLICATE_PARENT_KEYS, cle "2:U:W") -- ce builder ne doit plus jamais le produire. ---
+    // --- Cas historique (D-030, valable a 838 180 termes) DEVENU NON-DUPLIQUE apres D-051/D-052
+    // --- (844 961 termes) : "2-lettres/avec/w" n'avait qu'un seul mot (WU) a l'epoque, donc
+    // --- "avec/u/w" etait un doublon de CONTENU strict de la page parente "avec/w". Le complement
+    // --- kaikki (D-051) a ajoute WE et WI (2 lettres, contiennent W sans U) : le panier "avec W"
+    // --- vaut desormais 4 mots (WE, WI, WU, WW) dont 2 sans U -- la relation PARENT est cassee,
+    // --- "2:U:W" est SORTIE de DUPLICATE_PARENT_KEYS (revalide ci-dessous par recalcul
+    // --- independant) et doit desormais etre PRODUITE normalement. ---
     $linksW2 = $builder->build(2, 'W');
-    Assert::same([], $linksW2->links, '2:U:W est un doublon de contenu (WU est le seul mot, "avec/u" ne retire rien) -- ne doit jamais etre produit');
+    $uFromW2 = array_values(array_filter($linksW2->links, static fn (array $l): bool => $l['letter'] === 'U'));
+    Assert::true(count($uFromW2) === 1, '2:U:W n\'est plus un doublon de contenu depuis D-051/D-052 (WE/WI cassent la relation PARENT) -- doit desormais etre produit');
+    Assert::same(1, $uFromW2[0]['count'], 'sanity check : WU reste le seul mot de 2 lettres avec U et W (D-051/D-052 n\'a rien ajoute a cette paire precise)');
 
     $linksU2 = $builder->build(2, 'U');
     $wFromU2 = array_values(array_filter($linksU2->links, static fn (array $l): bool => $l['letter'] === 'W'));
-    Assert::true($wFromU2 === [], 'reciprocite : "avec U" ne doit pas non plus produire "avec U W" (meme doublon de contenu, meme cle canonique)');
+    Assert::true(count($wFromU2) === 1, 'reciprocite : "avec U" doit aussi produire "avec U W" desormais');
 
     $rawCountUW = (int) $pdo->query("SELECT count FROM list_counts WHERE list_type = 'length_with_pair' AND list_key = '2:U:W'")->fetch()['count'];
     $rawCountW = (int) $pdo->query("SELECT count FROM list_counts WHERE list_type = 'length_with' AND list_key = '2:W'")->fetch()['count'];
-    Assert::same(1, $rawCountW, 'sanity check : W (2 lettres) ne contient bien que WU (1 mot)');
-    Assert::same($rawCountW, $rawCountUW, 'sanity check : 2:U:W existe dans list_counts (precalcul brut inchange) et vaut le meme total que 2:W -- exclusion cote builder, pas cote precalcul');
+    Assert::same(4, $rawCountW, 'sanity check : W (2 lettres) vaut desormais 4 mots (WE, WI, WU, WW -- D-051/D-052, etait 1 sur 838 180 termes)');
+    Assert::same(1, $rawCountUW, 'sanity check : 2:U:W reste a 1 (WU) -- diverge desormais de 2:W (4), la relation PARENT est cassee');
 
-    // --- Meme cas symetrique verifie sur ZA (2:A:Z, "avec/z" ne contient que ZA, qui contient
-    // --- deja A). ---
+    // --- Meme cas historique, symetrique, sur ZA (2:A:Z) : le complement kaikki (D-051) a ajoute
+    // --- DZ et OZ (2 lettres, contiennent Z sans A), cassant la meme relation PARENT que ci-dessus
+    // --- -- "2:A:Z" est SORTIE de DUPLICATE_PARENT_KEYS, doit desormais etre PRODUITE. ---
     $linksZ2 = $builder->build(2, 'Z');
-    Assert::same([], $linksZ2->links, '2:A:Z est un doublon de contenu (ZA est le seul mot, "avec/a" ne retire rien) -- ne doit jamais etre produit');
+    $aFromZ2 = array_values(array_filter($linksZ2->links, static fn (array $l): bool => $l['letter'] === 'A'));
+    Assert::true(count($aFromZ2) === 1, '2:A:Z n\'est plus un doublon de contenu depuis D-051/D-052 (DZ/OZ cassent la relation PARENT) -- doit desormais etre produit');
+    $rawCountZ = (int) $pdo->query("SELECT count FROM list_counts WHERE list_type = 'length_with' AND list_key = '2:Z'")->fetch()['count'];
+    Assert::same(3, $rawCountZ, 'sanity check : Z (2 lettres) vaut desormais 3 mots (DZ, OZ, ZA -- D-051/D-052, etait 1 sur 838 180 termes)');
 
     // --- Lettre Z (longueur 9, derniere de l'alphabet) : TOUS ses partenaires sont stockes avec Z
     // --- en position "lettre2" de la cle (ex. "9:M:Z", jamais "9:Z:...") -- exerce quasi
@@ -117,16 +125,18 @@ return function (): void {
     }
 
     // ============================================================================================
-    // Reflection sur la liste figee des 4 doublons de contenu PARENT (analyse independante
-    // data-engine, 2026-08-20) -- meme pattern deja accepte sur ce projet pour verifier un detail
-    // d'implementation prive (voir LengthLinksBuilderTest.php, DUPLICATE_START_END_KEYS).
+    // Reflection sur la liste figee des 2 doublons de contenu PARENT (analyse independante
+    // data-engine, 2026-08-20, REVALIDEE D-051/D-052 le 2026-09-02 : etait 4 sur 838 180 termes,
+    // 2:A:Z et 2:U:W en sont sorties, voir les cas historiques ci-dessus) -- meme pattern deja
+    // accepte sur ce projet pour verifier un detail d'implementation prive (voir
+    // LengthLinksBuilderTest.php, DUPLICATE_START_END_KEYS).
     // ============================================================================================
     $reflection = new ReflectionClass(AvecTwoLettersLinksBuilder::class);
     $duplicateParentKeys = $reflection->getConstant('DUPLICATE_PARENT_KEYS');
-    Assert::same(4, count($duplicateParentKeys), 'exactement 4 paires doublons de contenu PARENT attendues');
+    Assert::same(2, count($duplicateParentKeys), 'exactement 2 paires doublons de contenu PARENT attendues (D-051/D-052, etait 4)');
     Assert::same(count($duplicateParentKeys), count(array_unique($duplicateParentKeys)), 'aucun doublon dans la liste figee elle-meme');
-    Assert::true(in_array('2:A:Z', $duplicateParentKeys, true), '2:A:Z doit figurer dans la liste figee (ZA)');
-    Assert::true(in_array('2:U:W', $duplicateParentKeys, true), '2:U:W doit figurer dans la liste figee (WU)');
+    Assert::true(!in_array('2:A:Z', $duplicateParentKeys, true), '2:A:Z ne doit plus figurer dans la liste figee depuis D-051/D-052 (DZ/OZ cassent la relation)');
+    Assert::true(!in_array('2:U:W', $duplicateParentKeys, true), '2:U:W ne doit plus figurer dans la liste figee depuis D-051/D-052 (WE/WI cassent la relation)');
     Assert::true(in_array('14:Q:U', $duplicateParentKeys, true), '14:Q:U doit figurer dans la liste figee (regle orthographique Q toujours suivi de U a cette longueur)');
     Assert::true(in_array('15:Q:U', $duplicateParentKeys, true), '15:Q:U doit figurer dans la liste figee (meme regle, longueur 15)');
 
@@ -224,10 +234,11 @@ return function (): void {
     }
 
     // Diagnostic : confirme que le pipeline a reellement examine des candidats (pas une liste vide
-    // par construction) -- 286 groupes / 1 064 membres attendus, tous verifies par empreinte, tous
-    // reellement distincts (0 collision reelle).
-    Assert::same(286, $candidateGroupsChecked, 'sanity check : 286 groupes candidats (meme longueur+compte, >= 2 membres) attendus sur le palier 2');
-    Assert::same(1064, $candidateMembersChecked, 'sanity check : 1 064 paires candidates au total attendues');
+    // par construction) -- 281 groupes / 1 084 membres attendus (revalide D-051/D-052, etait
+    // 286/1 064 sur 838 180 termes), tous verifies par empreinte, tous reellement distincts (0
+    // collision reelle).
+    Assert::same(281, $candidateGroupsChecked, 'sanity check : 281 groupes candidats (meme longueur+compte, >= 2 membres) attendus sur le palier 2 (D-051/D-052)');
+    Assert::same(1084, $candidateMembersChecked, 'sanity check : 1 084 paires candidates au total attendues (D-051/D-052)');
     Assert::same([], $computedSiblingExcludedPair, 'aucune collision reelle attendue apres verification par empreinte (0 divergence avec la liste figee vide)');
 
     // ============================================================================================
@@ -248,7 +259,7 @@ return function (): void {
     foreach ($expectedStatement as $row) {
         $expected[(string) $row['list_key']] = (int) $row['count'];
     }
-    Assert::same(4276, count($expected), 'sanity check : 4 276 lignes length_with_pair reelles (D-030)');
+    Assert::same(4320, count($expected), 'sanity check : 4 320 lignes length_with_pair reelles (D-030, D-051/D-052 -- etait 4 276 sur 838 180 termes)');
 
     // ========================================================================================
     // Doublons de contenu CROISES avec une famille EXTERIEURE (D-041, garde-fou structurel
@@ -311,7 +322,7 @@ return function (): void {
     // lignes eligibles, ni plus ni moins (chaque paire comptee UNE FOIS bien qu'accessible depuis
     // ses deux ancres palier 1).
     $expectedEligibleCount = count($expected) - count($excludedKeys);
-    Assert::same(4132, $expectedEligibleCount, 'sanity check : 4 132 lignes eligibles (4 276 brutes - 4 doublons de contenu PARENT - 0 doublon de contenu SOEUR - 140 doublons croises famille exterieure, 138 D-041 + 2 D-047)');
+    Assert::same(4178, $expectedEligibleCount, 'sanity check : 4 178 lignes eligibles (4 320 brutes - 2 doublons de contenu PARENT - 0 doublon de contenu SOEUR - 140 doublons croises famille exterieure, 138 D-041 + 2 D-047 -- D-051/D-052, etait 4 132/4 276)');
     Assert::same($expectedEligibleCount, $totalLinksProduced, 'total des paires distinctes produites doit egaler les lignes list_counts length_with_pair eligibles');
 
     // Sens 2 -> 1 : chaque ligne list_counts length_with_pair eligible reelle est produite par le
@@ -326,18 +337,17 @@ return function (): void {
     }
 
     // Consigne produit deja connue (D-030 : 132 combinaisons a exactement 1 resultat parmi les
-    // 4 276 lignes precalculees brutes), AJUSTEE apres exclusion des 4 doublons de contenu PARENT
-    // (dont 2 -- 2:A:Z et 2:U:W -- valent exactement 1 : 132 - 2 = 130), PUIS des 138 doublons
-    // croises famille exterieure (D-041, dont 122 valent exactement 1) : 130 - 122 = 8 restantes,
-    // GARDEES (meme consigne produit que tous les paliers "avec" precedents). D-047 (2026-08-31)
-    // ajoute 2 doublons croises supplementaires (3:P:Z compte 3, 7:J:W compte 2) -- NI l'un ni
-    // l'autre ne vaut exactement 1, le total de 8 reste inchange.
+    // 4 276 lignes precalculees brutes a 838 180 termes), REVALIDEE D-051/D-052 (2026-09-02, 844 961
+    // termes) plutot que supposee inchangee : le complement kaikki ajoute de nombreuses formes
+    // courtes/rares (toponymes, registre marque) qui creent de nouvelles combinaisons "avec 2
+    // lettres" a exactement 1 resultat -- recalcule directement depuis list_counts ci-dessus
+    // (aucune valeur portee a la main), PAS un ajustement arithmetique de l'ancien chiffre.
     $expectedExactlyOneEligible = 0;
     foreach ($expected as $key => $count) {
         if ($count === 1 && !isset($excludedKeys[$key])) {
             $expectedExactlyOneEligible++;
         }
     }
-    Assert::same(8, $expectedExactlyOneEligible, 'sanity check : 8 combinaisons eligibles a exactement 1 resultat (132 brutes - 2 doublons de contenu parent a 1 resultat - 122 doublons croises famille exterieure a 1 resultat)');
+    Assert::same(48, $expectedExactlyOneEligible, 'sanity check : 48 combinaisons eligibles a exactement 1 resultat apres D-051/D-052 (etait 8 sur 838 180 termes -- recalcule depuis list_counts, pas suppose)');
     Assert::same($expectedExactlyOneEligible, $exactlyOne, 'consigne produit deja connue (GARDEES, meme consigne que tous les paliers "avec" precedents)');
 };

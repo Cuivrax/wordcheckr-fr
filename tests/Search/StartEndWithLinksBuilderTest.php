@@ -118,17 +118,20 @@ return function (): void {
     // cites tels quels par l'audit, reproduits directement contre la vraie base.
     // ============================================================================================
 
-    // --- F:Q (longueur 3) ne contient que FAQ : "avec/a" est un doublon de contenu strict de la
-    // --- page parente /mots/commencant/f/terminant/q -- jamais produit par le builder. ---
+    // --- F:Q (longueur 3, historique a 838 180 termes) ne contenait que FAQ : "avec/a" etait un
+    // --- doublon de contenu strict de la page parente /mots/commencant/f/terminant/q. REVALIDE
+    // --- D-051/D-052 (2026-09-02) : le complement kaikki a ajoute FITEQ, FLQ, FTQ (des sigles) au
+    // --- panier F:Q, qui vaut desormais 4 mots -- seul FAQ contient A, la relation PARENT est
+    // --- CASSEE : "F:Q:A" doit desormais etre PRODUIT normalement (compte 1, FAQ seul). ---
     $linksFQ = $builder->build('F', 'Q');
     Assert::same(1, $linksFQ->queryCount);
     $letterA = array_values(array_filter($linksFQ->links, static fn (array $l): bool => $l['letter'] === 'A'));
-    Assert::true($letterA === [], 'F:Q:A est un doublon de contenu (FAQ est le seul mot, "avec/a" ne retire rien) -- ne doit jamais etre produit');
+    Assert::true(count($letterA) === 1 && $letterA[0]['count'] === 1, 'F:Q:A n\'est plus un doublon de contenu depuis D-051/D-052 (FITEQ/FLQ/FTQ cassent la relation) -- doit desormais etre produit avec compte 1 (FAQ seul)');
 
     $rawCountFQA = (int) $pdo->query("SELECT count FROM list_counts WHERE list_type = 'start_end_with' AND list_key = 'F:Q:A'")->fetch()['count'];
     $rawCountFQ = (int) $pdo->query("SELECT count FROM list_counts WHERE list_type = 'start_end' AND list_key = 'F:Q'")->fetch()['count'];
-    Assert::same(1, $rawCountFQ, 'sanity check : F:Q ne contient bien que FAQ (1 mot)');
-    Assert::same($rawCountFQ, $rawCountFQA, 'sanity check : F:Q:A existe dans list_counts (non degenere, F et A sont distincts) et vaut le meme total que F:Q');
+    Assert::same(4, $rawCountFQ, 'sanity check : F:Q vaut desormais 4 mots (FAQ, FITEQ, FLQ, FTQ -- D-051/D-052, etait 1)');
+    Assert::same(1, $rawCountFQA, 'sanity check : F:Q:A reste a 1 (FAQ seul) -- diverge desormais de F:Q (4), la relation PARENT est cassee');
 
     // --- X:O (longueur 5) ne contient que XIPHO : "avec/h", "avec/i" et "avec/p" sont TOUTES des
     // --- doublons de contenu strict, entre elles ET avec la page parente -- aucune des trois ne
@@ -155,10 +158,10 @@ return function (): void {
     // ============================================================================================
     $reflection = new ReflectionClass(StartEndWithLinksBuilder::class);
     $duplicateContentKeys = $reflection->getConstant('DUPLICATE_CONTENT_KEYS');
-    Assert::same(227, count($duplicateContentKeys), 'exactement 227 triples doublons de contenu attendus (audit consolide 2026-08-18)');
+    Assert::same(207, count($duplicateContentKeys), 'exactement 207 triples doublons de contenu attendus (audit consolide 2026-08-18, D-051/D-052, etait 227)');
     Assert::same(count($duplicateContentKeys), count(array_unique($duplicateContentKeys)), 'aucun doublon dans la liste figee elle-meme');
-    Assert::true(in_array('F:Q:A', $duplicateContentKeys, true), 'F:Q:A doit figurer dans la liste figee (exemple cite par l\'audit)');
-    Assert::true(in_array('X:O:H', $duplicateContentKeys, true), 'X:O:H doit figurer dans la liste figee (exemple cite par l\'audit)');
+    Assert::true(!in_array('F:Q:A', $duplicateContentKeys, true), 'F:Q:A ne doit plus figurer dans la liste figee depuis D-051/D-052 (FITEQ/FLQ/FTQ cassent la relation)');
+    Assert::true(in_array('X:O:H', $duplicateContentKeys, true), 'X:O:H doit figurer dans la liste figee (exemple cite par l\'audit, toujours valide)');
     Assert::true(in_array('X:O:I', $duplicateContentKeys, true), 'X:O:I doit figurer dans la liste figee (exemple cite par l\'audit)');
     Assert::true(in_array('X:O:P', $duplicateContentKeys, true), 'X:O:P doit figurer dans la liste figee (exemple cite par l\'audit)');
 
@@ -198,30 +201,44 @@ return function (): void {
     // ce point non bloquant) -- reports/query-plans/avec-doublons-soeurs-correctif.md.
     // ============================================================================================
     $siblingDuplicateKeys = $reflection->getConstant('SIBLING_DUPLICATE_KEYS');
-    Assert::same(428, count($siblingDuplicateKeys), 'exactement 428 cles doublons soeurs attendues (283 groupes, 169 paires affectees)');
+    Assert::same(446, count($siblingDuplicateKeys), 'exactement 446 cles doublons soeurs attendues (292 groupes, 172 paires affectees, D-051/D-052 -- etait 428/283/169)');
     Assert::same(count($siblingDuplicateKeys), count(array_unique($siblingDuplicateKeys)), 'aucun doublon dans la liste figee elle-meme (une lettre n\'appartient qu\'a un seul groupe)');
     $siblingDuplicateSet = array_fill_keys($siblingDuplicateKeys, true);
     // Verification de disjonction avec $degenerateKeys/$contentDuplicateKeys, et recalcul complet
     // independant (methodes A/B) : voir plus bas, une fois ces deux ensembles disponibles
     // (declares dans le bloc "Verification EXHAUSTIVE" ci-dessous).
 
-    // --- Exemple cite par la tache (paire A:B, 6 mots : AB, ACHEB, AEROCLUB, ANTIPUB, APLOMB,
-    // --- AUTOLUB) : "avec/c" et "avec/e" isolent EXACTEMENT le meme sous-ensemble {ACHEB,
-    // --- AEROCLUB} -- C (plus petite lettre) reste candidate, E est exclue. ---
-    Assert::true(in_array('A:B:E', $siblingDuplicateKeys, true), 'A:B:E doit figurer dans la liste figee (C et E isolent le meme sous-ensemble {ACHEB, AEROCLUB})');
+    // --- Exemple cite par la tache (paire A:B) REVALIDE D-051/D-052 (2026-09-02) : le complement
+    // --- kaikki a ajoute ACHAB au panier A:B (7 mots desormais : AB, ACHAB, ACHEB, AEROCLUB,
+    // --- ANTIPUB, APLOMB, AUTOLUB) -- ACHAB contient C mais pas E, ce qui CASSE l'ancienne relation
+    // --- C/E (historique a 838 180 termes) : C et E restent desormais toutes deux produites
+    // --- normalement. Une NOUVELLE relation soeur apparait a la place : "avec/l" et "avec/o"
+    // --- isolent EXACTEMENT {AEROCLUB, APLOMB, AUTOLUB} (L plus petite, O exclue). Un couple I/N
+    // --- isole lui aussi desormais {ANTIPUB} mais A:B:I est deja exclu par EXTERNAL_DUPLICATE_KEYS
+    // --- pour une raison sans rapport (D-041) -- non teste ici pour rester un exemple clair,
+    // --- non confondu avec un autre filtre. ---
+    Assert::true(!in_array('A:B:E', $siblingDuplicateKeys, true), 'A:B:E ne doit plus figurer dans la liste figee depuis D-051/D-052 (ACHAB casse la relation C/E)');
+    Assert::true(in_array('A:B:O', $siblingDuplicateKeys, true), 'A:B:O doit figurer dans la liste figee (L et O isolent le meme sous-ensemble {AEROCLUB, APLOMB, AUTOLUB}, D-051/D-052)');
     $linksAB = $builder->build('A', 'B');
     $letterC = array_values(array_filter($linksAB->links, static fn (array $l): bool => $l['letter'] === 'C'));
     $letterEinAB = array_values(array_filter($linksAB->links, static fn (array $l): bool => $l['letter'] === 'E'));
-    Assert::true($letterC !== [], 'C (lettre canonique du groupe, la plus petite alphabetiquement) doit rester dans la sortie du builder');
-    Assert::true($letterEinAB === [], 'E (doublon soeur de C sur A:B) ne doit plus etre produite par le builder');
+    $letterL = array_values(array_filter($linksAB->links, static fn (array $l): bool => $l['letter'] === 'L'));
+    $letterOinAB = array_values(array_filter($linksAB->links, static fn (array $l): bool => $l['letter'] === 'O'));
+    Assert::true($letterC !== [] && $letterEinAB !== [], 'C et E ne sont PLUS soeurs depuis D-051/D-052 -- toutes deux doivent rester dans la sortie du builder');
+    Assert::true($letterL !== [], 'L (lettre canonique du nouveau groupe, la plus petite alphabetiquement) doit rester dans la sortie du builder');
+    Assert::true($letterOinAB === [], 'O (doublon soeur de L sur A:B, D-051/D-052) ne doit plus etre produite par le builder');
     $wordsAB = $pdo->query(
         "SELECT normalized FROM terms WHERE substr(normalized,1,1) = 'A' AND substr(reversed,1,1) = 'B' ORDER BY normalized"
     )->fetchAll(PDO::FETCH_COLUMN);
-    Assert::same(['AB', 'ACHEB', 'AEROCLUB', 'ANTIPUB', 'APLOMB', 'AUTOLUB'], $wordsAB, 'sanity check : panier A:B exact, verifie sur pieces');
+    Assert::same(['AB', 'ACHAB', 'ACHEB', 'AEROCLUB', 'ANTIPUB', 'APLOMB', 'AUTOLUB'], $wordsAB, 'sanity check : panier A:B exact (D-051/D-052, etait 6 mots sans ACHAB), verifie sur pieces');
     $subsetC = array_values(array_filter($wordsAB, static fn (string $w): bool => str_contains($w, 'C')));
     $subsetE = array_values(array_filter($wordsAB, static fn (string $w): bool => str_contains($w, 'E')));
-    Assert::same(['ACHEB', 'AEROCLUB'], $subsetC, 'sanity check : sous-ensemble "avec c" de A:B');
-    Assert::same(['ACHEB', 'AEROCLUB'], $subsetE, 'sanity check : sous-ensemble "avec e" de A:B -- identique au sous-ensemble "avec c"');
+    $subsetL = array_values(array_filter($wordsAB, static fn (string $w): bool => str_contains($w, 'L')));
+    $subsetO = array_values(array_filter($wordsAB, static fn (string $w): bool => str_contains($w, 'O')));
+    Assert::same(['ACHAB', 'ACHEB', 'AEROCLUB'], $subsetC, 'sanity check : sous-ensemble "avec c" de A:B (ACHAB ajoute par D-051/D-052)');
+    Assert::same(['ACHEB', 'AEROCLUB'], $subsetE, 'sanity check : sous-ensemble "avec e" de A:B -- desormais DIFFERENT du sous-ensemble "avec c" (ACHAB n\'a pas de E)');
+    Assert::same(['AEROCLUB', 'APLOMB', 'AUTOLUB'], $subsetL, 'sanity check : sous-ensemble "avec l" de A:B');
+    Assert::same(['AEROCLUB', 'APLOMB', 'AUTOLUB'], $subsetO, 'sanity check : sous-ensemble "avec o" de A:B -- identique au sous-ensemble "avec l"');
 
     // --- Cas rare, panier de 4 mots (cas representatif non nul du balayage complet,
     // --- reports/query-plans/commencant-terminant-avec-full-sweep.md). ---
@@ -264,7 +281,7 @@ return function (): void {
     foreach ($pairsStatement as $row) {
         $pairs[] = explode(':', (string) $row['list_key'], 2);
     }
-    Assert::same(611, count($pairs), 'sanity check : 611 paires commencant+terminant reelles (D-024)');
+    Assert::same(632, count($pairs), 'sanity check : 632 paires commencant+terminant reelles (D-024, D-051/D-052 -- etait 611)');
 
     $expectedStatement = $pdo->query("SELECT list_key, count FROM list_counts WHERE list_type = 'start_end_with'");
     $expected = [];
@@ -278,8 +295,8 @@ return function (): void {
             $degenerateKeys[$key] = true;
         }
     }
-    Assert::same(11348, count($expected), 'sanity check : 11 348 lignes start_end_with reelles, precalcul brut inchange (commencant-terminant-avec-maillage.md)');
-    Assert::same(1198, count($degenerateKeys), 'sanity check : 1 198 lignes degenerees (lettre "avec" = debut ou fin) parmi les 11 348, mesure directe D-032');
+    Assert::same(11964, count($expected), 'sanity check : 11 964 lignes start_end_with reelles (D-051/D-052, etait 11 348)');
+    Assert::same(1239, count($degenerateKeys), 'sanity check : 1 239 lignes degenerees (lettre "avec" = debut ou fin) parmi les 11 964, D-051/D-052 -- etait 1 198/11 348');
 
     $contentDuplicateKeys = array_fill_keys($duplicateContentKeys, true);
     Assert::same(0, count(array_intersect_key($degenerateKeys, $contentDuplicateKeys)), 'DUPLICATE_CONTENT_KEYS et les lignes degenerees D-032 doivent rester deux ensembles disjoints (perimetres distincts par construction)');
@@ -426,7 +443,7 @@ return function (): void {
     // non repetee ici pour rester dans un budget de test raisonnable (101 383 couples au total).
     // ========================================================================================
     $crossDuplicateKeys = $reflection->getConstant('CROSS_DUPLICATE_LENGTH_KEYS');
-    Assert::same(333, count($crossDuplicateKeys), 'exactement 333 doublons croises attendus (3e audit consolide, 2026-08-19)');
+    Assert::same(354, count($crossDuplicateKeys), 'exactement 354 doublons croises attendus (3e audit consolide, 2026-08-19, D-051/D-052 -- etait 333)');
     Assert::same(count($crossDuplicateKeys), count(array_unique($crossDuplicateKeys)), 'aucun doublon dans la liste figee elle-meme');
     $crossDuplicateSet = array_fill_keys($crossDuplicateKeys, true);
     Assert::same(0, count(array_intersect_key($crossDuplicateSet, $degenerateKeys)), 'CROSS_DUPLICATE_LENGTH_KEYS et les lignes degenerees D-032 doivent rester deux ensembles disjoints');
@@ -600,7 +617,7 @@ return function (): void {
     // deja verifie ligne par ligne ci-dessus. Volume total : exactement les lignes eligibles, ni
     // plus ni moins.
     $expectedEligibleCount = count($expected) - count($excludedKeys);
-    Assert::same(8824, $expectedEligibleCount, 'sanity check : 8 824 lignes eligibles (11 348 brutes - 1 198 degenerees D-032 - 227 doublons de contenu PARENT D-037 - 428 doublons de contenu SOEUR I-A - 333 doublons de contenu CROISES CORRECTIF 3 - 338 doublons croises famille exterieure, 314 D-041 + 24 D-047)');
+    Assert::same(9380, $expectedEligibleCount, 'sanity check : 9 380 lignes eligibles (11 964 brutes - 1 239 degenerees D-032 - 207 doublons de contenu PARENT D-037 - 446 doublons de contenu SOEUR I-A - 354 doublons de contenu CROISES CORRECTIF 3 - 338 doublons croises famille exterieure, 314 D-041 + 24 D-047 -- D-051/D-052, etait 8 824)');
     Assert::same($expectedEligibleCount, $totalLinksProduced, 'total des liens produits doit egaler les lignes list_counts start_end_with eligibles (ni degenerees ni doublons de contenu parent/soeur/croise)');
     Assert::same($expectedEligibleCount, count($producedKeys), 'aucun doublon, chaque cle eligible produite une seule fois');
 
@@ -618,24 +635,18 @@ return function (): void {
     }
 
     // Consigne produit deja connue (rapport de balayage complet, commencant-terminant-avec-full-
-    // sweep.md), AJUSTEE apres exclusion des lignes degenerees (D-032), PUIS des doublons de
-    // contenu PARENT (D-037), PUIS des doublons de contenu SOEUR (I-A), PUIS des doublons de
-    // contenu CROISES (CORRECTIF 3), PUIS des doublons croises famille exterieure (D-041 + D-047) :
-    // 1 638 combinaisons a exactement 1 resultat parmi les 11 348 lignes precalculees brutes,
-    // dont 91 degenerees (D-032), 162 doublons de contenu parent a exactement 1 resultat (parmi
-    // les 227, ex. F:Q:A -- FAQ est le seul mot ET F:Q ne contient qu'un mot), 325 doublons de
-    // contenu soeur a exactement 1 resultat (parmi les 428, ex. X:M:D/E/H/I/N/O/U -- XENODOCHIUM
-    // est le seul mot du sous-ensemble partage par ces sept lettres), 306 doublons de contenu
-    // croises a exactement 1 resultat (parmi les 333, ex. X:M:A -- XALAM est le seul mot partage
-    // avec la page longueur), et 329 doublons croises famille exterieure a exactement 1 resultat
-    // (306 parmi les 314 D-041, + 23 parmi les 24 D-047 -- un seul, D:P:C, a plus d'un mot) --
-    // 1 638 - 91 - 162 - 325 - 306 - 329 = 425 restantes, effectivement produites par le builder.
+    // sweep.md, valable a 838 180 termes), REVALIDEE D-051/D-052 (2026-09-02, 844 961 termes)
+    // plutot que supposee inchangee : le complement kaikki ajoute de nombreuses formes courtes
+    // (sigles, toponymes) qui creent de nouvelles combinaisons "commencant+terminant+avec" a
+    // exactement 1 resultat -- recalcule directement depuis list_counts ci-dessus (aucune valeur
+    // portee a la main), PAS un ajustement arithmetique de l'ancien chiffre (etait 425 sur 838 180
+    // termes).
     $expectedExactlyOneEligible = 0;
     foreach ($expected as $key => $count) {
         if ($count === 1 && !isset($excludedKeys[$key])) {
             $expectedExactlyOneEligible++;
         }
     }
-    Assert::same(425, $expectedExactlyOneEligible, 'sanity check : 425 combinaisons eligibles a exactement 1 resultat (1 638 brutes - 91 degenerees - 162 doublons de contenu parent - 325 doublons de contenu soeur - 306 doublons de contenu croises - 329 doublons croises famille exterieure, 306 D-041 + 23 D-047)');
+    Assert::same(587, $expectedExactlyOneEligible, 'sanity check : 587 combinaisons eligibles a exactement 1 resultat apres D-051/D-052 (etait 425 sur 838 180 termes -- recalcule depuis list_counts, pas suppose)');
     Assert::same($expectedExactlyOneEligible, $exactlyOne, 'consigne produit deja connue (GARDEES, meme consigne que tous les paliers "avec" precedents)');
 };

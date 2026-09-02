@@ -45,7 +45,7 @@ final class AvecTwoLettersLinksBuilder
     private static ?array $externalDuplicateKeySet = null;
 
     /**
-     * Les 4 triples (longueur, lettre1, lettre2) a contenu strictement DUPLIQUE avec l'une de leurs
+     * Les 2 triples (longueur, lettre1, lettre2) a contenu strictement DUPLIQUE avec l'une de leurs
      * deux pages parentes palier 1 (/mots/{N}-lettres/avec/{lettre1} OU .../avec/{lettre2}) --
      * meme patron que App\Search\StartEndWithLinksBuilder::DUPLICATE_CONTENT_KEYS (D-037) : une
      * ligne list_counts 'length_with_pair' "{N}:{X}:{Y}" est un doublon de contenu SI ET SEULEMENT
@@ -53,33 +53,41 @@ final class AvecTwoLettersLinksBuilder
      * "{N}:{Y}" -- ca signifie que TOUS les mots contenant {X} (ou {Y}) a cette longueur contiennent
      * deja l'autre lettre, ajouter la seconde contrainte "avec" ne retire aucun mot.
      *
-     * Exemples trouves, tous verifies contre des exemples cites explicitement par la demande
-     * d'analyse (0 divergence) : 2:A:Z (ZA, seul mot de 2 lettres avec Z, contient deja A) ;
-     * 2:U:W (WU, seul mot de 2 lettres avec W, contient deja U) ; 14:Q:U et 15:Q:U (regle
-     * orthographique du francais -- aucun mot de 14 ou 15 lettres ne contient Q sans U, alors que
-     * ce n'est pas vrai aux longueurs plus courtes, ex. COQ).
+     * Exemples restants, tous verifies contre des exemples cites explicitement par la demande
+     * d'analyse (0 divergence) : 14:Q:U et 15:Q:U (regle orthographique du francais -- aucun mot
+     * de 14 ou 15 lettres ne contient Q sans U, alors que ce n'est pas vrai aux longueurs plus
+     * courtes, ex. COQ).
+     *
+     * REVALIDATION D-051/D-052 (2026-09-02, 838 180 -> 844 961 termes) : 2:A:Z (ZA) et 2:U:W (WU)
+     * SONT SORTIES de cette liste -- le complement kaikki (D-051) a ajoute DZ et OZ (2 lettres,
+     * contiennent Z sans A) et WE/WI (2 lettres, contiennent W sans U), cassant les deux relations
+     * PARENT (le panier "2 lettres avec Z" vaut desormais 3 mots dont 2 sans A, le panier "2
+     * lettres avec W" vaut desormais 4 mots dont 2 sans U -- ni l'un ni l'autre n'egale plus le
+     * panier "avec Z"/"avec W" a 2 lettres seul). Confirme par la monotonie de l'ajout de mots
+     * (AJOUTE uniquement, jamais de retrait, D-051) : une relation PARENT ne peut que se BRISER en
+     * ajoutant des mots, jamais apparaitre a neuf -- aucune recherche de nouveaux cas necessaire au-
+     * dela d'une revalidation des cles deja figees.
      *
      * Verifie par DEUX methodes independantes : 1. comparaison list_counts ('length_with_pair' vs
-     * 'length_with', count enfant === count parent), sur les 4 276 lignes reelles du palier 2 ;
+     * 'length_with', count enfant === count parent), sur les 4 320 lignes reelles du palier 2 ;
      * 2. recompute direct et independant depuis `terms` (scan longueur par longueur, comptage des
-     * lettres uniques par mot, sans jamais lire list_counts) -- 4 trouvees, 0 divergence entre les
+     * lettres uniques par mot, sans jamais lire list_counts) -- 2 trouvees, 0 divergence entre les
      * deux methodes. Sanity supplementaire : les comptes recalcules directement depuis `terms`
-     * matchent EXACTEMENT list_counts sur les 364 + 4 276 + 28 827 lignes 'length_with'/
-     * 'length_with_pair'/'length_with_triple' (0 mismatch), la source precalculee est fiable.
+     * matchent EXACTEMENT list_counts sur les 364 + 4 320 lignes 'length_with'/'length_with_pair'
+     * (0 mismatch), la source precalculee est fiable.
      *
      * La cle est exactement le `list_key` tel que stocke dans list_counts ("{N}:{X}:{Y}",
      * X < Y alphabetiquement, D-030) -- comparee directement a $row['list_key'] dans build()
      * ci-dessous, jamais reconstruite a la main.
      *
-     * Liste figee : valable pour l'etat actuel de storage/dictionary_fr.sqlite (838 180 termes,
-     * inchange depuis D-022, integrity_check = ok). Une reconstruction future de la base devra
-     * revalider cette liste (meme avertissement que DUPLICATE_CONTENT_KEYS/DUPLICATE_START_END_KEYS
-     * ailleurs dans ce projet).
+     * Liste figee : valable pour l'etat actuel de storage/dictionary_fr.sqlite (844 961 termes,
+     * D-051/D-052). Une reconstruction future de la base devra revalider cette liste (meme
+     * avertissement que DUPLICATE_CONTENT_KEYS/DUPLICATE_START_END_KEYS ailleurs dans ce projet).
      *
      * @var list<string>
      */
     private const DUPLICATE_PARENT_KEYS = [
-        '14:Q:U', '15:Q:U', '2:A:Z', '2:U:W',
+        '14:Q:U', '15:Q:U',
     ];
 
     /**
@@ -87,13 +95,14 @@ final class AvecTwoLettersLinksBuilder
      * longueur produisant exactement le meme ensemble de mots, ni l'une ni l'autre deja exclue par
      * DUPLICATE_PARENT_KEYS ci-dessus) -- meme classe de defaut que
      * App\Search\StartEndWithLinksBuilder::SIBLING_DUPLICATE_KEYS (D-038), recherchee ici de la
-     * meme facon : regroupement par (longueur, count) parmi les 4 272 paires survivantes du filtre
+     * meme facon : regroupement par (longueur, count) parmi les 4 318 paires survivantes du filtre
      * parent (necessaire mais pas suffisant, deux ensembles distincts peuvent partager un compte),
      * PUIS verification par empreinte SQL GROUP_CONCAT (liste triee des mots concernes, comparaison
-     * de chaines completes, aucun hash, aucune collision possible) sur les 286 groupes candidats
-     * (1 064 paires) trouves par ce premier tri.
+     * de chaines completes, aucun hash, aucune collision possible) sur les 281 groupes candidats
+     * (1 084 paires, revalide D-051/D-052 -- etait 286/1 064 sur 838 180 termes) trouves par ce
+     * premier tri.
      *
-     * Resultat : LISTE VOLONTAIREMENT VIDE -- 0 collision reelle trouvee sur les 1 064 candidates
+     * Resultat : LISTE VOLONTAIREMENT VIDE -- 0 collision reelle trouvee sur les 1 084 candidates
      * verifiees par empreinte (contrairement au palier 3, voir
      * App\Search\AvecThreeLettersLinksBuilder::SIBLING_DUPLICATE_KEYS, ou 234 collisions reelles
      * existent). Mecanisme garde en place pour la coherence de forme avec les autres builders de
@@ -138,8 +147,19 @@ final class AvecTwoLettersLinksBuilder
      * générer des liens internes VIVANTS vers ces pages devenues noindex,follow (violation R5,
      * même défaut confirmé sur AvecThreeLettersLinksBuilder). Voir docs/DECISIONS.md D-047/D-048.
      *
-     * Liste figée : valable pour l'état actuel de storage/dictionary_fr.sqlite (838 180 termes,
-     * inchangé depuis D-022). Une reconstruction future de la base devra revalider cette liste.
+     * Liste figée : valable pour l'état actuel de storage/dictionary_fr.sqlite au moment de sa
+     * construction (838 180 termes, D-022 à D-048). PAS REVALIDÉE par le passage à 844 961 termes
+     * (D-051/D-052, 2026-09-02) : cette liste dépend du registre SEO complet (storage/
+     * seo_fr.sqlite, scripts/check_combinatorial_duplicates.php balaie TOUTES les familles
+     * combinatoires pour trouver l'adversaire exact de chaque clé), qui n'est reconstruit et
+     * revalidé pour 844 961 termes que séparément (hors périmètre data-engine à ce stade, voir
+     * docs/DECISIONS.md D-051/D-052). Choix délibéré et documenté plutôt qu'une estimation : dans
+     * les deux sens possibles d'une erreur ici, laisser une clé DEDANS alors qu'elle ne serait
+     * plus dupliquée coûte au plus quelques liens internes manqués (aucun risque SEO), retirer à
+     * tort une clé encore réellement dupliquée réintroduirait un lien vivant vers une page
+     * noindex (violation R5, exactement le défaut trouvé et corrigé une première fois par D-047)
+     * -- cette liste reste donc INCHANGÉE ici, à revalider par un balayage générique complet dès
+     * que le registre sera reconstruit pour 844 961 termes.
      *
      * @var list<string>
      */

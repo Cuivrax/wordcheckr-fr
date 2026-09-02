@@ -24,6 +24,11 @@ use Tests\Support\Assert;
  * supplementaires) -- balayage generique complet post-D-045/D-046
  * (scripts/check_combinatorial_duplicates.php), doublons croises avec commencant/terminant.
  * D041_EXCLUDED_ROUTE_PATHS['word_list_position'] passe de 2 a 24 entrees.
+ *
+ * D-051 (2026-09-02) : le complement kaikki fait apparaitre 2 nouvelles positions a >= 1
+ * resultat (non couvertes par les 24 exclusions D-047, qui restent inchangees) -- 2 305 ->
+ * 2 307 lignes. batch_id/added_at restent FIXES (regularisation d'un lot deja applique, meme
+ * convention que les correctifs precedents de cette serie).
  */
 return function (): void {
     $root = __DIR__ . '/../..';
@@ -45,7 +50,7 @@ return function (): void {
     $exitCode = proc_close($process);
 
     Assert::same(0, $exitCode, "propose_seo_batch.php position aurait du reussir : {$stderr}");
-    Assert::true(str_contains($stderr, '2305 ligne(s) proposee(s)'), $stderr);
+    Assert::true(str_contains($stderr, '2307 ligne(s) proposee(s)'), $stderr);
 
     $tmpFile = tempnam(sys_get_temp_dir(), 'position_batch_');
     file_put_contents($tmpFile, $stdout);
@@ -55,7 +60,8 @@ return function (): void {
 
         Assert::same('position-full-2026-08-11', $batch['batch_id'], 'batch_id fixe attendu (regularisation, pas une nouvelle proposition)');
         Assert::same('2026-08-10', $batch['added_at']);
-        Assert::same(2305, count($batch['rows']), '2 329 (D-028) moins 2 (D-041) moins 22 (D-047), doublons croises avec d\'autres familles combinatoires');
+        // D-051 (2026-09-02) : remesure directe apres complement kaikki (2 positions liberees).
+        Assert::same(2307, count($batch['rows']), '2 329 (D-028) moins 2 (D-041) moins 22 (D-047), plus 2 (D-051, complement kaikki, nouvelles positions a >= 1 resultat)');
 
         // --- Aucune position degeneree (1re ou derniere lettre, deja collapsee vers
         // --- commencant/terminant par WordListFilters::fromPath(), D-023). ---
@@ -85,7 +91,8 @@ return function (): void {
         // --- reports/query-plans/position-family.md). ---
         $sample = array_values(array_filter($batch['rows'], static fn (array $r): bool => $r['route_path'] === '/mots/9-lettres/position/3/a'));
         Assert::true(count($sample) === 1);
-        Assert::same(7992, $sample[0]['result_count'], 'total deja mesure dans reports/query-plans/position-family.md');
+        // D-051 (2026-09-02) : remesure directe, complement kaikki (etait 7992).
+        Assert::same(8051, $sample[0]['result_count'], 'total remesure D-051, etait 7992 (reports/query-plans/position-family.md, base pre-kaikki)');
     } finally {
         unlink($tmpFile);
     }

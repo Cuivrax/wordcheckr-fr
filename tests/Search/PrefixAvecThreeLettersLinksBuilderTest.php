@@ -52,8 +52,8 @@ return function (): void {
     $reflection = new ReflectionClass(PrefixAvecThreeLettersLinksBuilder::class);
     $duplicateParentKeys = $reflection->getConstant('DUPLICATE_PARENT_KEYS');
     $siblingDuplicateKeys = $reflection->getConstant('SIBLING_DUPLICATE_KEYS');
-    Assert::same(3810, count($duplicateParentKeys), 'exactement 3810 doublons parent attendus (D-045)');
-    Assert::same(1909, count($siblingDuplicateKeys), 'exactement 1909 doublons soeurs attendus (D-045)');
+    Assert::same(3543, count($duplicateParentKeys), 'exactement 3543 doublons parent attendus (D-045, D-051/D-052 -- etait 3810)');
+    Assert::same(2042, count($siblingDuplicateKeys), 'exactement 2042 doublons soeurs attendus (D-045, D-051/D-052 -- etait 1909)');
     Assert::same(count($duplicateParentKeys), count(array_unique($duplicateParentKeys)), 'aucun doublon dans la liste figee elle-meme');
     Assert::same(count($siblingDuplicateKeys), count(array_unique($siblingDuplicateKeys)), 'aucun doublon dans la liste figee elle-meme');
     Assert::same(0, count(array_intersect($duplicateParentKeys, $siblingDuplicateKeys)), 'les deux listes doivent rester disjointes');

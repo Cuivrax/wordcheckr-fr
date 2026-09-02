@@ -26,6 +26,17 @@ namespace App\Search;
  * codes (N, V, Adj, Adv, Pronom, Prep, Conj, Interj, Art). gender : 'm', 'f' ou 'e'
  * (epicene -- meme forme aux deux genres, ex. ENFANT, ELEVE), jamais associe a un pos
  * autre que N.
+ *
+ * nonAdmittedCategory (D-054) : categorie du complement kaikki (D-051), jeu ferme de 10
+ * valeurs ('proper_noun', 'acronym', 'archaic', 'colloquial', 'dated', 'dialectal',
+ * 'literary', 'obsolete', 'regional', 'slang'), destinee UNIQUEMENT au choix d'une phrase
+ * "Reponse Directe" plus specifique sur la fiche d'un mot francais non admis (ticket
+ * frontend separe, app/View/word.php -- pas encore branche a la date de ce commentaire).
+ * Non NULL uniquement pour les 6 781 formes creees par le complement kaikki (D-051) : NULL
+ * pour tout terme admis (is_ods8/is_ods9) et pour les 435 120 formes francaises non
+ * admises anterieures a D-051 (Kartmaan/hbenbel) -- absence de donnee, pas une erreur,
+ * meme convention que pos/posSecondary/gender ci-dessus. Ne touche jamais le calcul
+ * is_ods8/is_ods9/is_french : le modele a trois statuts (CLAUDE.md) reste ferme.
  */
 final class TermPage
 {
@@ -45,6 +56,8 @@ final class TermPage
      * @param string|null $posSecondary second sens grammaticale distinct, si l'homographe
      *        en porte un (ex. TABLE : pos=N, posSecondary=V)
      * @param string|null $gender 'm', 'f' ou 'e', null si non applicable ou non couvert
+     * @param string|null $nonAdmittedCategory categorie du complement kaikki (D-051/D-054),
+     *        null pour un terme admis ou une forme non admise anterieure a D-051
      */
     public function __construct(
         public readonly string $normalized,
@@ -61,6 +74,7 @@ final class TermPage
         public readonly ?string $pos = null,
         public readonly ?string $posSecondary = null,
         public readonly ?string $gender = null,
+        public readonly ?string $nonAdmittedCategory = null,
     ) {
     }
 }

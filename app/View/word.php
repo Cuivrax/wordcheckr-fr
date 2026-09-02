@@ -16,6 +16,12 @@ declare(strict_types=1);
  * QUEULEULEU par GHOSTER) ; la phrase "unknown" est un texte fonctionnel minimal,
  * a confirmer par l'agent microcopy.
  *
+ * french_not_admitted (D-054) : la phrase "Reponse Directe" varie selon
+ * $page->nonAdmittedCategory (D-051, jeu ferme de 10 valeurs -- jamais affichee brute a
+ * l'utilisateur, toujours une des 10 phrases dediees ou la phrase generique de repli).
+ * NULL pour un mot admis et pour les 435 120 formes francaises non admises anterieures a
+ * D-051 -- repli sur la phrase generique existante dans ce cas, aucune regression.
+ *
  * Relations (Phase 4) : dix categories, seules les non vides sont rendues (voir
  * app/Search/TermRelations.php pour le contrat exact). Le surlignage <mark> de la partie
  * conservee/modifiee est calcule ici par simple comparaison de chaines entre le mot pivot
@@ -35,9 +41,15 @@ declare(strict_types=1);
  * feasibility-audit.md) : $senses n'est jamais null pour un mot TROUVE, mais $senses->senses
  * est vide pour la tres grande majorite des termes tant que le lot reste un pilote partiel --
  * aucune section rendue dans ce cas, meme convention que le reste de la fiche. Des qu'au moins
- * un sens existe, la ligne $posLine (une phrase compacte) devient redondante avec les cartes
- * de sens (qui portent deja pos/genre chacune) -- $posLine n'est alors PAS rendue, evite de
- * dire deux fois la meme chose de deux facons differentes sur la meme page.
+ * un sens existe, $posLine (une phrase compacte de nature grammaticale) devient redondante avec
+ * les cartes de sens (qui portent deja pos/genre chacune) -- $posLine n'est alors PAS rendue,
+ * evite de dire deux fois la meme chose de deux facons differentes sur la meme page. Quand
+ * $posLine EST rendue (aucun sens), elle reutilise le markup .sense-card/.sense-meta/.sense-
+ * label/.sense-pos d'une vraie carte de sens plutot qu'un composant .pos-line distinct -- retour
+ * utilisateur : la typo doit etre identique, pas seulement similaire, ce qui n'est garanti que
+ * si c'est litteralement le meme CSS qui s'applique (voir bloc d'impression plus bas). Seule
+ * difference : le libelle ("Nature Grammaticale" au lieu de "Définition") et l'absence de
+ * .sense-text (il n'y a pas de definition a montrer dans ce cas).
  */
 
 require __DIR__ . '/helpers.php';
@@ -52,6 +64,27 @@ use App\Search\WordSenses;
 /** @var \App\Search\TermRelations|null $relations */
 /** @var Conjugation $conjugation */
 /** @var WordSenses $senses */
+
+// D-054 : phrase "Reponse Directe" specifique selon $page->nonAdmittedCategory (D-051,
+// jeu ferme de 10 valeurs, jamais affiche brut a l'utilisateur -- toujours une des phrases
+// ci-dessous). Repli sur la phrase generique quand nonAdmittedCategory est NULL (435 120
+// formes anterieures a D-051 + tout mot dont la categorie n'a pas encore ete renseignee).
+$notAdmittedGenericPhrase = '%s existe en français, mais ce mot n’est pas admis dans le dictionnaire officiel du Scrabble.';
+$notAdmittedPhrasesByCategory = [
+    'proper_noun' => '%s est un nom propre — les noms propres ne sont jamais admis au Scrabble, quelle que soit leur notoriété.',
+    'acronym' => '%s est un sigle ou une abréviation, pas un mot du dictionnaire — les sigles ne sont pas admis au Scrabble.',
+    'slang' => '%s est un mot d’argot, absent des dictionnaires officiels du Scrabble.',
+    'colloquial' => '%s est un mot familier, non répertorié dans les dictionnaires officiels du Scrabble.',
+    'regional' => '%s est un régionalisme, employé dans certaines régions mais absent des dictionnaires officiels du Scrabble.',
+    'dialectal' => '%s est un mot dialectal, propre à un parler régional, non répertorié dans les dictionnaires officiels du Scrabble.',
+    'archaic' => '%s est une graphie ancienne, tombée en désuétude — les dictionnaires actuels du Scrabble ne la reconnaissent pas.',
+    'dated' => '%s est un mot vieilli, tombé en désuétude, absent des dictionnaires actuels du Scrabble.',
+    'obsolete' => '%s est une ancienne orthographe, remplacée depuis par une autre graphie, non reconnue par les dictionnaires actuels du Scrabble.',
+    'literary' => '%s est un mot littéraire rare, absent des dictionnaires officiels du Scrabble.',
+];
+$notAdmittedPhraseFormat = $page->nonAdmittedCategory !== null
+    ? ($notAdmittedPhrasesByCategory[$page->nonAdmittedCategory] ?? $notAdmittedGenericPhrase)
+    : $notAdmittedGenericPhrase;
 
 $statusMeta = match ($page->status) {
     TermPage::STATUS_ADMITTED => [
@@ -69,10 +102,7 @@ $statusMeta = match ($page->status) {
         'modifier' => 'not-admitted',
         'badge' => 'Non Admis',
         'subtitle' => 'Vous ne pouvez pas le jouer.',
-        'direct' => sprintf(
-            '%s existe en français, mais ce mot n’est pas admis dans le dictionnaire officiel du Scrabble.',
-            $page->normalized,
-        ),
+        'direct' => sprintf($notAdmittedPhraseFormat, $page->normalized),
         'title' => sprintf('Non, %s N’est Pas Admis Au Scrabble', $page->normalized),
     ],
     default => [
@@ -296,7 +326,9 @@ $genderLabels = ['m' => 'masculin', 'f' => 'féminin', 'e' => 'épicène'];
 
 // $posLine reste le repli quand aucune definition n'existe encore pour ce terme (lot
 // partiel, D-0XX) -- des qu'au moins un sens existe, chaque carte de sens porte deja son
-// propre pos/genre : $posLine deviendrait une redite, elle n'est alors pas construite.
+// propre pos/genre : $posLine deviendrait une redite, elle n'est alors pas construite. Le
+// texte calcule ici est imprime plus bas dans le meme markup .sense-card qu'une vraie carte
+// de sens (voir doc de tete) -- rien a changer ici, seule l'impression differe.
 $posLine = null;
 if ($senses->senses === [] && $page->pos !== null && isset($posLabels[$page->pos])) {
     $posLine = $posLabels[$page->pos];
@@ -481,7 +513,9 @@ $conjugationHeading = $conjugation->asLemma !== [] ? 'Se Conjugue' : 'Conjugaiso
       <h2>Réponse Directe</h2>
       <p><?= e($statusMeta['direct']) ?></p>
 <?php if ($posLine !== null): ?>
-      <p class="pos-line"><?= e($posLine) ?></p>
+      <div class="sense-card">
+        <p class="sense-meta"><span class="sense-label">Nature Grammaticale</span> <span class="sense-pos"><?= e($posLine) ?></span></p>
+      </div>
 <?php endif; ?>
     </section>
 

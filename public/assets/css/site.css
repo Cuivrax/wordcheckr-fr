@@ -757,6 +757,17 @@ select:focus-visible {
   margin-top: 8px;
 }
 
+/* Nature grammaticale + genre (D-018), repli quand $senses->senses est vide (voir
+   app/View/word.php) : rendue avec le markup .sense-card/.sense-meta/.sense-label/.sense-pos
+   d'une vraie carte de sens (regle plus bas) -- meme CSS applique, typo strictement identique
+   entre les deux cas, jamais une regle dupliquee ici. .sense-card n'a par defaut de marge que
+   via le gap de son parent .word-senses (flex) ; nichee directement dans .direct (pas de flex
+   gap ici), elle a besoin de son propre ecart avec le paragraphe de reponse directe juste
+   au-dessus -- meme valeur que .direct p + p ci-dessus, pas une nouvelle regle de surface. */
+.direct .sense-card {
+  margin-top: 8px;
+}
+
 /* Pages legales (/mentions-legales, /confidentialite) : sommaire ancre et listes a puces,
    meme typographie que .direct p -- pas de nouveau motif visuel, juste une liste plutot
    qu'un paragraphe la ou une enumeration est plus lisible. */
@@ -796,15 +807,6 @@ select:focus-visible {
   }
 }
 
-/* Nature grammaticale + genre (D-018) -- ligne discrete, une seule, dans le bloc
-   "Reponse directe". */
-.pos-line {
-  margin-top: 8px;
-  font-weight: 600;
-  color: var(--ink);
-  font-size: 0.86rem;
-}
-
 /* Definitions (D-0XX) -- une carte par sens, meme discipline "pas de section vide" que le
    reste de la fiche (app/View/word.php n'imprime cette section que si $senseCards !== []).
    .word-senses reprend le gabarit de section deja etabli (padding 20px 24px, border-bottom,
@@ -822,6 +824,10 @@ select:focus-visible {
   gap: 12px;
 }
 
+/* Deux points d'appel dans app/View/word.php : la boucle de cartes de sens ci-dessous
+   (.word-senses > .sense-card, avec .sense-text) et le repli nature grammaticale/genre
+   dans .direct quand $senses->senses est vide (.direct > .sense-card, sans .sense-text) --
+   volontairement la meme regle pour les deux, aucune variante. */
 .sense-card {
   background: var(--page);
   border: 1px solid var(--line);

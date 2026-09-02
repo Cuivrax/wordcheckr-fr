@@ -68,7 +68,20 @@ CREATE TABLE terms (
     pos_secondary TEXT DEFAULT NULL
         CHECK (pos_secondary IN ('N','V','Adj','Adv','Pronom','Prep','Conj','Interj','Art') OR pos_secondary IS NULL),
     gender        TEXT DEFAULT NULL
-        CHECK (gender IN ('m','f','e') OR gender IS NULL)
+        CHECK (gender IN ('m','f','e') OR gender IS NULL),
+
+    -- D-054 : categorie du complement kaikki (D-051), utilisee UNIQUEMENT pour choisir la
+    -- phrase "Reponse Directe" d'un mot francais non admis -- ne touche jamais le calcul
+    -- is_ods8/is_ods9/is_french lui-meme, le modele a trois statuts (CLAUDE.md) reste ferme.
+    -- 'proper_noun' pour le lot names_definitions_final.csv (D-051), les 9 autres valeurs
+    -- pour la colonne `tag` de register_definitions_final.csv (D-051). NULL pour les 435 120
+    -- formes francaises non admises anterieures a D-051 (hbenbel/Kartmaan) et pour tout mot
+    -- admis -- absence de donnee, pas une erreur (meme convention que pos/gender ci-dessus).
+    non_admitted_category TEXT DEFAULT NULL
+        CHECK (non_admitted_category IN (
+            'proper_noun','acronym','archaic','colloquial','dated','dialectal','literary',
+            'obsolete','regional','slang'
+        ) OR non_admitted_category IS NULL)
 );
 
 -- La contrainte UNIQUE sur normalized crée déjà son propre index.

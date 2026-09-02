@@ -85,7 +85,7 @@ return function (): void {
     foreach ($expectedStatement as $row) {
         $expected[(string) $row['list_key']] = (int) $row['count'];
     }
-    Assert::same(621, count($expected), 'sanity check : 621 lignes end_with reelles (D-045)');
+    Assert::same(631, count($expected), 'sanity check : 631 lignes end_with reelles (D-045, D-051/D-052 -- etait 621)');
 
     foreach (array_keys($expected) as $key) {
         [$suffix, $letter] = explode(':', $key, 2);
@@ -121,7 +121,7 @@ return function (): void {
     }
 
     $expectedEligibleCount = count($expected) - count($externalDuplicateSet);
-    Assert::same(598, $expectedEligibleCount, 'sanity check : 598 lignes eligibles (621 brutes - 23 doublons croises famille exterieure D-047)');
+    Assert::same(608, $expectedEligibleCount, 'sanity check : 608 lignes eligibles (631 brutes - 23 doublons croises famille exterieure D-047, D-051/D-052 -- etait 598/621)');
     Assert::same($expectedEligibleCount, $totalLinksProduced, 'total des liens produits doit egaler les lignes list_counts end_with eligibles');
     Assert::same($expectedEligibleCount, count($producedKeys), 'aucun doublon, chaque cle eligible produite une seule fois');
 

@@ -71,21 +71,29 @@ return function (): void {
     Assert::same(0, (int) $diagonalRow, 'sanity check : R:R absent de list_counts (exclu au precalcul, pas au builder)');
 
     // ============================================================================================
-    // 2. Cas a 0 resultat connus (reports/query-plans/commencant-avec-no-length-full-sweep.md
-    // section 8, base inchangee depuis) : V+W, X+J, X+K, X+W -- aucun lien pour cette lettre
-    // precise, jamais une erreur.
+    // 2. Cas historiques a 0 resultat (reports/query-plans/commencant-avec-no-length-full-sweep.md
+    // section 8, valable a 838 180 termes) REVALIDES D-051/D-052 (2026-09-02) : le complement
+    // kaikki a ajoute des toponymes/noms propres qui font desormais exister V+W (2 mots), X+J
+    // (XINJIANG), X+K (XENAKIS) -- SORTIS de l'etat "0 resultat", doivent desormais etre PRODUITS.
+    // Seul X+W reste reellement a 0 resultat.
     // ============================================================================================
     $linksV = $builder->build('V');
     Assert::same(1, $linksV->queryCount);
     $letterW = array_values(array_filter($linksV->links, static fn (array $l): bool => $l['letter'] === 'W'));
-    Assert::true($letterW === [], 'V+W est un cas connu a 0 resultat (full-sweep, section 8)');
+    Assert::true(count($letterW) === 1, 'V+W n\'est plus un cas a 0 resultat depuis D-051/D-052 -- doit desormais etre produit');
+    $rawCountVW = (int) $pdo->query("SELECT COUNT(*) c FROM terms WHERE substr(normalized,1,1)='V' AND instr(normalized,'W')>0")->fetch()['c'];
+    Assert::same(2, $rawCountVW, 'sanity check : V+W vaut desormais 2 mots (D-051/D-052, etait 0)');
+    Assert::same($rawCountVW, $letterW[0]['count']);
 
     $linksX = $builder->build('X');
     Assert::same(1, $linksX->queryCount);
-    foreach (['J', 'K', 'W'] as $zeroLetter) {
-        $found = array_values(array_filter($linksX->links, static fn (array $l): bool => $l['letter'] === $zeroLetter));
-        Assert::true($found === [], "X+{$zeroLetter} est un cas connu a 0 resultat (full-sweep, section 8)");
+    foreach (['J', 'K'] as $revalidatedLetter) {
+        $found = array_values(array_filter($linksX->links, static fn (array $l): bool => $l['letter'] === $revalidatedLetter));
+        Assert::true(count($found) === 1, "X+{$revalidatedLetter} n'est plus un cas a 0 resultat depuis D-051/D-052 -- doit desormais etre produit");
+        Assert::same(1, $found[0]['count'], "sanity check : X+{$revalidatedLetter} vaut desormais 1 mot (D-051/D-052, etait 0)");
     }
+    $foundXW = array_values(array_filter($linksX->links, static fn (array $l): bool => $l['letter'] === 'W'));
+    Assert::true($foundXW === [], 'X+W est toujours un cas a 0 resultat (inchange par D-051/D-052)');
 
     // ============================================================================================
     // 2bis. Doublons de contenu entre pages SOEURS "avec" (I-A, 2e audit consolide, 2026-08-18,
@@ -208,7 +216,7 @@ return function (): void {
     // PrefixAvecLinksBuilder::EXTERNAL_DUPLICATE_KEYS pour le detail complet des 4 cles.
     // ============================================================================================
     $externalDuplicateKeys = $prefixReflection->getConstant('EXTERNAL_DUPLICATE_KEYS');
-    Assert::same(['U:J', 'W:J', 'X:Z', 'Y:X'], $externalDuplicateKeys, 'exactement 4 doublons croises avec une famille exterieure attendus (D-041, balayage du 2026-08-21)');
+    Assert::same(['W:J'], $externalDuplicateKeys, 'exactement 1 doublon croise avec une famille exterieure attendu (D-041/D-051/D-052 -- etait 4, U:J/X:Z/Y:X sortis, casses par le complement kaikki)');
     $externalDuplicateSet = array_fill_keys($externalDuplicateKeys, true);
     Assert::same(0, count(array_intersect_key($externalDuplicateSet, array_fill_keys($prefixSiblingDuplicateKeys, true))), 'EXTERNAL_DUPLICATE_KEYS et SIBLING_DUPLICATE_KEYS doivent rester deux ensembles disjoints');
 
@@ -230,7 +238,7 @@ return function (): void {
     foreach ($expectedStatement as $row) {
         $expected[(string) $row['list_key']] = (int) $row['count'];
     }
-    Assert::same(646, count($expected), 'sanity check : 646 lignes start_with reelles (676 brutes - 26 degenerees - 4 a 0 resultat)');
+    Assert::same(649, count($expected), 'sanity check : 649 lignes start_with reelles (D-051/D-052, etait 646 -- V:W/X:J/X:K desormais non vides)');
 
     // Aucune ligne degeneree (X=Y) dans list_counts -- exclusion au precalcul verifiee directement.
     foreach (array_keys($expected) as $key) {
@@ -280,7 +288,7 @@ return function (): void {
     // sans exception, sans doublon, sans lien mort. Volume total : les 646 lignes brutes moins les
     // 4 doublons croises D-041 = 642.
     $expectedEligibleCount = count($expected) - count($externalDuplicateSet);
-    Assert::same(642, $expectedEligibleCount, 'sanity check : 642 lignes eligibles (646 brutes - 4 doublons croises famille exterieure D-041)');
+    Assert::same(648, $expectedEligibleCount, 'sanity check : 648 lignes eligibles (649 brutes - 1 doublon croise famille exterieure D-041/D-051/D-052, etait 642/646/4)');
     Assert::same($expectedEligibleCount, $totalLinksProduced, 'total des liens produits doit egaler les lignes list_counts start_with eligibles');
     Assert::same($expectedEligibleCount, count($producedKeys), 'aucun doublon, chaque cle eligible produite une seule fois');
 
@@ -297,10 +305,12 @@ return function (): void {
 
     // Consigne produit deja connue (full-sweep original, ajustee au perimetre reellement
     // maillable) : W:J (commencant/w/avec/j) etait la seule combinaison a exactement 1 resultat --
-    // DESORMAIS EXCLUE (D-041, doublon croise avec /mots/terminant/... ou /mots/commencant/...,
-    // voir le rapport AFTER de cette tache pour l'adversaire exact) : 0 combinaison eligible reste
-    // a exactement 1 resultat.
-    Assert::same(0, $exactlyOne, 'sanity check : 0 combinaison eligible a exactement 1 resultat (W:J etait la seule, desormais exclue par D-041)');
+    // EXCLUE (D-041, doublon croise avec /mots/commencant/webj, toujours vrai apres D-051/D-052).
+    // REVALIDE D-051/D-052 (2026-09-02) : le complement kaikki cree deux NOUVELLES combinaisons
+    // eligibles a exactement 1 resultat (X:J = XINJIANG, X:K = XENAKIS, toutes deux desormais
+    // eligibles puisque X:Z est sortie de EXTERNAL_DUPLICATE_KEYS) -- recalcule directement depuis
+    // list_counts ci-dessus, pas suppose inchange.
+    Assert::same(2, $exactlyOne, 'sanity check : 2 combinaisons eligibles a exactement 1 resultat apres D-051/D-052 (etait 0 -- W:J toujours exclue, X:J/X:K nouvellement eligibles)');
 
     $exactlyOneKeys = [];
     foreach ($expected as $key => $count) {
@@ -308,5 +318,6 @@ return function (): void {
             $exactlyOneKeys[] = $key;
         }
     }
-    Assert::same([], $exactlyOneKeys, 'sanity check : aucune combinaison eligible a 1 resultat (W:J exclue par D-041)');
+    sort($exactlyOneKeys);
+    Assert::same(['X:J', 'X:K'], $exactlyOneKeys, 'sanity check : X:J et X:K sont les deux seules combinaisons eligibles a 1 resultat (D-051/D-052)');
 };

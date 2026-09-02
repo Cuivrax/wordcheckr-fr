@@ -47,8 +47,14 @@ final class SuffixExtensionLinksBuilder
      * /mots/terminant/wu), recalculée indépendamment par échantillonnage direct contre `terms`
      * (voir le rapport AFTER de cette tâche) : 0 divergence.
      *
-     * Liste figée : valable pour l'état actuel de storage/dictionary_fr.sqlite (838 180 termes,
-     * inchangé depuis D-022). Une reconstruction future de la base devra revalider cette liste.
+     * Liste figée : valable pour l'état de storage/dictionary_fr.sqlite au moment du calcul
+     * (838 180 termes, D-022). Une reconstruction future de la base devra revalider cette liste.
+     *
+     * PAS REVALIDÉE pour D-051/D-052 (base passée à 844 961 termes, +6 781 formes kaikki) :
+     * nécessite le registre SEO complet (storage/seo_fr.sqlite) et
+     * scripts/check_combinatorial_duplicates.php (D-041), hors périmètre data-engine pour une
+     * revalidation limitée à dictionary_fr.sqlite -- laissée inchangée par prudence (risque
+     * résiduel documenté dans le rapport de revalidation D-053).
      *
      * @var list<string>
      */

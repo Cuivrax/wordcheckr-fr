@@ -94,28 +94,46 @@ return function (): void {
     $countBHW = (int) $pdo->query("SELECT COUNT(*) c FROM terms WHERE length = 10 AND instr(normalized, 'B') > 0 AND instr(normalized, 'H') > 0 AND instr(normalized, 'W') > 0")->fetch()['c'];
     $countABHW = (int) $pdo->query("SELECT COUNT(*) c FROM terms WHERE length = 10 AND instr(normalized, 'A') > 0 AND instr(normalized, 'B') > 0 AND instr(normalized, 'H') > 0 AND instr(normalized, 'W') > 0")->fetch()['c'];
     $countABH = (int) $pdo->query("SELECT COUNT(*) c FROM terms WHERE length = 10 AND instr(normalized, 'A') > 0 AND instr(normalized, 'B') > 0 AND instr(normalized, 'H') > 0")->fetch()['c'];
-    Assert::same(3, $countBHW, 'sanity check : 10:B:H:W = 3 mots reels');
-    Assert::same(3, $countABHW, 'sanity check : 10:A:B:H:W = 3 mots reels (identique a B:H:W -- vrai doublon de contenu)');
-    Assert::true($countABH !== $countABHW, 'sanity check : 10:A:B:H (1285) NE DOIT PAS correspondre a 10:A:B:H:W (3) -- preuve du bug initial corrige');
+    // REVALIDE D-051/D-052 (2026-09-02) : le complement kaikki a ajoute WALBACHOIS au panier B,H,W
+    // (10 lettres) -- vaut desormais 4 mots (etait 3 : SHAWBRIDGE, WAHHABISME, WAHHABITES), tous
+    // les 4 contiennent A -- la relation PARENT reste vraie, seul le compte change.
+    Assert::same(4, $countBHW, 'sanity check : 10:B:H:W = 4 mots reels (D-051/D-052, etait 3)');
+    Assert::same(4, $countABHW, 'sanity check : 10:A:B:H:W = 4 mots reels (identique a B:H:W -- vrai doublon de contenu, D-051/D-052 etait 3)');
+    Assert::true($countABH !== $countABHW, 'sanity check : 10:A:B:H NE DOIT PAS correspondre a 10:A:B:H:W -- preuve du bug initial corrige');
 
     // ============================================================================================
     // CAS REGRESSION 2 (doublons-soeurs entre pages "promues", jamais comparees entre elles avant
     // le 4e correctif, D-048) : "10:A:B:J:W" et "10:A:E:J:W" partagent la MEME empreinte reelle
     // exacte (WEBJOURNAL, seul mot des deux) -- un seul des deux doit rester index,follow.
+    //
+    // REVALIDE D-051/D-052 (2026-09-02) : le triple "10:A:J:W" (palier 3, sous-ensemble commun aux
+    // deux quadruplets) vaut lui aussi desormais exactement 1 mot (WEBJOURNAL, inchange) -- ce
+    // n'etait pas le cas a 838 180 termes. Les deux quadruplets sont donc DESORMAIS des doublons
+    // PARENT de ce triple commun (voir DUPLICATE_PARENT_KEYS), et non plus seulement doublons
+    // SOEURS entre eux -- consequence purement classificatoire (le triple "10:A:J:W" est lui-meme
+    // deja exclu au palier 3, voir App\Search\AvecThreeLettersLinksBuilder::DUPLICATE_PARENT_KEYS),
+    // AUCUN changement de comportement observable : les deux quadruplets restent exclus dans tous
+    // les cas, ni l'un ni l'autre n'est plus "le gagnant index,follow".
     // ============================================================================================
-    Assert::true(!in_array('10:A:B:J:W', $duplicateParentKeys, true) && !in_array('10:A:B:J:W', $siblingDuplicateKeys, true), '10:A:B:J:W doit rester eligible (gagnant du groupe WEBJOURNAL, cas regression D-048)');
-    Assert::true(in_array('10:A:E:J:W', $siblingDuplicateKeys, true), '10:A:E:J:W doit etre exclu (doublon SOEUR du groupe WEBJOURNAL, cas regression D-048)');
+    Assert::true(in_array('10:A:B:J:W', $duplicateParentKeys, true), '10:A:B:J:W est desormais un doublon PARENT du triple commun 10:A:J:W (D-051/D-052) -- doit etre exclu');
+    Assert::true(in_array('10:A:E:J:W', $duplicateParentKeys, true), '10:A:E:J:W est desormais un doublon PARENT du triple commun 10:A:J:W (D-051/D-052) -- doit etre exclu');
+    Assert::true(!in_array('10:A:B:J:W', $siblingDuplicateKeys, true) && !in_array('10:A:E:J:W', $siblingDuplicateKeys, true), 'ni l\'un ni l\'autre ne doit plus figurer dans SIBLING_DUPLICATE_KEYS (D-051/D-052, reclasses en PARENT)');
+
+    $countAJW = (int) $pdo->query("SELECT COUNT(*) c FROM terms WHERE length = 10 AND instr(normalized, 'A') > 0 AND instr(normalized, 'J') > 0 AND instr(normalized, 'W') > 0")->fetch()['c'];
+    Assert::same(1, $countAJW, 'sanity check : 10:A:J:W (triple, palier 3) vaut 1 mot (WEBJOURNAL) -- D-051/D-052, explique le reclassement en PARENT');
 
     $wordsABJW = (string) $pdo->query("SELECT GROUP_CONCAT(normalized) FROM terms WHERE length = 10 AND instr(normalized,'A')>0 AND instr(normalized,'B')>0 AND instr(normalized,'J')>0 AND instr(normalized,'W')>0")->fetchColumn();
     $wordsAEJW = (string) $pdo->query("SELECT GROUP_CONCAT(normalized) FROM terms WHERE length = 10 AND instr(normalized,'A')>0 AND instr(normalized,'E')>0 AND instr(normalized,'J')>0 AND instr(normalized,'W')>0")->fetchColumn();
     Assert::same('WEBJOURNAL', $wordsABJW, 'sanity check : A,B,J,W (10 lettres) = WEBJOURNAL, unique mot');
-    Assert::same('WEBJOURNAL', $wordsAEJW, 'sanity check : A,E,J,W (10 lettres) = WEBJOURNAL, meme unique mot -- vrai doublon soeur');
+    Assert::same('WEBJOURNAL', $wordsAEJW, 'sanity check : A,E,J,W (10 lettres) = WEBJOURNAL, meme unique mot');
 
     // ============================================================================================
-    // Coherence structurelle des trois constantes figees.
+    // Coherence structurelle des trois constantes figees. REVALIDE D-051/D-052 (2026-09-02,
+    // 838 180 -> 844 961 termes, RECALCUL COMPLET depuis list_counts/`terms`, jamais un patch
+    // incrementaire) : etait 10 185/4 145 sur 838 180 termes.
     // ============================================================================================
-    Assert::same(10185, count($duplicateParentKeys), 'exactement 10 185 quadruplets doublons de contenu PARENT attendus (D-048)');
-    Assert::same(4145, count($siblingDuplicateKeys), 'exactement 4 145 quadruplets doublons de contenu SOEUR attendus (D-048)');
+    Assert::same(11108, count($duplicateParentKeys), 'exactement 11 108 quadruplets doublons de contenu PARENT attendus (D-048, D-051/D-052 -- etait 10 185)');
+    Assert::same(3533, count($siblingDuplicateKeys), 'exactement 3 533 quadruplets doublons de contenu SOEUR attendus (D-048, D-051/D-052 -- etait 4 145)');
     Assert::same(0, count($externalDuplicateKeys), 'aucun doublon croise famille exterieure encore trouve pour le palier 4 (a completer si un futur balayage generique en trouve)');
     Assert::same(count($duplicateParentKeys), count(array_unique($duplicateParentKeys)), 'aucun doublon dans DUPLICATE_PARENT_KEYS elle-meme');
     Assert::same(count($siblingDuplicateKeys), count(array_unique($siblingDuplicateKeys)), 'aucun doublon dans SIBLING_DUPLICATE_KEYS elle-meme');
@@ -124,26 +142,27 @@ return function (): void {
     Assert::same(0, count(array_intersect_key($parentSet, $siblingSet)), 'DUPLICATE_PARENT_KEYS et SIBLING_DUPLICATE_KEYS doivent rester deux ensembles disjoints par construction');
 
     // ============================================================================================
-    // Verification EXHAUSTIVE du maillage sur les 28 827 pages sources reelles du palier 3
-    // (list_type 'length_with_triple', D-031) -- pas un echantillon, meme discipline que tous les
-    // paliers precedents. Compare le vrai code (AvecFourLettersLinksBuilder, via list_counts) au
-    // recalcul independant depuis list_counts lui-meme, dans les DEUX sens.
+    // Verification EXHAUSTIVE du maillage sur les 29 109 pages sources reelles du palier 3
+    // (list_type 'length_with_triple', D-031, D-051/D-052 -- etait 28 827) -- pas un echantillon,
+    // meme discipline que tous les paliers precedents. Compare le vrai code
+    // (AvecFourLettersLinksBuilder, via list_counts) au recalcul independant depuis list_counts
+    // lui-meme, dans les DEUX sens.
     // ============================================================================================
     $tripleAnchorsStatement = $pdo->query("SELECT list_key FROM list_counts WHERE list_type = 'length_with_triple'");
     $tripleAnchors = [];
     foreach ($tripleAnchorsStatement as $row) {
         $tripleAnchors[] = explode(':', (string) $row['list_key'], 4);
     }
-    Assert::same(28827, count($tripleAnchors), 'sanity check : 28 827 pages palier 3 reelles (D-031)');
+    Assert::same(29109, count($tripleAnchors), 'sanity check : 29 109 pages palier 3 reelles (D-031, D-051/D-052 -- etait 28 827)');
 
     $expectedQuad = [];
     foreach ($pdo->query("SELECT list_key, count FROM list_counts WHERE list_type = 'length_with_quad'") as $row) {
         $expectedQuad[(string) $row['list_key']] = (int) $row['count'];
     }
-    Assert::same(123557, count($expectedQuad), 'sanity check : 123 557 lignes length_with_quad reelles (D-048)');
+    Assert::same(124733, count($expectedQuad), 'sanity check : 124 733 lignes length_with_quad reelles (D-048, D-051/D-052 -- etait 123 557)');
 
     $excludedKeysQuad = $parentSet + $siblingSet + array_fill_keys($externalDuplicateKeys, true);
-    Assert::same(14330, count($excludedKeysQuad), 'sanity check : 14 330 exclusions au total (10 185 + 4 145 + 0)');
+    Assert::same(14641, count($excludedKeysQuad), 'sanity check : 14 641 exclusions au total (11 108 + 3 533 + 0, D-051/D-052 -- etait 14 330)');
 
     $producedKeysQuad = [];
     $totalLinksProducedQuad = 0;
@@ -183,7 +202,7 @@ return function (): void {
     // Sens 1 -> 2 : chaque lien produit par le vrai code correspond a une ligne list_counts
     // eligible reelle (ni doublon PARENT ni doublon SOEUR ni doublon croise), sans exception.
     $expectedEligibleCountQuad = count($expectedQuad) - count($excludedKeysQuad);
-    Assert::same(109227, $expectedEligibleCountQuad, 'sanity check : 109 227 lignes eligibles (123 557 brutes - 14 330 exclusions, D-048)');
+    Assert::same(110092, $expectedEligibleCountQuad, 'sanity check : 110 092 lignes eligibles (124 733 brutes - 14 641 exclusions, D-048, D-051/D-052 -- etait 109 227/123 557/14 330)');
     Assert::same($expectedEligibleCountQuad, $totalLinksProducedQuad, 'total des quadruplets distincts produits doit egaler les lignes list_counts length_with_quad eligibles');
 
     // Sens 2 -> 1 : chaque ligne list_counts length_with_quad eligible reelle est produite par le

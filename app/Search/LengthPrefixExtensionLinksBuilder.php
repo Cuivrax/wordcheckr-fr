@@ -30,6 +30,12 @@ final class LengthPrefixExtensionLinksBuilder
      * Liste figee : valable pour l'etat actuel de storage/dictionary_fr.sqlite. Une
      * reconstruction future de la base devra revalider cette liste.
      *
+     * PAS REVALIDEE pour D-051/D-052 (base passee a 844 961 termes, +6 781 formes kaikki) :
+     * necessite le registre SEO complet (storage/seo_fr.sqlite) et
+     * scripts/check_combinatorial_duplicates.php (D-041), hors perimetre data-engine pour une
+     * revalidation limitee a dictionary_fr.sqlite -- laissee inchangee par prudence (risque
+     * residuel documente dans le rapport de revalidation D-053).
+     *
      * @var list<string>
      */
     private const EXTERNAL_DUPLICATE_KEYS = [

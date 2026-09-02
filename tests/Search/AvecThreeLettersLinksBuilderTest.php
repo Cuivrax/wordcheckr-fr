@@ -138,17 +138,32 @@ return function (): void {
         Assert::same('/mots/9-lettres/avec/m/q/z', $zFromMQ[0]['url']);
     }
 
-    // --- Exemples cites par la tache (proof-on-paper reproduits tels quels) : "10-lettres/avec/w/x"
-    // --- (1 mot) -- ses 6 partenaires A, E, N, O, S, T sont tous des doublons de contenu PARENT
-    // --- (le mot unique contient deja W et X, ajouter chacune de ces 6 lettres ne retire rien) --
-    // --- aucun ne doit jamais etre produit par ce builder. ---
+    // --- Exemple historique (proof-on-paper, valable a 838 180 termes) REVALIDE D-051/D-052
+    // --- (2026-09-02) : "10-lettres/avec/w/x" avait 1 seul mot (EXANEWTONS) a l'epoque, ses 6
+    // --- partenaires A, E, N, O, S, T etaient tous des doublons de contenu PARENT. Le complement
+    // --- kaikki a ajoute BOUXWILLER au meme panier (2 mots desormais, BOUXWILLER + EXANEWTONS) :
+    // --- E et O restent des doublons PARENT (presents dans BOUXWILLER ET EXANEWTONS, 2 mots sur 2).
+    // --- A, N, S, T (presents uniquement dans EXANEWTONS, 1 mot sur 2) ne sont PLUS des doublons
+    // --- PARENT -- mais A, N, S et T isolent tous les quatre EXACTEMENT le meme sous-ensemble a 1
+    // --- mot {EXANEWTONS} : un nouveau groupe de doublons SOEURS (SIBLING_DUPLICATE_KEYS), A
+    // --- (plus petite lettre) reste seul candidat, N/S/T sont exclus. ---
     $linksWX10 = $builder->build(10, 'W', 'X');
-    foreach (['A', 'E', 'N', 'O', 'S', 'T'] as $degenerateLetter) {
-        $found = array_values(array_filter($linksWX10->links, static function (array $l) use ($degenerateLetter): bool {
-            return $l['letter'] === $degenerateLetter;
+    foreach (['E', 'O'] as $parentDegenerateLetter) {
+        $found = array_values(array_filter($linksWX10->links, static function (array $l) use ($parentDegenerateLetter): bool {
+            return $l['letter'] === $parentDegenerateLetter;
         }));
-        Assert::true($found === [], "10:W:X:{$degenerateLetter} est un doublon de contenu PARENT (proof-on-paper de la tache) -- ne doit jamais etre produit");
+        Assert::true($found === [], "10:W:X:{$parentDegenerateLetter} est un doublon de contenu PARENT -- ne doit jamais etre produit");
     }
+    foreach (['N', 'S', 'T'] as $siblingDegenerateLetter) {
+        $found = array_values(array_filter($linksWX10->links, static function (array $l) use ($siblingDegenerateLetter): bool {
+            return $l['letter'] === $siblingDegenerateLetter;
+        }));
+        Assert::true($found === [], "10:W:X:{$siblingDegenerateLetter} est desormais un doublon SOEUR de 10:W:X:A (meme sous-ensemble {EXANEWTONS}, D-051/D-052) -- ne doit jamais etre produit");
+    }
+    $foundA = array_values(array_filter($linksWX10->links, static fn (array $l): bool => $l['letter'] === 'A'));
+    Assert::true(count($foundA) === 1 && $foundA[0]['count'] === 1, '10:W:X:A reste candidat (gagnant alphabetique du groupe soeur A/N/S/T, D-051/D-052) -- doit etre produit avec compte 1');
+    $wordsWX10 = $pdo->query("SELECT normalized FROM terms WHERE length = 10 AND instr(normalized, 'W') > 0 AND instr(normalized, 'X') > 0 ORDER BY normalized")->fetchAll(PDO::FETCH_COLUMN);
+    Assert::same(['BOUXWILLER', 'EXANEWTONS'], $wordsWX10, 'sanity check : panier 10 lettres avec W,X (D-051/D-052, etait EXANEWTONS seul)');
 
     // --- Meme exemple a longueur 15 : "15-lettres/avec/w/x" (1 mot), 8 partenaires B, E, I, L, O,
     // --- R, S, U tous doublons de contenu PARENT. ---
@@ -161,16 +176,20 @@ return function (): void {
     }
 
     // ============================================================================================
-    // Reflection sur la liste figee des 426 doublons de contenu PARENT (analyse independante
-    // data-engine, 2026-08-20) -- meme pattern deja accepte sur ce projet (voir
-    // AvecTwoLettersLinksBuilderTest.php, StartEndWithLinksBuilderTest.php).
+    // Reflection sur la liste figee des 402 doublons de contenu PARENT (analyse independante
+    // data-engine, 2026-08-20, REVALIDEE D-051/D-052 le 2026-09-02 : etait 426 sur 838 180 termes)
+    // -- meme pattern deja accepte sur ce projet (voir AvecTwoLettersLinksBuilderTest.php,
+    // StartEndWithLinksBuilderTest.php).
     // ============================================================================================
     $reflection = new ReflectionClass(AvecThreeLettersLinksBuilder::class);
     $duplicateParentKeys = $reflection->getConstant('DUPLICATE_PARENT_KEYS');
-    Assert::same(426, count($duplicateParentKeys), 'exactement 426 triplets doublons de contenu PARENT attendus');
+    Assert::same(402, count($duplicateParentKeys), 'exactement 402 triplets doublons de contenu PARENT attendus (D-051/D-052, etait 426)');
     Assert::same(count($duplicateParentKeys), count(array_unique($duplicateParentKeys)), 'aucun doublon dans la liste figee elle-meme');
-    foreach (['10:A:W:X', '10:E:W:X', '10:N:W:X', '10:O:W:X', '10:S:W:X', '10:T:W:X'] as $expectedKey) {
-        Assert::true(in_array($expectedKey, $duplicateParentKeys, true), "{$expectedKey} doit figurer dans la liste figee (exemple cite par la tache)");
+    foreach (['10:E:W:X', '10:O:W:X'] as $expectedKey) {
+        Assert::true(in_array($expectedKey, $duplicateParentKeys, true), "{$expectedKey} doit figurer dans la liste figee (survivant de l'exemple historique cite par la tache)");
+    }
+    foreach (['10:A:W:X', '10:N:W:X', '10:S:W:X', '10:T:W:X'] as $revalidatedKey) {
+        Assert::true(!in_array($revalidatedKey, $duplicateParentKeys, true), "{$revalidatedKey} ne doit plus figurer dans la liste figee depuis D-051/D-052 (BOUXWILLER)");
     }
     foreach (['15:B:W:X', '15:I:W:X', '15:L:W:X', '15:O:W:X', '15:R:W:X', '15:S:W:X', '15:U:W:X'] as $expectedKey) {
         Assert::true(in_array($expectedKey, $duplicateParentKeys, true), "{$expectedKey} doit figurer dans la liste figee (exemple cite par la tache)");
@@ -238,11 +257,12 @@ return function (): void {
 
     // ============================================================================================
     // Doublons de contenu entre pages SOEURS du palier 3 (analyse independante data-engine,
-    // 2026-08-20) -- 234 cles exclues (189 groupes), verifiees de facon EXHAUSTIVE (pas un
+    // 2026-08-20, REVALIDEE D-051/D-052 le 2026-09-02 : etait 234 cles/189 groupes sur 838 180
+    // termes) -- 221 cles exclues (171 groupes), verifiees de facon EXHAUSTIVE (pas un
     // echantillon) sur les 14 longueurs reelles, meme discipline que StartEndWithLinksBuilderTest.
     // ============================================================================================
     $siblingDuplicateKeys = $reflection->getConstant('SIBLING_DUPLICATE_KEYS');
-    Assert::same(234, count($siblingDuplicateKeys), 'exactement 234 cles doublons soeurs attendues (189 groupes)');
+    Assert::same(221, count($siblingDuplicateKeys), 'exactement 221 cles doublons soeurs attendues (171 groupes, D-051/D-052, etait 234/189)');
     Assert::same(count($siblingDuplicateKeys), count(array_unique($siblingDuplicateKeys)), 'aucun doublon dans la liste figee elle-meme (une cle n\'appartient qu\'a un seul groupe)');
     Assert::true(in_array('10:G:J:Y', $siblingDuplicateKeys, true), '10:G:J:Y doit figurer dans la liste figee (exemple cite dans le docblock du builder)');
     Assert::true(in_array('10:G:W:Y', $siblingDuplicateKeys, true), '10:G:W:Y doit figurer dans la liste figee (meme groupe que 10:G:J:Y)');
@@ -332,10 +352,10 @@ return function (): void {
     }
 
     // Diagnostic : confirme que le pipeline a reellement examine des candidats (pas une liste vide
-    // par construction).
-    Assert::same(3496, $candidateGroupsCheckedTriple, 'sanity check : 3 496 groupes candidats (meme longueur+compte, >= 2 membres) attendus sur le palier 3');
-    Assert::same(19049, $candidateMembersCheckedTriple, 'sanity check : 19 049 triplets candidats au total attendus');
-    Assert::same(290, $verifiedPairwiseByCounting, 'sanity check : 290 paires de cles verifiees par comptage independant (methode 2)');
+    // par construction). Revalide D-051/D-052 (2026-09-02, etait 3 496/19 049/290 sur 838 180 termes).
+    Assert::same(3500, $candidateGroupsCheckedTriple, 'sanity check : 3 500 groupes candidats (meme longueur+compte, >= 2 membres) attendus sur le palier 3 (D-051/D-052)');
+    Assert::same(19246, $candidateMembersCheckedTriple, 'sanity check : 19 246 triplets candidats au total attendus (D-051/D-052)');
+    Assert::same(282, $verifiedPairwiseByCounting, 'sanity check : 282 paires de cles verifiees par comptage independant (methode 2, D-051/D-052)');
 
     sort($computedSiblingExcludedTriple);
     $sortedDeclaredSiblingTriple = $siblingDuplicateKeys;
@@ -353,13 +373,13 @@ return function (): void {
     foreach ($pairAnchorsStatement as $row) {
         $pairAnchors[] = explode(':', (string) $row['list_key'], 3);
     }
-    Assert::same(4276, count($pairAnchors), 'sanity check : 4 276 pages palier 2 reelles (D-030)');
+    Assert::same(4320, count($pairAnchors), 'sanity check : 4 320 pages palier 2 reelles (D-030, D-051/D-052 -- etait 4 276)');
 
     $expectedTriple = [];
     foreach ($pdo->query("SELECT list_key, count FROM list_counts WHERE list_type = 'length_with_triple'") as $row) {
         $expectedTriple[(string) $row['list_key']] = (int) $row['count'];
     }
-    Assert::same(28827, count($expectedTriple), 'sanity check : 28 827 lignes length_with_triple reelles (D-031)');
+    Assert::same(29109, count($expectedTriple), 'sanity check : 29 109 lignes length_with_triple reelles (D-031, D-051/D-052 -- etait 28 827)');
 
     // ========================================================================================
     // Doublons de contenu CROISES avec une famille EXTERIEURE (D-041, garde-fou structurel
@@ -422,7 +442,7 @@ return function (): void {
     // lignes eligibles, ni plus ni moins (chaque triplet compte UNE FOIS bien qu'accessible depuis
     // jusqu'a 3 ancres palier 2 distinctes).
     $expectedEligibleCountTriple = count($expectedTriple) - count($excludedKeysTriple);
-    Assert::same(27452, $expectedEligibleCountTriple, 'sanity check : 27 452 lignes eligibles (28 827 brutes - 426 doublons de contenu PARENT - 234 doublons de contenu SOEUR - 715 doublons croises famille exterieure, 666 D-041 + 49 D-047)');
+    Assert::same(27771, $expectedEligibleCountTriple, 'sanity check : 27 771 lignes eligibles (29 109 brutes - 402 doublons de contenu PARENT - 221 doublons de contenu SOEUR - 715 doublons croises famille exterieure, 666 D-041 + 49 D-047 -- D-051/D-052, etait 27 452/28 827/426/234)');
     Assert::same($expectedEligibleCountTriple, $totalLinksProducedTriple, 'total des triplets distincts produits doit egaler les lignes list_counts length_with_triple eligibles');
 
     // Sens 2 -> 1 : chaque ligne list_counts length_with_triple eligible reelle est produite par le
@@ -437,17 +457,17 @@ return function (): void {
     }
 
     // Consigne produit deja connue (D-031 : 1 682 combinaisons a exactement 1 resultat parmi les
-    // 28 827 lignes precalculees brutes), AJUSTEE apres exclusion des doublons de contenu PARENT,
-    // SOEUR, PUIS croises famille exterieure (D-041, 643 des 666 doublons croises ont exactement 1
-    // resultat ; D-047, 40 des 49 doublons croises supplementaires ont aussi exactement 1
-    // resultat) : 700 restantes, GARDEES (meme consigne produit que tous les paliers "avec"
-    // precedents).
+    // 28 827 lignes precalculees brutes a 838 180 termes), REVALIDEE D-051/D-052 (2026-09-02, 844 961
+    // termes) plutot que supposee inchangee : le complement kaikki ajoute de nombreuses formes
+    // courtes/rares qui creent de nouvelles combinaisons "avec 3 lettres" a exactement 1 resultat --
+    // recalcule directement depuis list_counts ci-dessus (aucune valeur portee a la main), PAS un
+    // ajustement arithmetique de l'ancien chiffre (etait 700 sur 838 180 termes).
     $expectedExactlyOneEligibleTriple = 0;
     foreach ($expectedTriple as $key => $count) {
         if ($count === 1 && !isset($excludedKeysTriple[$key])) {
             $expectedExactlyOneEligibleTriple++;
         }
     }
-    Assert::same(700, $expectedExactlyOneEligibleTriple, 'sanity check : 700 combinaisons eligibles a exactement 1 resultat (1 682 brutes - 299 exclues par les deux premiers filtres - 643 doublons croises D-041 - 40 doublons croises D-047)');
+    Assert::same(847, $expectedExactlyOneEligibleTriple, 'sanity check : 847 combinaisons eligibles a exactement 1 resultat apres D-051/D-052 (etait 700 sur 838 180 termes -- recalcule depuis list_counts, pas suppose)');
     Assert::same($expectedExactlyOneEligibleTriple, $exactlyOneTriple, 'consigne produit deja connue (GARDEES, meme consigne que tous les paliers "avec" precedents)');
 };

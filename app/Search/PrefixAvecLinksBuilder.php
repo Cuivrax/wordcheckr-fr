@@ -114,20 +114,32 @@ final class PrefixAvecLinksBuilder
      * Les 4 clés (U:J, W:J, X:Z, Y:X) — un seul groupe par clé, jamais un doublon SOEUR entre deux
      * lettres "avec" du même préfixe (ce cas reste couvert par SIBLING_DUPLICATE_KEYS, toujours
      * vide) :
-     *   U:J  /mots/commencant/u/avec/j   perd face à /mots/terminant/htie (1 composant)
+     *   U:J  /mots/commencant/u/avec/j   perdait face à /mots/terminant/htie (1 composant)
      *   W:J  /mots/commencant/w/avec/j   perd face à /mots/commencant/webj (1 composant)
-     *   X:Z  /mots/commencant/x/avec/z   perd face à /mots/terminant/xxes (1 composant)
-     *   Y:X  /mots/commencant/y/avec/x   perd face à un adversaire à 1 composant du même groupe
+     *   X:Z  /mots/commencant/x/avec/z   perdait face à /mots/terminant/xxes (1 composant)
+     *   Y:X  /mots/commencant/y/avec/x   perdait face à /mots/commencant/yeux (1 composant)
      * Recalculé indépendamment par échantillonnage direct contre `terms` (voir le rapport AFTER
-     * de cette tâche) : 0 divergence.
+     * de cette tâche) : 0 divergence -- à 838 180 termes.
      *
-     * Liste figée : valable pour l'état actuel de storage/dictionary_fr.sqlite (838 180 termes,
-     * inchangé depuis D-022). Une reconstruction future de la base devra revalider cette liste
-     * (même avertissement que DUPLICATE_CONTENT_KEYS/SIBLING_DUPLICATE_KEYS ci-dessus).
+     * REVALIDATION D-051/D-052 (2026-09-02, 838 180 -> 844 961 termes) -- CETTE liste, contrairement
+     * aux listes EXTERNAL_DUPLICATE_KEYS des autres builders "avec" (laissées inchangées faute de
+     * registre reconstruit), a ses 4 adversaires NOMMÉS individuellement ci-dessus, tous vérifiables
+     * directement contre `terms` sans dépendre du registre. Vérifié un par un :
+     *   U:J  commençant U + avec J vaut désormais 2 (etait 1) ; terminant HTIE reste 1 -- CASSÉ
+     *   W:J  commençant W + avec J reste 1 ; commençant WEBJ (prefixe) reste 1 -- INCHANGÉ, GARDÉ
+     *   X:Z  commençant X + avec Z vaut désormais 8 (etait 1) ; terminant XXES reste 1 -- CASSÉ
+     *   Y:X  commençant Y + avec X vaut désormais 6 (etait 1, YEUX seul -- le complément kaikki a
+     *        ajouté YANDOUX, YCHOUX, YOCTOKATAUX, YPREAUX, YRIEIX) ; commençant YEUX (prefixe)
+     *        reste 1 -- CASSÉ
+     * Seul W:J reste un doublon de contenu réel -- U:J, X:Z, Y:X SORTIS de la liste.
+     *
+     * Liste figée : valable pour l'état actuel de storage/dictionary_fr.sqlite (844 961 termes,
+     * D-051/D-052). Une reconstruction future de la base devra revalider cette liste (même
+     * avertissement que DUPLICATE_CONTENT_KEYS/SIBLING_DUPLICATE_KEYS ci-dessus).
      *
      * @var list<string>
      */
-    private const EXTERNAL_DUPLICATE_KEYS = ['U:J', 'W:J', 'X:Z', 'Y:X'];
+    private const EXTERNAL_DUPLICATE_KEYS = ['W:J'];
 
     public function __construct(
         private readonly Connection $connection,

@@ -37,6 +37,12 @@ final class LengthSuffixExtensionLinksBuilder
      * avant correctif : /mots/2-lettres/terminant/a liait vers /mots/2-lettres/terminant/aa,
      * noindex depuis D-047). Voir docs/DECISIONS.md D-047/D-048.
      *
+     * PAS REVALIDEE pour D-051/D-052 (base passee a 844 961 termes, +6 781 formes kaikki) :
+     * necessite le registre SEO complet (storage/seo_fr.sqlite) et
+     * scripts/check_combinatorial_duplicates.php (D-041), hors perimetre data-engine pour une
+     * revalidation limitee a dictionary_fr.sqlite -- laissee inchangee par prudence (risque
+     * residuel documente dans le rapport de revalidation D-053).
+     *
      * @var list<string>
      */
     private const EXTERNAL_DUPLICATE_KEYS = [

@@ -606,12 +606,14 @@ return function (): void {
 
     // Cas emblematique du rapport (pire divergence mesuree avant correctif) : R, prefixe le plus
     // frequent de la base. Avant D-032, "commencant/r/avec/r" plafonnait a 10 000 (regime BORNE)
-    // alors que le vrai total (regime EXACT de "commencant/r" seul) vaut 224 205 -- verifie ici
-    // que le vrai total exact est desormais renvoye, sans aucun plafond.
+    // alors que le vrai total (regime EXACT de "commencant/r" seul) valait 224 205 sur la base a
+    // 838 180 termes -- desormais 224 446 sur 844 961 termes (+241, D-051/D-052 : complement
+    // kaikki, 241 des 6 781 formes ajoutees commencent par R) -- verifie ici que le vrai total
+    // exact est desormais renvoye, sans aucun plafond.
     $worstCaseR = $solver->solve('commencant/r/avec/r');
     Assert::notNull($worstCaseR);
     $bruteForceR = (int) $pdo->query("SELECT COUNT(*) c FROM terms WHERE normalized >= 'R' AND normalized < 'S'")->fetch()['c'];
-    Assert::same(224205, $bruteForceR, 'sanity check : R doit rester le prefixe le plus frequent mesure (224 205), sinon ce test ne prouve plus rien');
+    Assert::same(224446, $bruteForceR, 'sanity check : R doit rester le prefixe le plus frequent mesure (224 446 sur 844 961 termes, D-051/D-052), sinon ce test ne prouve plus rien');
     Assert::same($bruteForceR, $worstCaseR->total, 'commencant/r/avec/r doit desormais renvoyer le vrai total exact, jamais plafonne a 10 000');
     Assert::true(!$worstCaseR->truncated);
     Assert::true($worstCaseR->exact, 'regime EXACT retrouve une fois le avec redondant retire');

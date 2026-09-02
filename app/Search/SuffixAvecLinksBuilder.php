@@ -57,6 +57,18 @@ final class SuffixAvecLinksBuilder
      * /mots/terminant/q liait vers /mots/terminant/q/avec/b, noindex depuis D-047). Voir
      * docs/DECISIONS.md D-047/D-048.
      *
+     * PAS REVALIDEE par le passage a 844 961 termes (D-051/D-052, 2026-09-02) : contrairement a
+     * App\Search\PrefixAvecLinksBuilder::EXTERNAL_DUPLICATE_KEYS (4 cles, adversaires nommes
+     * individuellement dans son propre docblock, verifiables sans registre), ces 23 cles n'ont
+     * jamais eu leur adversaire exact consigne ici -- seul le resultat du balayage generique
+     * (scripts/check_combinatorial_duplicates.php contre storage/seo_fr.sqlite) l'identifie. Cette
+     * liste depend donc du registre SEO complet, reconstruit et revalide separement (hors
+     * perimetre data-engine a ce stade). Choix delibere (meme raisonnement que partout ailleurs sur
+     * cette serie de correctifs) : laisser une cle DEDANS a tort coute au plus quelques liens
+     * manques, en retirer une a tort reintroduirait un lien vivant vers une page potentiellement
+     * noindex (violation R5) -- liste INCHANGEE ici, a revalider par un balayage generique complet
+     * des que le registre sera reconstruit.
+     *
      * @var list<string>
      */
     private const EXTERNAL_DUPLICATE_KEYS = [

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Construit storage/dictionary_fr.sqlite depuis les trois sources françaises.
+"""Construit storage/dictionary_fr.sqlite depuis les quatre sources françaises.
 
 Hors ligne uniquement (D-007). La base est recréée intégralement à chaque
 exécution : elle n'est jamais mise à jour en place. Deux exécutions successives
@@ -13,6 +13,11 @@ Ordre de fusion, conforme à docs/03_SOURCES_ET_IMPORT_DATA.md §4 :
     3. retraits ODS9                 is_ods9 = 0
     4. keep_overrides ODS9           is_ods9 = 1
     5. additions ODS9                is_ods9 = 1, is_ods8 = 0 si absent d'ODS8
+    5 bis. complement kaikki (D-051) is_french = 1, is_ods8 = 0, is_ods9 = 0,
+           uniquement si absent de toutes les etapes precedentes (jamais de
+           retrait ni de changement de statut Scrabble d'un terme deja connu) ;
+           non_admitted_category derive en meme temps (D-054, voir
+           load_kaikki_supplement()) pour ces memes formes uniquement
     6. score, length, signature, reversed, letter_mask
     7. index, ANALYZE, VACUUM, integrity_check
     8. rapports
@@ -52,6 +57,16 @@ KARTMAAN_PATH = ROOT / "data" / "raw" / "french_dict.db"
 HBENBEL_DIR = ROOT / "data" / "raw" / "hbenbel"
 HBENBEL_FILES = ("dictionary.csv", "adj.csv", "noun.csv", "verb.csv", "adv.csv")
 ODS9_PATH = ROOT / "data" / "ods9" / "ods9_patch.sqlite"
+# D-051 — complement kaikki (proprietes/toponymes + formes de registre marque), curation
+# manuelle hors ligne, versionne dans le depot (meme regime que data/ods9/, contrairement a
+# data/raw/ qui est gitignore et reconstitue depuis PROVENANCE.md).
+KAIKKI_SUPPLEMENT_DIR = ROOT / "data" / "kaikki_supplement"
+KAIKKI_NAMES_PATH = KAIKKI_SUPPLEMENT_DIR / "names_definitions_final.csv"
+KAIKKI_REGISTER_PATH = KAIKKI_SUPPLEMENT_DIR / "register_definitions_final.csv"
+# D-052 — sens (pos/gender/definition) des 6 781 formes du complement kaikki D-051, meme
+# repertoire versionne, curation manuelle hors ligne, verifiee independamment avant l'import
+# (voir D-052 pour le detail complet).
+KAIKKI_WORD_SENSES_PATH = KAIKKI_SUPPLEMENT_DIR / "word_senses_final.csv"
 SCHEMA_PATH = ROOT / "schema.sql"
 TARGET_PATH = ROOT / "storage" / "dictionary_fr.sqlite"
 REPORTS = ROOT / "reports"
@@ -85,6 +100,18 @@ POS_MAP: dict[str, str] = {
 }
 POS_VALUES = ("N", "V", "Adj", "Adv", "Pronom", "Prep", "Conj", "Interj", "Art")
 GENDER_VALUES = ("m", "f", "e")
+
+# D-054 — categorie du complement kaikki (D-051), jeu ferme IDENTIQUE a la contrainte CHECK
+# de schema.sql (terms.non_admitted_category) — utilisee uniquement pour choisir la phrase
+# "Reponse Directe" d'un mot francais non admis sur la fiche mot (app/View/word.php, ticket
+# separe, hors perimetre ici). 'proper_noun' pour names_definitions_final.csv, les 9 autres
+# valeurs pour la colonne `tag` de register_definitions_final.csv — verifiees ligne par ligne
+# a chaque build dans load_kaikki_supplement() (SystemExit si une valeur derivee sort de ce
+# jeu), jamais supposees identiques a l'enum une fois pour toutes a la curation manuelle.
+NON_ADMITTED_CATEGORY_VALUES = (
+    "proper_noun", "acronym", "archaic", "colloquial", "dated", "dialectal",
+    "literary", "obsolete", "regional", "slang",
+)
 
 HBENBEL_VERB_PATH = HBENBEL_DIR / "verb.csv"
 
@@ -301,6 +328,151 @@ def load_hbenbel() -> tuple[
         "source_rows": len(origins),
     }
     return forms, rejected, samples, stats
+
+
+def _load_kaikki_csv(path: Path, source_label: str, extra_columns: tuple[str, ...] = ()) -> list[dict]:
+    """Lit un CSV du complement kaikki et recalcule `normalized` depuis `raw` (D-009, seule
+    source de verite) — ne fait JAMAIS confiance a la colonne `normalized` deja presente
+    dans le fichier, exactement la meme discipline que les trois autres sources (aucune
+    forme n'entre dans `terms` sans repasser par normalize()/is_valid() ici).
+
+    Ce lot est curé à la main, en amont, hors ligne : une divergence CSV vs recalcul ou une
+    forme hors ^[A-Z]{2,15}$ après recalcul signifie que la source a changé sous nos pieds
+    depuis la curation — SystemExit immédiat, jamais un filtrage silencieux qui masquerait
+    l'anomalie."""
+    expected_columns = {"normalized", "raw", "definition_fr", *extra_columns}
+    rows: list[dict] = []
+    with path.open(encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        missing = expected_columns - set(reader.fieldnames or [])
+        if missing:
+            raise SystemExit(
+                "%s : colonnes manquantes %s (colonnes reelles : %s)"
+                % (path.name, sorted(missing), reader.fieldnames)
+            )
+        for line_no, row in enumerate(reader, start=2):
+            raw = row["raw"]
+            recomputed = normalize(raw)
+            if recomputed != row["normalized"]:
+                raise SystemExit(
+                    "%s ligne %d : normalized recalcule (%r) diverge du CSV (%r) pour raw=%r"
+                    % (path.name, line_no, recomputed, row["normalized"], raw)
+                )
+            if not is_valid(recomputed):
+                raise SystemExit(
+                    "%s ligne %d : forme %r hors ^[A-Z]{%d,%d}$ apres recalcul (raw=%r)"
+                    % (path.name, line_no, recomputed, MIN_LENGTH, MAX_LENGTH, raw)
+                )
+            row["normalized"] = recomputed  # toujours la valeur recalculee, jamais celle lue
+            row["_source"] = source_label
+            rows.append(row)
+    return rows
+
+
+def load_kaikki_supplement() -> tuple[dict[str, dict], dict[str, int], list[tuple[str, ...]]]:
+    """Complement kaikki (D-051) : propriétés/toponymes (names_definitions_final.csv) et
+    formes de registre marqué — archaïque, désuet, familier, sigle... (
+    register_definitions_final.csv), extraits de kaikki.org/Wiktionnaire français,
+    curation manuelle hors ligne, versionnés dans data/kaikki_supplement/.
+
+    Ajoute des formes FRANÇAISES absentes des trois sources déjà en place (Kartmaan,
+    hbenbel, ODS8/ODS9) — jamais admises au Scrabble (is_ods8 = 0, is_ods9 = 0
+    systématiquement, ce lot ne référence aucune source ODS). Remplit la case "français
+    non admis" du modèle à trois statuts là où la base ne savait jusqu'ici que répondre
+    "inconnu" pour ces formes (toponymes, noms propres, graphies archaïques...).
+
+    Garde-fous : voir _load_kaikki_csv (recalcul systématique de `normalized` depuis
+    `raw`, SystemExit sur divergence ou forme invalide) — appliqués ici aux deux fichiers.
+    Un doublon interne inattendu dans l'un des deux CSV (même normalized recalculé, raw
+    différent) est également un SystemExit : ce lot est curé pour être sans doublon.
+
+    Les deux fichiers se recoupent volontairement sur un sous-ensemble de formes (mesuré
+    à 178 lors de l'analyse préalable — toponymes/noms désuets couverts par les deux
+    extraits). register_definitions_final.csv l'emporte sur names_definitions_final.csv
+    en cas de collision : seule des deux sources à porter une étiquette de registre (tag),
+    une information strictement plus riche sur le même terme. La ligne names perdante
+    n'est jamais éliminée silencieusement — elle est renvoyée dans collision_rows pour
+    reports/kaikki-supplement-collisions.csv (écrit par main(), aux côtés des collisions
+    avec un terme déjà présent dans les sources précédentes, mesurées à 0 lors de
+    l'analyse préalable mais RECALCULÉES à chaque build, jamais supposées).
+
+    Ne renvoie que des formes normalisées + is_french=1 : ni pos, ni gender, ni definition
+    ne sont écrits dans `terms` par cette fonction (D-051) — la nature grammaticale et la
+    définition de ces termes sont un lot séparé (word_senses.pos/gender), déjà en
+    préparation, hors périmètre de ce ticket. terms.pos/pos_secondary/gender restent donc
+    NULL pour chacune de ces formes tant que ce lot séparé n'est pas construit.
+
+    D-054 — chaque ligne renvoyée porte en plus `row["non_admitted_category"]` : 'proper_noun'
+    pour une forme venue de names_definitions_final.csv, le `tag` (déjà présent sur la ligne)
+    pour une forme venue de register_definitions_final.csv. Calculé APRÈS le merge
+    register-l'emporte-sur-names ci-dessus : la même priorité vaut donc pour cette catégorie
+    que pour la définition (D-052) — une forme en collision croisée reçoit toujours le `tag`
+    du register, jamais 'proper_noun'. Chaque valeur dérivée est vérifiée contre
+    NON_ADMITTED_CATEGORY_VALUES avant d'être acceptée — SystemExit immédiat sinon, jamais un
+    filtrage silencieux (même discipline que le recalcul de `normalized` ci-dessus).
+    """
+    names_rows = _load_kaikki_csv(KAIKKI_NAMES_PATH, "names")
+    register_rows = _load_kaikki_csv(KAIKKI_REGISTER_PATH, "register", extra_columns=("tag",))
+
+    def assert_no_internal_duplicates(rows: list[dict], label: str) -> None:
+        seen: dict[str, str] = {}
+        for row in rows:
+            normalized = row["normalized"]
+            if normalized in seen and seen[normalized] != row["raw"]:
+                raise SystemExit(
+                    "%s : doublon interne inattendu sur %s (%r et %r)"
+                    % (label, normalized, seen[normalized], row["raw"])
+                )
+            seen[normalized] = row["raw"]
+
+    assert_no_internal_duplicates(names_rows, KAIKKI_NAMES_PATH.name)
+    assert_no_internal_duplicates(register_rows, KAIKKI_REGISTER_PATH.name)
+
+    names_by_key = {row["normalized"]: row for row in names_rows}
+    register_by_key = {row["normalized"]: row for row in register_rows}
+    cross_duplicates = sorted(set(names_by_key) & set(register_by_key))
+
+    forms: dict[str, dict] = dict(names_by_key)
+    forms.update(register_by_key)  # register l'emporte sur names en cas de collision
+
+    # D-054 — categorie derivee par forme, jamais une confiance aveugle au CSV : `forms`
+    # porte deja "_source" == "register" pour les 178 formes en collision croisee (le merge
+    # ci-dessus l'a deja tranche), donc la meme priorite que D-052 s'applique ici sans code
+    # supplementaire. Chaque tag register est verifie contre le jeu ferme de la contrainte
+    # CHECK schema.sql a CHAQUE build, jamais suppose stable depuis la curation manuelle.
+    for normalized, row in forms.items():
+        category = row["tag"] if row["_source"] == "register" else "proper_noun"
+        if category not in NON_ADMITTED_CATEGORY_VALUES:
+            raise SystemExit(
+                "complement kaikki (%s) : non_admitted_category derive %r hors du jeu "
+                "ferme %s pour %s" % (row["_source"], category, NON_ADMITTED_CATEGORY_VALUES, normalized)
+            )
+        row["non_admitted_category"] = category
+
+    collision_rows: list[tuple[str, ...]] = [
+        (
+            normalized,
+            "cross_file_names_register",
+            "register",
+            names_by_key[normalized]["raw"],
+            register_by_key[normalized]["raw"],
+            register_by_key[normalized].get("tag", ""),
+        )
+        for normalized in cross_duplicates
+    ]
+
+    stats = {
+        "kaikki_names_source_rows": len(names_rows),
+        "kaikki_register_source_rows": len(register_rows),
+        "kaikki_cross_file_duplicates": len(cross_duplicates),
+        "kaikki_supplement_distinct_forms": len(forms),
+        # D-054 — repartition par categorie derivee, sur les formes distinctes (post-merge) :
+        # somme attendue = kaikki_supplement_distinct_forms.
+        "kaikki_supplement_category_counts": dict(
+            sorted(Counter(row["non_admitted_category"] for row in forms.values()).items())
+        ),
+    }
+    return forms, stats, collision_rows
 
 
 def load_pos_gender(term_keys: set[str]) -> tuple[dict[str, dict], dict[str, int]]:
@@ -621,13 +793,113 @@ def load_word_senses(
     return sorted(rows), stats
 
 
+def load_kaikki_word_senses(
+    term_keys: set[str],
+) -> tuple[list[tuple[str, int, str, str | None, str, str]], dict[str, int]]:
+    """Sens (pos/gender/definition) des 6 781 formes du complement kaikki (D-051), depuis
+    data/kaikki_supplement/word_senses_final.csv — curation manuelle hors ligne (paires
+    names_definitions_final.csv / register_definitions_final.csv, D-051), verifiee
+    independamment avant l'import (D-052).
+
+    Meme discipline que _load_kaikki_csv (D-051) et load_verb_forms/load_word_senses
+    (D-018/D-0XX) : aucune confiance aveugle au CSV, chaque colonne est verifiee ligne par
+    ligne, SystemExit immediat sur toute anomalie plutot qu'un filtrage silencieux. Ce lot
+    est cure pour etre exhaustif et sans anomalie sur l'ensemble exact des 6 781 formes
+    kaikki (D-051) : un ecart signifie que l'un des deux fichiers a change sous nos pieds
+    depuis la curation.
+
+    is_ods8 = 0 et is_ods9 = 0 sur toutes ces formes (D-051) : aucune ne peut collisionner
+    avec les sens deja charges par load_word_senses() (pilote/rollout D-043, mots ADMIS
+    uniquement) — verifie explicitement ci-dessous plutot que suppose.
+
+    Requis (main()) : un build sans ce fichier echoue tot, comme les autres sources
+    kaikki (D-051), pas de reconstruction silencieuse avec une couverture partielle.
+    """
+    stats = {
+        "kaikki_word_senses_source_rows": 0,
+        "kaikki_word_senses_terms_covered": 0,
+        "kaikki_word_senses_rows": 0,
+    }
+    expected_columns = {"term_normalized", "sense_rank", "pos", "gender", "definition", "source"}
+    rows: list[tuple[str, int, str, str | None, str, str]] = []
+    seen_keys: set[tuple[str, int]] = set()
+    with KAIKKI_WORD_SENSES_PATH.open(encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        missing = expected_columns - set(reader.fieldnames or [])
+        if missing:
+            raise SystemExit(
+                "%s : colonnes manquantes %s (colonnes reelles : %s)"
+                % (KAIKKI_WORD_SENSES_PATH.name, sorted(missing), reader.fieldnames)
+            )
+        for line_no, row in enumerate(reader, start=2):
+            stats["kaikki_word_senses_source_rows"] += 1
+            term = row["term_normalized"]
+            if not is_valid(term):
+                raise SystemExit(
+                    "%s ligne %d : term_normalized %r hors ^[A-Z]{%d,%d}$"
+                    % (KAIKKI_WORD_SENSES_PATH.name, line_no, term, MIN_LENGTH, MAX_LENGTH)
+                )
+            if term not in term_keys:
+                raise SystemExit(
+                    "%s ligne %d : term_normalized %r absent de terms (complement kaikki "
+                    "D-051 attendu deja charge avant cet appel)"
+                    % (KAIKKI_WORD_SENSES_PATH.name, line_no, term)
+                )
+            try:
+                rank = int(row["sense_rank"])
+            except ValueError:
+                raise SystemExit(
+                    "%s ligne %d : sense_rank %r non entier"
+                    % (KAIKKI_WORD_SENSES_PATH.name, line_no, row["sense_rank"])
+                )
+            pos = row["pos"]
+            if pos not in POS_VALUES:
+                raise SystemExit(
+                    "%s ligne %d : pos %r hors enum %s"
+                    % (KAIKKI_WORD_SENSES_PATH.name, line_no, pos, POS_VALUES)
+                )
+            gender = row["gender"] or None
+            if gender is not None and gender not in GENDER_VALUES:
+                raise SystemExit(
+                    "%s ligne %d : gender %r hors enum %s"
+                    % (KAIKKI_WORD_SENSES_PATH.name, line_no, gender, GENDER_VALUES)
+                )
+            definition = row["definition"]
+            if not definition.strip():
+                raise SystemExit(
+                    "%s ligne %d : definition vide pour %r"
+                    % (KAIKKI_WORD_SENSES_PATH.name, line_no, term)
+                )
+            source = row["source"]
+            if source != "kaikki":
+                raise SystemExit(
+                    "%s ligne %d : source %r != 'kaikki' (D-052 : cette source reste "
+                    "toujours 'kaikki')"
+                    % (KAIKKI_WORD_SENSES_PATH.name, line_no, source)
+                )
+            key = (term, rank)
+            if key in seen_keys:
+                raise SystemExit(
+                    "%s ligne %d : doublon interne (term_normalized, sense_rank) = %r"
+                    % (KAIKKI_WORD_SENSES_PATH.name, line_no, key)
+                )
+            seen_keys.add(key)
+            rows.append((term, rank, pos, gender, definition, source))
+
+    stats["kaikki_word_senses_terms_covered"] = len({term for term, *_ in rows})
+    stats["kaikki_word_senses_rows"] = len(rows)
+    return sorted(rows), stats
+
+
 def build_terms(
     ods8: list[str],
     ods9: dict[str, list[str]],
     kartmaan: dict[str, set[str]],
     hbenbel: dict[str, set[str]],
-) -> tuple[dict[str, dict], dict[str, int]]:
-    """Applique l'ordre de fusion et renvoie (termes, compteurs d'effet)."""
+    kaikki_supplement: dict[str, dict],
+) -> tuple[dict[str, dict], dict[str, int], list[str]]:
+    """Applique l'ordre de fusion et renvoie (termes, compteurs d'effet, formes kaikki déjà
+    présentes avant l'étape 5 bis — pour reports/kaikki-supplement-collisions.csv)."""
     terms: dict[str, dict] = {}
     effects: dict[str, int] = {}
 
@@ -687,7 +959,35 @@ def build_terms(
         entry["is_ods9"] = 1
     effects["ods9_additions_creating_a_term"] = added_new
 
-    return terms, effects
+    # 5 bis. Complément kaikki (D-051) — propriétés/toponymes + formes de registre marqué.
+    # N'AJOUTE que des formes absentes de toutes les étapes précédentes : ne dégrade ni ne
+    # modifie jamais le statut Scrabble (is_ods8/is_ods9) d'un terme déjà connu — une forme
+    # kaikki qui coïncide avec un terme existant est ignorée pour la création, journalisée
+    # (reports/kaikki-supplement-collisions.csv) et laissée strictement inchangée.
+    #
+    # D-054 — non_admitted_category (déjà dérivé par load_kaikki_supplement(), vérifié contre
+    # NON_ADMITTED_CATEGORY_VALUES) n'est copié dans `entry` QUE dans la branche qui crée
+    # réellement le terme ci-dessous : un terme kaikki qui coïncide avec un terme déjà connu
+    # (kaikki_already_present, mesuré à 0 au 2026-09-02) ne reçoit AUCUNE catégorie — cohérent
+    # avec "jamais de modification d'un terme déjà connu" ci-dessus, cette forme garde le NULL
+    # par défaut de son entrée d'origine (étapes 1 à 5, qui ne posent jamais cette clé).
+    kaikki_new = 0
+    kaikki_already_present: list[str] = []
+    for normalized in kaikki_supplement:
+        if normalized in terms:
+            kaikki_already_present.append(normalized)
+            continue
+        terms[normalized] = {
+            "is_french": 1,
+            "is_ods8": 0,
+            "is_ods9": 0,
+            "non_admitted_category": kaikki_supplement[normalized]["non_admitted_category"],
+        }
+        kaikki_new += 1
+    effects["kaikki_supplement_forms_creating_a_term"] = kaikki_new
+    effects["kaikki_supplement_forms_already_present"] = len(kaikki_already_present)
+
+    return terms, effects, sorted(kaikki_already_present)
 
 
 def write_database(
@@ -724,14 +1024,18 @@ def write_database(
                 pos_gender.get(normalized, {}).get("pos"),
                 pos_gender.get(normalized, {}).get("pos_secondary"),
                 pos_gender.get(normalized, {}).get("gender"),
+                # D-054 : NULL pour toute entree issue des etapes 1 a 5 (la cle n'est jamais
+                # posee), valeur derivee (build_terms(), etape 5 bis) pour les formes creees
+                # par le complement kaikki (D-051) uniquement.
+                entry.get("non_admitted_category"),
             )
             for index, (normalized, entry) in enumerate(sorted(terms.items()), start=1)
         )
         connection.executemany(
             "INSERT INTO terms (id, display_term, normalized, is_french, is_ods8,"
             " is_ods9, is_admitted, score, length, signature, reversed, letter_mask, pos,"
-            " pos_secondary, gender)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " pos_secondary, gender, non_admitted_category)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             rows,
         )
         connection.executemany(
@@ -781,6 +1085,7 @@ def main() -> int:
 
     required = [ODS8_PATH, KARTMAAN_PATH, ODS9_PATH, SCHEMA_PATH, HBENBEL_VERB_PATH]
     required += [HBENBEL_DIR / name for name in HBENBEL_FILES]
+    required += [KAIKKI_NAMES_PATH, KAIKKI_REGISTER_PATH, KAIKKI_WORD_SENSES_PATH]
     for path in required:
         if not path.exists():
             raise SystemExit("source manquante : %s" % path)
@@ -789,7 +1094,10 @@ def main() -> int:
     ods9 = load_ods9()
     kartmaan, rejected, rejected_samples, km_stats = load_kartmaan()
     hbenbel, hb_rejected, hb_samples, hb_stats = load_hbenbel()
-    terms, effects = build_terms(ods8, ods9, kartmaan, hbenbel)
+    kaikki_supplement, kaikki_stats, kaikki_collision_rows = load_kaikki_supplement()
+    terms, effects, kaikki_already_present = build_terms(
+        ods8, ods9, kartmaan, hbenbel, kaikki_supplement
+    )
 
     # D-018 — nature grammaticale, genre, liens de conjugaison. Appelé APRES build_terms() :
     # les deux fonctions filtrent leurs sources contre les clés normalisées déjà retenues
@@ -798,6 +1106,23 @@ def main() -> int:
     pos_gender, pos_stats = load_pos_gender(term_keys)
     verb_forms, verb_stats, verb_excluded_lemmas = load_verb_forms(term_keys)
     word_senses, word_senses_stats = load_word_senses(term_keys)
+    kaikki_word_senses, kaikki_word_senses_stats = load_kaikki_word_senses(term_keys)
+
+    # D-052 — fusion avec les sens deja charges (pilote/rollout D-043, mots ADMIS
+    # uniquement). Les deux lots referencent des ensembles de termes disjoints par
+    # construction (D-043 : is_ods8=1 ou is_ods9=1 ; D-052 : is_ods8=0 et is_ods9=0,
+    # D-051) — verifie explicitement ici plutot que suppose, SystemExit immediat sur
+    # toute collision (term_normalized, sense_rank) entre les deux lots.
+    word_senses_keys = {(term, rank) for term, rank, *_ in word_senses}
+    kaikki_word_senses_keys = {(term, rank) for term, rank, *_ in kaikki_word_senses}
+    overlapping_keys = word_senses_keys & kaikki_word_senses_keys
+    if overlapping_keys:
+        raise SystemExit(
+            "load_word_senses() et load_kaikki_word_senses() collisionnent sur %d cle(s) "
+            "(term_normalized, sense_rank) : %s"
+            % (len(overlapping_keys), sorted(overlapping_keys)[:10])
+        )
+    word_senses = sorted(word_senses + kaikki_word_senses)
 
     # Les collisions se calculent sur l'union des formes sources : deux graphies
     # venues de sources différentes qui se rejoignent après normalisation sont
@@ -860,6 +1185,13 @@ def main() -> int:
         "pos_gender": dict(sorted(pos_stats.items())),
         "verb_forms": dict(sorted(verb_stats.items())),
         "word_senses": dict(sorted(word_senses_stats.items())),
+        # D-051 — complement kaikki (proprietes/toponymes + formes de registre marque).
+        "kaikki_supplement": dict(sorted({
+            **kaikki_stats,
+            "kaikki_supplement_already_present_in_terms": len(kaikki_already_present),
+        }.items())),
+        # D-052 — sens (pos/gender/definition) des 6 781 formes du complement kaikki D-051.
+        "kaikki_word_senses": dict(sorted(kaikki_word_senses_stats.items())),
     }
 
     if args.dry_run:
@@ -869,10 +1201,18 @@ def main() -> int:
 
     metadata = {
         "language": "fr",
-        "schema": "terms v3 (D-018 : pos, pos_secondary, gender, verb_forms ; D-0XX : word_senses)",
+        "schema": (
+            "terms v4 (D-018 : pos, pos_secondary, gender, verb_forms ; D-0XX : word_senses ;"
+            " D-051 : complement kaikki names+register, terms.pos/gender restent NULL pour"
+            " ces formes ; D-052 : word_senses pour ces memes 6 781 formes ; D-054 :"
+            " non_admitted_category pour ces memes 6 781 formes, NULL partout ailleurs)"
+        ),
         "source_ods8_sha256": sha256_of(ODS8_PATH),
         "source_ods9_sha256": sha256_of(ODS9_PATH),
         "source_kartmaan_sha256": sha256_of(KARTMAAN_PATH),
+        "source_kaikki_names_sha256": sha256_of(KAIKKI_NAMES_PATH),
+        "source_kaikki_register_sha256": sha256_of(KAIKKI_REGISTER_PATH),
+        "source_kaikki_word_senses_sha256": sha256_of(KAIKKI_WORD_SENSES_PATH),
         "terms_total": str(len(terms)),
         "verb_forms_total": str(len(verb_forms)),
         "word_senses_rows_total": str(len(word_senses)),
@@ -925,6 +1265,28 @@ def main() -> int:
         REPORTS / "verb-lemmas-excluded.csv",
         ["lemma_normalized"],
         ((lemma,) for lemma in verb_excluded_lemmas),
+    )
+    # D-051 — deux types de collision journalisés, jamais une forme perdue silencieusement :
+    #   cross_file_names_register : la même forme figure dans les deux CSV kaikki, register
+    #     l'emporte (voir load_kaikki_supplement()) ; la ligne names est quand même journalisée.
+    #   already_in_terms : la forme kaikki coïncide avec un terme déjà créé par une des
+    #     quatre sources précédentes (Kartmaan/hbenbel/ODS8/ODS9) — aucune création, aucune
+    #     modification du terme existant, uniquement journalisée pour traçabilité.
+    already_present_rows = [
+        (
+            normalized,
+            "already_in_terms",
+            kaikki_supplement[normalized]["_source"],
+            kaikki_supplement[normalized]["raw"] if kaikki_supplement[normalized]["_source"] == "names" else "",
+            kaikki_supplement[normalized]["raw"] if kaikki_supplement[normalized]["_source"] == "register" else "",
+            kaikki_supplement[normalized].get("tag", ""),
+        )
+        for normalized in kaikki_already_present
+    ]
+    write_csv(
+        REPORTS / "kaikki-supplement-collisions.csv",
+        ["normalized", "collision_type", "kept_source", "raw_names", "raw_register", "register_tag"],
+        sorted(kaikki_collision_rows + already_present_rows),
     )
 
     connection = sqlite3.connect("file:%s?mode=ro" % TARGET_PATH.as_posix(), uri=True)

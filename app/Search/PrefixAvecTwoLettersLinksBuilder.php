@@ -35,43 +35,53 @@ final class PrefixAvecTwoLettersLinksBuilder
      * App\Search\AvecTwoLettersLinksBuilder::DUPLICATE_PARENT_KEYS) : une ligne 'start_with_pair'
      * "{X}:{Y}:{Z}" est un doublon SI ET SEULEMENT SI son `count` egale le `count` de la ligne
      * parente 'start_with' "{X}:{Y}" OU "{X}:{Z}". Calculee PROGRAMMATIQUEMENT (comparaison
-     * directe list_counts, chargement en memoire par prefixe), 46 cles trouvees sur les 7 246
-     * candidats reels -- voir docs/DECISIONS.md D-045.
+     * directe list_counts, chargement en memoire par prefixe) -- voir docs/DECISIONS.md D-045.
+     *
+     * REVALIDATION D-051/D-052 (2026-09-02, 838 180 -> 844 961 termes, 46 -> 52, RECALCUL COMPLET
+     * depuis list_counts, jamais un patch incrementaire) : plusieurs cles historiques (A:Q:U,
+     * I:N:W, L:Q:U, O:Q:U, Y:U:X) sont SORTIES (formes courtes ajoutees par le complement kaikki
+     * cassant l'egalite parent/enfant), d'autres sont NOUVELLES (ex. V:A:W, X:A:J, X:A:K --
+     * paires prefixe+lettre inexistantes avant D-051, desormais monolithiques a une seule
+     * troisieme lettre). Verifie par DEUX methodes independantes (comparaison list_counts
+     * 'start_with_pair'/'start_with' + echantillon direct contre `terms`, 0 divergence).
      *
      * @var list<string>
      */
     private const DUPLICATE_PARENT_KEYS = [
-        'A:Q:U', 'G:Q:U', 'H:Q:U', 'I:N:W', 'J:A:W', 'J:Q:U',
-        'K:Q:U', 'L:Q:U', 'O:Q:U', 'Q:I:V', 'Q:K:U', 'Q:U:V',
-        'Q:U:X', 'U:A:J', 'U:B:J', 'U:E:J', 'U:E:W', 'U:I:J',
-        'U:I:W', 'U:J:M', 'U:J:N', 'U:J:S', 'U:J:T', 'W:A:J',
-        'W:B:J', 'W:E:J', 'W:J:L', 'W:J:N', 'W:J:O', 'W:J:R',
-        'W:J:U', 'X:A:Z', 'X:B:O', 'X:D:E', 'X:E:F', 'X:E:Q',
-        'X:E:Z', 'X:F:O', 'X:G:Z', 'X:H:Z', 'X:I:Z', 'X:O:Z',
-        'X:P:Z', 'X:Q:U', 'X:R:Z', 'Y:U:X',
+        'H:Q:U', 'J:A:W', 'J:Q:U', 'K:Q:U', 'Q:I:V', 'Q:K:U',
+        'Q:U:V', 'Q:U:X', 'U:A:J', 'U:B:J', 'U:E:J', 'U:E:W',
+        'U:I:J', 'U:I:W', 'U:J:M', 'U:J:N', 'U:J:S', 'U:J:T',
+        'V:A:W', 'V:N:W', 'V:O:W', 'W:A:J', 'W:B:J', 'W:E:J',
+        'W:J:L', 'W:J:N', 'W:J:O', 'W:J:R', 'W:J:U', 'X:A:J',
+        'X:A:K', 'X:A:Z', 'X:B:O', 'X:D:E', 'X:E:F', 'X:E:K',
+        'X:E:Q', 'X:E:Z', 'X:F:O', 'X:G:J', 'X:G:Z', 'X:H:Z',
+        'X:I:J', 'X:I:K', 'X:I:Z', 'X:J:N', 'X:K:N', 'X:K:S',
+        'X:O:Z', 'X:P:Z', 'X:Q:U', 'X:R:Z',
     ];
 
     /**
      * Doublons de contenu entre pages SOEURS du meme prefixe (D-045, meme methodologie que
      * App\Search\AvecTwoLettersLinksBuilder::SIBLING_DUPLICATE_KEYS) : regroupement par
      * (prefixe, count), verification par empreinte (liste triee des mots reels du panier,
-     * comparaison de chaines completes) sur les groupes candidats. 58 cles trouvees (perdantes,
-     * canonicalisees vers la cle gagnante la plus petite alphabetiquement) -- voir
-     * docs/DECISIONS.md D-045.
+     * comparaison de chaines completes) sur les groupes candidats -- voir docs/DECISIONS.md
+     * D-045.
+     *
+     * REVALIDATION D-051/D-052 (2026-09-02, 838 180 -> 844 961 termes, 58 -> 54, RECALCUL COMPLET
+     * depuis `terms`, jamais un patch incrementaire) : verifie par DEUX methodes independantes
+     * (empreinte GROUP_CONCAT + regroupement par (prefixe, count)), 0 divergence.
      *
      * @var list<string>
      */
     private const SIBLING_DUPLICATE_KEYS = [
-        'D:J:Y', 'I:L:W', 'J:T:W', 'J:W:Z', 'K:V:X', 'O:W:Y',
-        'P:W:Y', 'P:W:Z', 'Q:J:U', 'Q:L:W', 'Q:T:W', 'Q:U:W',
-        'T:F:J', 'U:K:P', 'U:P:W', 'V:K:T', 'W:H:X', 'W:K:Z',
-        'W:O:X', 'W:P:Q', 'W:P:Y', 'W:Q:U', 'W:R:X', 'W:S:X',
-        'X:B:M', 'X:B:P', 'X:B:U', 'X:B:Y', 'X:D:G', 'X:D:T',
-        'X:F:N', 'X:F:Y', 'X:G:V', 'X:R:V', 'X:U:V', 'X:V:Y',
-        'X:Y:Z', 'Y:B:J', 'Y:D:J', 'Y:F:W', 'Y:G:K', 'Y:H:P',
-        'Y:I:W', 'Y:J:K', 'Y:J:L', 'Y:J:N', 'Y:J:R', 'Y:J:T',
-        'Y:J:U', 'Y:K:W', 'Y:K:X', 'Y:M:W', 'Y:N:X', 'Y:R:W',
-        'Y:R:X', 'Y:T:X', 'Z:J:R', 'Z:K:W',
+        'I:L:W', 'J:T:W', 'J:W:Z', 'K:V:X', 'O:W:Y', 'P:W:Z',
+        'Q:J:U', 'Q:L:W', 'Q:T:W', 'Q:U:W', 'T:F:J', 'U:K:P',
+        'U:P:W', 'V:G:W', 'V:I:W', 'V:J:K', 'V:K:W', 'V:L:W',
+        'V:R:W', 'V:S:W', 'V:T:W', 'W:H:X', 'W:K:Z', 'W:O:X',
+        'W:P:Q', 'W:P:Y', 'W:R:X', 'W:S:X', 'X:B:M', 'X:B:P',
+        'X:B:U', 'X:B:Y', 'X:D:G', 'X:D:T', 'X:F:N', 'X:F:Y',
+        'X:R:V', 'X:U:V', 'X:V:Y', 'X:Y:Z', 'Y:D:J', 'Y:F:W',
+        'Y:H:P', 'Y:J:K', 'Y:J:L', 'Y:J:N', 'Y:J:R', 'Y:J:T',
+        'Y:J:U', 'Y:N:X', 'Y:P:Z', 'Y:R:W', 'Y:T:X', 'Z:H:V',
     ];
 
     /**
@@ -81,6 +91,12 @@ final class PrefixAvecTwoLettersLinksBuilder
      * word_list_commencant_with_two_letters) -- ce lot avait ete applique au registre reel des
      * sa decouverte mais laissait ce builder generer des liens internes VIVANTS vers ces pages
      * devenues noindex,follow (violation R5). Voir docs/DECISIONS.md D-047/D-048.
+     *
+     * PAS REVALIDEE par le passage a 844 961 termes (D-051/D-052, 2026-09-02) : depend du
+     * registre SEO complet (scripts/check_combinatorial_duplicates.php), reconstruit et revalide
+     * separement (hors perimetre data-engine a ce stade). Liste INCHANGEE ici (0 intersection
+     * verifiee avec DUPLICATE_PARENT_KEYS/SIBLING_DUPLICATE_KEYS revalidees ci-dessus) -- meme
+     * raisonnement que App\Search\AvecTwoLettersLinksBuilder::EXTERNAL_DUPLICATE_KEYS.
      *
      * @var list<string>
      */

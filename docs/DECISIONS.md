@@ -4267,3 +4267,632 @@ Non fait a ce stade : pas de nouveau balayage d'orphelines dedie (le point ouver
   sans rapport direct avec ce correctif precis -- celui-ci AJOUTE du maillage sortant, il ne
   peut par construction jamais en retirer).
 ```
+
+## D-051 — Complément Kaikki : 6 781 Formes Françaises Supplémentaires (Toponymes/Noms Propres + Registre Marqué)
+
+Date : 2026-09-02
+Statut : accepté et appliqué
+
+Contexte :
+
+```text
+la base ne savait repondre que "inconnu" pour un nombre non negligeable de formes
+  reelles du francais courant absentes des trois sources deja en place (Kartmaan,
+  hbenbel, ODS8/ODS9) -- en particulier des toponymes/noms propres usuels (ABERDEEN,
+  AALBORG...) systematiquement ECARTES par construction des trois sources existantes
+  (Kartmaan filtre pos=NP, hbenbel filtre sur la casse initiale), et des graphies de
+  registre marque (archaique, desuet, familier, sigle...) jamais couvertes non plus.
+curation manuelle hors ligne prealable (hors de cette session) a partir d'un extrait
+  kaikki.org/Wiktionnaire francais (meme source de fond que le palier 2 des definitions,
+  D-043), livree sous forme de deux CSV verifies : names_definitions_final.csv (6 486
+  lignes, toponymes/noms propres/sigles) et register_definitions_final.csv (473 lignes,
+  colonne tag supplementaire : acronym/archaic/colloquial/dated/dialectal/literary/
+  obsolete/regional/slang).
+emplacement retenu (option B, validee) : data/kaikki_supplement/, VERSIONNE dans le
+  depot -- meme regime que data/ods9/ (petit delta curie a la main), PAS le regime de
+  data/raw/ (gitignore, reconstitue depuis empreintes PROVENANCE.md, source volumineuse
+  brute).
+analyse prealable en lecture seule (aucune ecriture), reconciliee avec la base reelle au
+  moment de l'analyse : 0 mismatch normalized(csv) vs recalcul depuis raw, 0 forme
+  invalide apres recalcul, 0 doublon interne a chaque fichier, 178 doublons CROISES entre
+  les deux fichiers (meme forme documentee des deux cotes), 0 collision avec les 838 180
+  termes deja en base -- total distinct 6 486 + 473 - 178 = 6 781.
+```
+
+Décision :
+
+```text
+nouvelle etape de fusion "5 bis" dans scripts/import_fr.py, apres les additions ODS9 et
+  avant le calcul score/length/signature/reversed/letter_mask -- AJOUTE uniquement,
+  jamais de retrait ni de modification du statut Scrabble (is_ods8/is_ods9) d'un terme
+  deja connu par une des quatre sources precedentes :
+    - nouvelle fonction load_kaikki_supplement() (+ aide privee _load_kaikki_csv())
+    - is_french = 1, is_ods8 = 0, is_ods9 = 0 systematiquement pour toute forme creee par
+      cette etape (ce complement ne reference aucune source ODS)
+    - terms.pos / terms.pos_secondary / terms.gender restent NULL pour ces 6 781 lignes
+      dans CE ticket -- confirme acceptable : la nature grammaticale et la definition de
+      ces termes sont un lot SEPARE (word_senses.pos/gender/definition), deja en
+      preparation, hors perimetre ici. definition_fr (colonne presente dans les deux CSV)
+      n'est PAS consommee par cette etape -- ni lue en base, ni copiee dans word_senses.
+garde-fous (aucune confiance aveugle au CSV, meme discipline que les trois autres
+  sources) :
+    - `normalized` est TOUJOURS recalcule depuis `raw` via scripts/lib/normalize.py
+      (D-009, source unique de verite) -- la colonne normalized du CSV n'est jamais lue
+      pour la valeur, seulement comme point de controle
+    - SystemExit immediat (jamais un filtrage silencieux) si le recalcul diverge de la
+      valeur CSV, ou si la forme recalculee sort de ^[A-Z]{2,15}$ (D-010), ou si un
+      doublon interne inattendu apparait dans l'un des deux fichiers
+    - required (main()) etendu aux deux CSV : un build sans ce complement echoue tot et
+      explicitement plutot que de produire silencieusement une base incomplete
+regle de collision croisee names/register (178 formes concernees) : register l'emporte
+  sur names -- seule des deux sources a porter une etiquette de registre (tag),
+  information strictement plus riche sur le meme terme. La ligne names perdante n'est
+  jamais perdue silencieusement : journalisee dans reports/kaikki-supplement-
+  collisions.csv (colonnes normalized, collision_type, kept_source, raw_names,
+  raw_register, register_tag), aux cotes de toute collision avec un terme deja present
+  dans les sources precedentes (type "already_in_terms", RECALCULEE a chaque build,
+  jamais supposee a partir de l'analyse prealable -- mesuree a 0 lors de ce build reel).
+```
+
+Mesures (avant/après, storage/dictionary_fr.sqlite reconstruite en local) :
+
+```text
+--dry-run (aucune ecriture) : terms_total = 844 961, kaikki_supplement =
+  {kaikki_names_source_rows: 6486, kaikki_register_source_rows: 473,
+  kaikki_cross_file_duplicates: 178, kaikki_supplement_distinct_forms: 6781,
+  kaikki_supplement_already_present_in_terms: 0} -- identique a l'analyse prealable,
+  rien n'a change entretemps.
+build reel : terms_total 838 180 -> 844 961 (+6 781, +0,81 %), integrity_check = ok,
+  quick_check = ok, taille storage/dictionary_fr.sqlite = 385,9 Mo (inchangee par rapport
+  a avant cette etape -- le complement n'ajoute que des lignes `terms`, aucune ligne
+  word_senses/verb_forms).
+determinisme : build reel execute DEUX fois de suite -- sha256 de
+  storage/dictionary_fr.sqlite IDENTIQUE sur les deux executions
+  (d9cd435b5ca8a342916a8d71ffc0e511343fbc016c07b271c4f103efefe1e2f7), et les 18 fichiers
+  de reports/ byte-a-byte identiques entre les deux executions (compares un par un, y
+  compris le nouveau reports/kaikki-supplement-collisions.csv) -- meme garantie que le
+  reste du pipeline.
+requetes de controle (sur la base reelle reconstruite) :
+  - 844 961 lignes, integrity_check ok
+  - ABERDEEN/ACAL/AALBORG/ZWEVEGEM/ZUYTPEENE : is_french=1, is_ods8=0, is_ods9=0,
+    is_admitted=0, pos/pos_secondary/gender NULL -- conforme
+  - les 6 781 formes du complement : 100 % matched en base avec exactement
+    (is_french=1, is_ods8=0, is_ods9=0) et 0 ligne avec un pos/pos_secondary/gender non
+    NULL -- verifie exhaustivement sur les 6 781, pas un echantillon
+  - POSER/TABLE/CHAT/GHOSTER (cas deja couverts par tests/Search/TermLookupTest.php) :
+    valeurs strictement inchangees -- le complement n'a touche aucun terme existant
+  - bornes AA (premier) / ZYZZYVAS (dernier) inchangees -- verifie qu'aucune forme kaikki
+    ne sort de cette plage (min mesure AALBORG, max mesure ZWEVEGEM, tous deux a
+    l'interieur)
+  - voisins POSER (POSENT/POSERA) inchanges -- verifie qu'aucune forme kaikki ne
+    s'intercale
+performance (aucune requete runtime modifiee -- meme requetes que TermLookup::find()/
+  neighbours(), simplement +6 781 lignes sur 844 961) :
+  EXPLAIN QUERY PLAN lookup exact : SEARCH terms USING INDEX sqlite_autoindex_terms_1
+    (normalized=?) -- inchange, toujours l'index UNIQUE, aucun SCAN introduit
+  EXPLAIN QUERY PLAN neighbours (UNION ALL) : SEARCH terms USING COVERING INDEX
+    sqlite_autoindex_terms_1 (normalized<?) / (normalized>?) des deux cotes -- inchange
+  timing (2000 lookups exacts, cache chaud) : 0,049 ms/requete ; timing (500 requetes
+    neighbours) : 0,053 ms/requete -- negligeable, +0,81% de lignes sur un index B-Tree
+    est O(log n), sans effet mesurable
+tests : php tests/run.php -- Search\TermLookupTest.php (le seul test avec une assertion
+  exacte sur le nombre de lignes) mis a jour (838 180 -> 844 961) et VERT, reverifie
+  exhaustivement (844 961 lignes, pas un echantillon) score/signature/reversed/length/
+  pos/pos_secondary/gender.
+```
+
+Conséquences :
+
+```text
+reports/kaikki-supplement-collisions.csv (nouveau, meme regime que les autres rapports
+  -- gitignore, regenere a chaque build) : 178 lignes cross_file_names_register (0
+  already_in_terms lors de ce build).
+data/kaikki_supplement/{names_definitions_final.csv,register_definitions_final.csv}
+  (nouveau, ~630 Ko, VERSIONNE).
+IMPACT MAJEUR SUR D'AUTRES AGENTS, A TRAITER AVANT TOUT AUDIT/DEPLOIEMENT DE CETTE BASE
+  RECONSTRUITE -- non cause par une erreur de ce ticket, mais un effet de bord EXPLICITEMENT
+  documente et anticipe par les auteurs precedents, jamais encore declenche avant ce
+  build : la reconstruction fait passer terms_total de 838 180 a 844 961, ce qui invalide
+  les "listes figees" (comptes/combinaisons lettre-longueur-prefixe-suffixe precalcules a
+  la main) que plusieurs constructeurs de maillage SEO portent en dur, chacun documentant
+  deja explicitement "Liste figee : valable pour l'etat actuel de storage/
+  dictionary_fr.sqlite (838 180 termes, inchange depuis D-022). Une reconstruction future
+  de la base devra revalider cette liste." -- exactement ce qui vient de se produire.
+  php tests/run.php : 32 echecs sur 54 tests apres cette reconstruction (22 reussis),
+  TOUS dans app/Search/*LinksBuilder*Test.php (19 fichiers, sanity checks "au moins un
+  mot existe" ou comptes exacts desormais faux, ex. WordListSolverTest : prefixe R
+  attendu a 224 205 mots, mesure a 224 446) et app/Seo/ProposeSeoBatch*Test.php (8
+  fichiers, "0 ligne proposee" -- generation de lots SEO desynchronisee) +
+  ExploreHubBuilderTest (storage/seo_fr.sqlite, registre SEO precalcule par un script PHP
+  distinct, egalement perime). AUCUN test hors de ce perimetre n'est touche
+  (Database/, Frontend/, Http/, et tous les tests Search/ qui ne dependent pas d'une
+  liste figee -- Normalizer/Conjugation/DuplicatePageResolver/RackSolver/Rack/
+  RelationsFinder/SenseLookup/Suggester/WordListFilters/TermLookup -- restent verts).
+  Ces fichiers (link builders app/Search/, generateurs app/Seo/, storage/seo_fr.sqlite)
+  sont hors perimetre de ce ticket (proprete seo-registry / deja en cours de
+  modification non committee sur ce depot au moment de ce build, D-044 a D-046) --
+  NON corriges ici. Revalidation necessaire avant tout deploiement de la base
+  reconstruite : re-executer les scripts de curation des listes figees, storage/
+  seo_fr.sqlite (scripts/build_seo_registry.php, scripts/build_explore_hub_counts.php),
+  et les lots scripts/propose_seo_batch.php concernes.
+NON fait dans ce ticket (perimetre explicitement exclu, deja signale et valide comme
+  tel) :
+    - population de word_senses.pos/gender/definition pour les 6 781 formes (ticket
+      separe, deja en preparation)
+    - revalidation des listes figees SEO / storage/seo_fr.sqlite (ci-dessus, hors
+      perimetre data-engine)
+    - mise a jour de docs/03_SOURCES_ET_IMPORT_DATA.md / equivalent PROVENANCE.md pour
+      documenter data/kaikki_supplement/ comme source (docs/03 §4/§6, non touche par
+      cette session -- proposition a faire separement)
+    - storage/dictionary_fr.sqlite reconstruite UNIQUEMENT en local (gitignore, jamais
+      commit) -- aucun impact production tant qu'un deploiement manuel n'est pas fait
+      (o2switch, deploiement separe du depot)
+```
+
+## D-052 — Sens (pos/gender/definition) Des 6 781 Formes Du Complement Kaikki (D-051)
+
+Date : 2026-09-02
+Statut : accepté et appliqué
+
+Contexte :
+
+```text
+D-051 a ajoute 6 781 formes francaises (terms.is_french=1, is_ods8=0, is_ods9=0) --
+  toponymes/noms propres/sigles (names_definitions_final.csv) et graphies de registre
+  marque (register_definitions_final.csv) -- SANS pos/gender/definition : terms.pos/
+  pos_secondary/gender restent NULL pour ces 6 781 formes, et la table word_senses
+  (D-043) ne couvre que les 403 060 mots ADMIS.
+curation manuelle hors ligne prealable (hors de cette session), a partir des deux memes
+  CSV kaikki source (definition_fr deja present mais non consomme par D-051) : split
+  multi-sens ("1) ... 2) ...") en lignes sense_rank distinctes, pos/gender mappes sur le
+  jeu ferme du schema (word_senses.pos/gender), pos issu des tags kaikki + une table de
+  recouvrement manuelle pour les 24 mots a pos multiple/24 cas particuliers de
+  register_definitions_final.csv (voir scripts/build_word_senses.py, scratchpad --
+  reference, pas verse au depot, D-007 : les scripts d'import versionnes restent
+  scripts/import_fr.py). Livree sous forme d'un CSV unique : word_senses_final.csv
+  (7 486 lignes, 6 781 termes distincts, colonnes term_normalized, sense_rank, pos,
+  gender, definition, source -- memes colonnes que la table word_senses).
+5 definitions auto-referentielles trouvees et corrigees avant tout code (meme defaut que
+  le correctif post-D-043, PHASE_STATUS.md "CONSIGNE POUR TOUT AJOUT FUTUR DE
+  DEFINITIONS") : ABERDEEN, MARIOUPOL, VENEZUELA, ZANGI, REMI -- le gabarit source citait
+  parfois le terme lui-meme dans une clause tautologique ("ancienne graphie de X" pour le
+  terme X courant, pas une variante). Corrige en coupant UNIQUEMENT la clause
+  auto-referentielle, l'information utile a cote etant conservee (ex. ABERDEEN :
+  "Ancienne graphie d'Aberdeen, ville portuaire d'Ecosse." -> "Ville portuaire
+  d'Ecosse."). Verifie par re-scan independant apres correction : les 5 lignes ne
+  contiennent plus le terme (regex \bTERME\b, insensible a la casse) -- 0 anomalie,
+  cote a cote avec 533 autres definitions qui contiennent legitimement le terme (mentions
+  reelles, pas une repetition tautologique -- ex. "AKHANNOUCH -> Nom de famille marocain,
+  porte par Aziz Akhannouch, chef du gouvernement du Maroc").
+emplacement retenu : data/kaikki_supplement/word_senses_final.csv, meme regime que les
+  deux CSV D-051 (VERSIONNE, pas data/raw/).
+```
+
+Décision :
+
+```text
+nouvelle fonction load_kaikki_word_senses(term_keys) dans scripts/import_fr.py, appelee
+  juste apres load_word_senses() (cache pilote/rollout D-043) et avant write_database() :
+    - lit data/kaikki_supplement/word_senses_final.csv (constante KAIKKI_WORD_SENSES_PATH)
+    - AUCUNE confiance aveugle au CSV, meme discipline que _load_kaikki_csv (D-051) et
+      load_verb_forms/load_word_senses (D-018/D-0XX) : chaque colonne verifiee ligne par
+      ligne (is_valid(term_normalized), term_normalized in term_keys, sense_rank entier,
+      pos dans l'enum fermee, gender vide ou dans l'enum fermee, definition non vide,
+      source == 'kaikki' -- SystemExit immediat sur toute anomalie, jamais un filtrage
+      silencieux
+    - detection de doublon interne (term_normalized, sense_rank) -- SystemExit si trouve
+  fusion avec load_word_senses() : concatenation des deux listes de tuples avant
+    write_database(), avec un controle explicite de collision (term_normalized,
+    sense_rank) entre les deux lots avant la fusion -- SystemExit si collision (les deux
+    lots referencent des ensembles de termes disjoints par construction : D-043 = mots
+    ADMIS, D-052 = complement kaikki D-051 = jamais admis -- verifie, pas suppose)
+  source reste TOUJOURS 'kaikki' (contrainte CHECK du schema deja existante, aucun
+    changement de schema.sql)
+  required (main()) etendu a KAIKKI_WORD_SENSES_PATH : un build sans ce fichier echoue
+    tot et explicitement, meme discipline que les deux CSV D-051
+  metadata build_metadata : source_kaikki_word_senses_sha256 ajoute, schema comment mis a
+    jour (mention D-052)
+```
+
+Mesures (avant/après, storage/dictionary_fr.sqlite reconstruite en local) :
+
+```text
+verification independante prealable (rejouee sur le fichier corrige, scratchpad/
+  verify_word_senses_d052.py, aucune confiance au CSV ni au rapport livre avec) : 15
+  controles, TOUS a 0 erreur / 0 avertissement -- 7 486 lignes, 6 781 termes distincts,
+  0 doublon (term_normalized, sense_rank), 0 pos/gender/source hors enum, 0 definition
+  vide, 0 sense_rank non contigu 1..N, 6 781/6 781 termes couverts appartiennent bien a
+  l'ensemble kaikki D-051 recalcule independamment, 0 terme absent de `terms`, 0 terme
+  ADMIS (is_ods8/is_ods9), 0 collision avec les word_senses existants (mots admis,
+  D-043), 0 prefixe "TERME : " residuel. Les 5 lignes corrigees (ABERDEEN, MARIOUPOL,
+  VENEZUELA, ZANGI, REMI) ne contiennent plus le terme lui-meme (regex \bTERME\b,
+  verifie explicitement une seconde fois) -- passees de 538 a 533 sur le controle large
+  "definition contient le terme" (les 533 restants sont des mentions reelles legitimes,
+  ex. "AKHANNOUCH -> Nom de famille marocain, porte par Aziz Akhannouch", pas des
+  clauses tautologiques).
+build --dry-run (aucune ecriture) : kaikki_word_senses = {kaikki_word_senses_source_rows:
+  7486, kaikki_word_senses_rows: 7486, kaikki_word_senses_terms_covered: 6781} --
+  identique a la verification independante, aucun SystemExit (0 collision detectee
+  entre load_word_senses() et load_kaikki_word_senses()).
+build reel (x2) : terms_total INCHANGE a 844 961 (D-052 n'ajoute aucun terme, seulement
+  des sens sur des termes deja crees par D-051) -- word_senses passe de 418 772 a
+  426 258 lignes (+7 486, +1,79 %), integrity_check = ok, quick_check = ok des deux
+  cotes. Taille storage/dictionary_fr.sqlite : 385,9 Mo -> 386,8 Mo (+0,9 Mo, la table
+  word_senses et son index idx_word_senses_term absorbent les 7 486 lignes
+  supplementaires, aucun changement de schema).
+determinisme : build reel execute DEUX fois de suite --
+  sha256 de storage/dictionary_fr.sqlite IDENTIQUE sur les deux executions
+  (968ec2df540e0a8c22efc60f21baca3627f9aee615e78a68a0069b1bd17c1272), et les 8 fichiers
+  de reports/ regeneres a chaque build byte-a-byte identiques entre les deux executions
+  (duplicates.csv, import-summary.json, kaikki-supplement-collisions.csv,
+  normalization-collisions.csv, ods8-ods9-status-counts.json, rejected-forms.csv,
+  sqlite-integrity.txt, verb-lemmas-excluded.csv) -- meme garantie que le reste du
+  pipeline (D-051, D-018, Phase 0).
+build_metadata verifie sur la base reconstruite : source_kaikki_word_senses_sha256 =
+  b4ea5949e232c4cbed0e1153c8132abb81cf884bc7a03ed5b084db4475b49589 (= sha256 du CSV
+  copie dans data/kaikki_supplement/, verifie identique avant/apres copie), schema
+  comment mis a jour (mention D-052), word_senses_rows_total = 426258.
+requete de controle (aucune requete runtime modifiee -- App\Search\SenseLookup::find()
+  intact, seul le volume de la table augmente) :
+  EXPLAIN QUERY PLAN : SEARCH word_senses USING INDEX sqlite_autoindex_word_senses_1
+    (term_normalized=?) -- inchange, toujours l'index UNIQUE (term_normalized,
+    sense_rank), aucun SCAN introduit
+  timing (2000 lookups, cache chaud, echantillon mixte 5 mots admis existants +
+    8 mots du complement D-052) : 0,063 a 0,080 ms/requete sur deux mesures
+    successives -- negligeable, +1,79 % de lignes sur un index B-Tree est O(log n),
+    sans effet mesurable (premiere mesure formelle de cette requete precise, aucune
+    regression possible par construction : requete et index tous deux inchanges)
+  echantillon verifie ligne par ligne (contenu ET metadonnees pos/gender/source) :
+    AA/POSER/STEPPES/TABLE/CHAT (mots admis existants, inchanges) + ABERDEEN/
+    TOCQUEVILLE/MERIDA/CELIB/MARIOUPOL/VENEZUELA/ZANGI/REMI (complement D-052) --
+    tous corrects, y compris CELIB (2 lignes Adj/N meme texte, mecanisme de fusion
+    par texte identique deja en place cote rendu, voir ci-dessous)
+tests : php tests/run.php -- 22 reussis / 32 echoues, EXACTEMENT le meme compte et les
+  memes fichiers que documentes par D-051 ("32 echecs sur 54 tests apres cette
+  reconstruction (22 reussis), TOUS dans app/Search/*LinksBuilder*Test.php (19
+  fichiers) et app/Seo/ProposeSeoBatch*Test.php (8 fichiers) + ExploreHubBuilderTest") :
+  ces echecs viennent du changement de volume terms_total 838 180 -> 844 961 (D-051),
+  PAS de D-052 (terms_total inchange par ce ticket, seul word_senses grandit). Aucun
+  nouveau test casse par D-052. Search\SenseLookupTest.php (AA/STEPPES/SHABIEN/POSER,
+  mots admis) reste au vert, inchange.
+verification manuelle /mot/{mot} (serveur PHP integre local, php -S 127.0.0.1:8199 -t
+  public, arrete apres) sur l'echantillon demande + les 4 corrections bonus :
+  /mot/aberdeen     Non Admis, "nom féminin", "Ville portuaire d'Écosse." -- plus aucune
+                    trace de la clause auto-referentielle corrigee
+  /mot/tocqueville  Non Admis, 2 cartes de sens DISTINCTES rendues (commune ET
+                    patronyme, textes differents -- pas de fusion a tort)
+  /mot/merida       Non Admis, definition multi-villes correcte
+  /mot/celib        Non Admis, 1 SEULE carte fusionnee "adjectif / nom masculin" (le
+                    mecanisme de fusion par texte identique de app/View/word.php,
+                    deja en place pour D-043/QUIZOMADAIRES, fonctionne aussi pour ce
+                    lot sans aucun changement de code de rendu)
+  /mot/marioupol, /mot/venezuela, /mot/zangi, /mot/remi (les 4 autres corrections) :
+                    Non Admis, definitions corrigees confirmees, aucune ne contient
+                    plus le terme lui-meme
+```
+
+Conséquences :
+
+```text
+data/kaikki_supplement/word_senses_final.csv (nouveau, 648 622 octets, VERSIONNE, meme regime
+  que les deux autres CSV D-051) -- sha256 identique au fichier scratchpad source
+  verifie avant toute utilisation par le build.
+storage/dictionary_fr.sqlite reconstruite UNIQUEMENT en local (gitignore, jamais commit)
+  -- aucun impact production tant qu'un deploiement manuel n'est pas fait (o2switch,
+  deploiement separe du depot, meme note que D-051).
+NON fait dans ce ticket (perimetre explicitement exclu) :
+  - correction des 32 echecs de tests herites de D-051 (listes figees SEO/maillage,
+    app/Search/*LinksBuilder*, app/Seo/ProposeSeoBatch*, ExploreHubBuilderTest) --
+    deja signale par D-051 comme hors perimetre data-engine a ce stade (fichiers en
+    cours de modification non committee par un autre chantier, D-044 a D-049,
+    confirme par git status : tous ces fichiers apparaissent deja modifies).
+    REVALIDATION TOUJOURS NECESSAIRE AVANT TOUT DEPLOIEMENT, inchangee par D-052.
+  - mise a jour de docs/03_SOURCES_ET_IMPORT_DATA.md pour documenter
+    data/kaikki_supplement/word_senses_final.csv comme source (meme reserve que D-051,
+    a proposer separement)
+  - toute revalidation de storage/seo_fr.sqlite (D-052 ne touche que dictionary_fr.sqlite)
+```
+
+## D-053 — Revalidation Des Listes Figées PARENT/SIBLING Post-D-051/D-052
+
+Date : 2026-09-02
+Statut : accepté et appliqué
+
+Contexte :
+
+```text
+D-051/D-052 ont fait passer storage/dictionary_fr.sqlite de 838 180 a 844 961 termes.
+  Cause racine identifiee : list_counts (table remplie par scripts/build_
+  explore_hub_counts.php, JAMAIS par scripts/import_fr.py) a ete videe par la
+  reconstruction -- meme effet de bord deja documente et deja vu une fois (D-049quater).
+18 fichiers app/Search/*LinksBuilder*.php portent des "listes figees" (constantes de
+  classe DUPLICATE_PARENT_KEYS/SIBLING_DUPLICATE_KEYS/EXTERNAL_DUPLICATE_KEYS/
+  OVER_BUDGET_KEYS/DUPLICATE_CONTENT_KEYS/DUPLICATE_START_END_KEYS/
+  CROSS_DUPLICATE_LENGTH_KEYS) calculees a la main contre l'ancienne base, chacune
+  documentant deja elle-meme "valable pour l'etat actuel... une reconstruction future
+  devra revalider cette liste" -- exactement ce qui vient de se produire, mesure via
+  php tests/run.php : 22 reussis / 32 echoues immediatement apres D-051/D-052.
+```
+
+Décision :
+
+```text
+list_counts repeuplee en premier (php scripts/build_explore_hub_counts.php, sur les
+  844 961 termes reels).
+DUPLICATE_PARENT_KEYS/SIBLING_DUPLICATE_KEYS recalcules par DEUX methodes independantes
+  (recompute_fast.php + spot-checks SQL directs sur terms, 0 divergence a chaque fois,
+  jusqu'a 30 controles croises sur les familles les plus grosses) sur 13 fichiers :
+  AvecTwoLettersLinksBuilder (PARENT 4->2), AvecThreeLettersLinksBuilder (PARENT 426->402,
+  SIBLING 234->221), AvecFourLettersLinksBuilder (PARENT 10185->11108, SIBLING
+  4145->3533), AvecBareFourLettersLinksBuilder (PARENT 302->381, confirme 3 fois de
+  suite ; SIBLING 56->97, voir principe ci-dessous), PrefixAvecTwoLettersLinksBuilder
+  (PARENT 46->52), PrefixAvecThreeLettersLinksBuilder (PARENT 3810->3543, SIBLING
+  1909->2042), SuffixAvecTwoLettersLinksBuilder (SIBLING 283->212),
+  SuffixAvecThreeLettersLinksBuilder (PARENT 3567->3448, SIBLING 2319->2587),
+  LengthLinksBuilder (DUPLICATE_START_END_KEYS 52->42, EXTERNAL_DUPLICATE_WITH_KEYS
+  ['2:W']->[], EXTERNAL_DUPLICATE_END_KEYS ['2:L','2:X']->['2:X']),
+  StartEndWithLinksBuilder (DUPLICATE_CONTENT_KEYS 227->207, SIBLING 428->446,
+  CROSS_DUPLICATE_LENGTH_KEYS 333->354), PrefixAvecLinksBuilder (EXTERNAL_DUPLICATE_KEYS
+  4->1, chaque cle verifiee individuellement).
+nouveau principe trouve et documente (AvecBareFourLettersLinksBuilder) : priorite
+  PARENT > SIBLING > EXTERNAL dans le calcul SIBLING -- 246 candidats bruts, 149 deja
+  couverts par EXTERNAL_DUPLICATE_KEYS (non retouchee), filtres avant application de la
+  meme regle de priorite deja existante entre PARENT et SIBLING. Aucun impact
+  fonctionnel : build() exclut une cle des qu'elle appartient a n'importe lequel des
+  cinq ensembles, seule la categorisation change.
+EXTERNAL_DUPLICATE_KEYS (et variantes _SUFFIXES/_PREFIXES) VOLONTAIREMENT NON
+  retouchees sur les ~15 fichiers concernes : necessitent storage/seo_fr.sqlite complet
+  + scripts/check_combinatorial_duplicates.php (D-041), hors perimetre d'une
+  revalidation limitee au dictionnaire seul -- note "PAS REVALIDEE pour D-051/D-052"
+  ajoutee dans chaque docblock concerne (dont 3 fichiers pas encore annotes avant cette
+  session : LengthPrefixExtensionLinksBuilder, LengthSuffixExtensionLinksBuilder,
+  SuffixExtensionLinksBuilder).
+```
+
+Mesures :
+
+```text
+php tests/run.php : 47 reussis / 8 echoues (etait 22/32 immediatement apres D-051/D-052).
+  Perimetre data-engine (22 fichiers Search\*LinksBuilder*Test.php + WordListSolverTest +
+  ExploreHubBuilderTest) : 100% vert, confirme deux fois consecutives. Les 8 echecs
+  restants sont EXCLUSIVEMENT Seo\ProposeSeoBatch*Test.php (6 fichiers), traites en
+  parallele par seo-registry (voir Consequences).
+WordListSolverTest : litteral 224205 -> 224446 (+241, coherent : 241 des 6 781 nouvelles
+  formes kaikki commencent par R).
+```
+
+Conséquences :
+
+```text
+Risque residuel documente, pas cache : EXTERNAL_DUPLICATE_KEYS non revalidee contre la
+  base a 844 961 termes sur ~15 fichiers -- faux positifs (cle exclue a tort, page
+  manquante) ou faux negatifs (doublon de contenu non detecte) possibles tant qu'un
+  rerun complet de scripts/check_combinatorial_duplicates.php n'a pas eu lieu (necessite
+  storage/seo_fr.sqlite reconstruit, chantier seo-registry). Sans impact sur les
+  contraintes dures (aucun crash, aucun risque runtime) -- un risque SEO mineur deja
+  present avant cette tache, pas introduit par elle.
+En parallele (seo-registry, meme session) : 8 familles combinatoires deja indexees
+  (avec_two_letters, avec_three_letters, combined_with_letter, commencant_avec,
+  commencant_terminant_multilettres, position...) ont aussi derive suite au meme delta
+  de +6 781 mots -- contenu differe (pas seulement des comptes), ex.
+  /mots/2-lettres/avec/z attendu a 1 resultat exact, obtenu 0. Delibrement NON corrige
+  ici ni par seo-registry (meme discipline "jamais de raccourci sur les listes
+  combinatoires deja en place") -- chantier separe a cadrer explicitement, decision
+  utilisateur en attente sur le calendrier (avant ou apres ce deploiement).
+```
+
+## D-054 — Catégorie Du Complément Kaikki (`non_admitted_category`) + Phrase « Réponse Directe » Spécifique
+
+Date : 2026-09-02
+Statut : accepté et appliqué
+
+Contexte :
+
+```text
+D-051 a ajoute 6 781 formes francaises non admises (toponymes/noms propres/sigles,
+  registre marque : archaique/desuet/familier/dialectal/litteraire/obsolete/regional/
+  argotique) toutes rendues avec la MEME phrase generique "Reponse Directe" ("X existe en
+  francais, mais ce mot n'est pas admis...") que les 435 120 formes non admises
+  anterieures (Kartmaan/hbenbel) -- une perte d'information : le CSV source (D-051)
+  portait deja cette classification (nom de fichier pour names_definitions_final.csv,
+  colonne `tag` pour register_definitions_final.csv), jamais consommee jusqu'ici.
+objectif produit : donner a l'utilisateur une explication plus specifique et plus juste
+  ("X est un nom propre" plutot que la phrase generique) sans jamais inventer de
+  quatrieme statut semantique (CLAUDE.md, modele a trois statuts ferme) -- la categorie
+  ne sert QUE le choix du texte affiche, jamais le calcul is_ods8/is_ods9/is_french.
+```
+
+Décision :
+
+```text
+schema.sql : nouvelle colonne terms.non_admitted_category (TEXT, DEFAULT NULL), CHECK sur
+  un jeu ferme a 10 valeurs ('proper_noun' + les 9 tags register : acronym, archaic,
+  colloquial, dated, dialectal, literary, obsolete, regional, slang) OU NULL -- NULL pour
+  tout terme admis et pour les 435 120 formes non admises anterieures a D-051 (absence de
+  donnee, pas une erreur, meme convention que pos/pos_secondary/gender).
+scripts/import_fr.py : load_kaikki_supplement() (deja existante, D-051) etendue pour
+  deriver et renvoyer row["non_admitted_category"] par ligne -- 'proper_noun' pour toute
+  forme venue de names_definitions_final.csv, le `tag` deja present sur la ligne pour
+  toute forme venue de register_definitions_final.csv. Meme regle de priorite que D-052
+  (definitions) pour les 178 collisions croisees names/register : register_definitions_
+  final.csv (le tag) l'emporte sur 'proper_noun'. Garde-fou : SystemExit immediat si une
+  categorie derivee sort du jeu ferme de 10 valeurs (jamais un filtrage silencieux).
+  ecriture etendue au meme INSERT que terms (colonne non_admitted_category ajoutee),
+  aucune nouvelle table, aucune nouvelle etape de fusion.
+app/Search/TermLookup.php : SELECT etendu (non_admitted_category, meme ligne deja lue
+  pour display_term/score/pos/gender -- ZERO requete SQLite supplementaire).
+app/Search/TermPage.php : nouvelle propriete readonly nullable nonAdmittedCategory,
+  meme convention que pos/posSecondary/gender (docblock etendu).
+app/View/word.php : table associative de 10 phrases dediees (une par categorie, chacune
+  formulee pour rester juste et sourcee -- "est un nom propre", "est un sigle...", "est un
+  mot d'argot...", etc.), choisie via $page->nonAdmittedCategory quand non NULL, repli
+  systematique sur la phrase generique existante sinon (?? operator) -- aucune regression
+  pour les 435 120 formes anterieures a D-051 ni pour un mot admis. La valeur brute de
+  nonAdmittedCategory (identifiant snake_case) n'est JAMAIS affichee telle quelle a
+  l'utilisateur, toujours traduite via cette table.
+```
+
+Mesures (storage/dictionary_fr.sqlite reconstruite en local, meme build que D-051/D-052) :
+
+```text
+build reel : terms_total INCHANGE a 844 961 (D-054 n'ajoute aucune ligne, seulement une
+  colonne sur des lignes deja creees par D-051), integrity_check = ok, quick_check = ok.
+requete de controle (aucune requete runtime supplementaire, TermLookup::find() intact) :
+  844 961 lignes verifiees EXHAUSTIVEMENT (pas un echantillon, curseur PDO en streaming),
+  6 781 avec une non_admitted_category non NULLE -- exactement les formes du complement
+  kaikki D-051, ni plus ni moins. 0 ligne avec une categorie hors du jeu ferme de 10
+  valeurs. 0 ligne avec une categorie renseignee sur un terme ADMIS (is_ods8/is_ods9).
+  Repartition exacte verifiee : proper_noun 6308, obsolete 143, slang 83, archaic 62,
+  colloquial 55, dated 55, acronym 54, literary 9, regional 7, dialectal 5 (somme 6 781).
+  ABERDEEN (collision croisee names/register, D-051) : categorie 'obsolete' (le tag
+  register l'emporte sur 'proper_noun'), meme regle de priorite que D-052.
+  GHOSTER/ABADAIENT (formes non admises anterieures a D-051) : categorie NULL confirmee,
+  phrase "Reponse Directe" generique inchangee -- 0 regression.
+verification manuelle /mot/{mot} : phrase specifique rendue correctement pour un
+  echantillon des 10 categories (nom propre, sigle, argot, familier, regional, dialectal,
+  archaique, vieilli, ancienne orthographe, litteraire rare) -- jamais la valeur brute
+  snake_case affichee, toujours une phrase complete en francais.
+tests : tests/Search/TermLookupTest.php etendu (verification exhaustive des 844 961
+  lignes + 9 echantillons register + le cas ABERDEEN + le cas terme inconnu) ;
+  tests/Frontend/WordViewTest.php etendu (fixtures GHOSTER/ABADAIENT -- categorie NULL,
+  phrase generique inchangee ; fixture dediee categorie 'proper_noun' -- phrase
+  specifique rendue, badge/subtitle/title inchanges par ailleurs). Les deux fichiers
+  VERTS. Aucun changement au perimetre des 8 fichiers Seo/ProposeSeoBatch*Test.php ni aux
+  19 fichiers Search/*LinksBuilder*Test.php herites de D-051 (D-054 ne touche ni
+  storage/seo_fr.sqlite ni aucune liste figee SEO).
+```
+
+Conséquences :
+
+```text
+storage/dictionary_fr.sqlite reconstruite UNIQUEMENT en local (gitignore, jamais commit)
+  -- aucun impact production tant qu'un deploiement manuel n'est pas fait, meme note que
+  D-051/D-052.
+NON fait dans ce ticket (perimetre explicitement exclu) :
+  - toute revalidation de storage/seo_fr.sqlite / des listes figees SEO (D-054 ne touche
+    que dictionary_fr.sqlite + le rendu de la fiche mot, jamais le registre SEO ni le
+    contenu des listes) -- traite separement (voir D-055)
+  - mise a jour de docs/03_SOURCES_ET_IMPORT_DATA.md pour documenter la derivation de
+    categorie (meme reserve que D-051/D-052, a proposer separement)
+```
+
+## D-055 — Résolution Des Doublons De Contenu Croisés Entre Familles Combinatoires (7 Familles Indexées Post-D-051)
+
+Date : 2026-09-02
+Statut : accepté et appliqué (7 familles sur 8 -- la 8e explicitement reportée)
+
+Contexte :
+
+```text
+D-051/D-052 signalaient deja (Consequences) que les 8 familles combinatoires deja
+  indexees avaient derive suite au delta de +6 781 mots -- contenu differe, pas
+  seulement des comptes -- decision utilisateur en attente sur le calendrier. Question
+  posee directement par l'utilisateur avant tout arbitrage : "si 1 resultat alors index,
+  si 0 alors noindex -- il faut verifier que ca reste vrai apres l'ajout de mots".
+  Reponse : NON, mecaniquement faux. ~93% des 6 781 mots du complement kaikki sont des
+  formes courtes (2-8 lettres, toponymes/sigles) qui satisfont SIMULTANEMENT plusieurs
+  patrons d'URL combinatoires differents a exactement 1 resultat chacun (ex. un seul mot
+  peut a la fois etre l'unique mot de /mots/2-lettres/avec/x/y, /mots/commencant/xy,
+  /mots/terminant/xy et /mots/3-lettres/avec/x/y/z) -- appliquer "1 resultat => index"
+  sans verification aurait cree des dizaines de pages indexables strictement identiques
+  en contenu, exactement le probleme deja resolu une fois par D-041/D-047
+  (DuplicatePageResolver, resolveDuplicateWinner()) pour la base a 838 180 termes,
+  desormais perime par la reconstruction a 844 961 termes.
+balayage exhaustif (scripts/check_combinatorial_duplicates.php, 294 025 lignes) estime a
+  ~5h, juge impraticable pour une revalidation avant deploiement. Balayage BORNE construit
+  a la place (result_count <= 25 ET routes touchees par D-051 uniquement, ~47 683
+  empreintes) -- couvre les pages les plus a risque (paniers minuscules, coincidence de
+  contenu bien plus probable) en une fraction du temps : 813 groupes de doublons croises
+  trouves, 0 anomalie de structure.
+utilisateur : "termine le point 3 puis on deploie tout d'un coup" -- resolution complete
+  demandee AVANT le deploiement, pas un deploiement du coeur suivi d'un chantier SEO
+  separe ulterieur.
+```
+
+Décision :
+
+```text
+pour chacun des 813 groupes trouves par le balayage borne : gagnant determine par
+  DuplicatePageResolver::resolveDuplicateWinner() (classe deja existante et deja testee,
+  D-041/D-047 -- AUCUNE nouvelle regle de priorite inventee, reutilisation stricte de
+  l'ordre canonique KEYWORD_ORDER : longueur -> commencant -> contenant -> terminant ->
+  position -> avec -> sans -> motif, puis nombre de composants, puis profondeur de
+  composante variable, puis route_path alphabetique).
+7 des 8 familles concernees traitees ce soir (avec_single_letter, avec_two_letters,
+  avec_three_letters, combined_with_length, combined_with_letter, commencant_avec,
+  position) ; commencant_terminant_multilettres (2 943 URLs) explicitement REPORTEE --
+  hors de la couverture du balayage borne (necessite le balayage exhaustif ~5h), decision
+  utilisateur via question a choix (« 7 familles ce soir, la 8e en suivi »).
+AVEC_TWO_LETTERS_EXCLUDED_TIER_DUPLICATES (scripts/propose_seo_batch.php) revalidee : 4
+  -> 2 entrees (2:a:z et 2:u:w liberees, leur parent palier 1 a desormais plus d'un mot).
+AVEC_THREE_LETTERS_EXCLUDED_TIER_DUPLICATES revalidee a deux methodes independantes
+  (PARENT + SOEURS) : 660 -> 625 entrees (83 liberees, 48 nouvelles).
+/mots/2-lettres/avec/w (D041_EXCLUDED_ROUTE_PATHS) : exclusion originale perimee
+  (n'egale plus /mots/terminant/wu, qui reste a 1 mot pendant que avec/w-2lettres passe a
+  4) MAIS revele un nouveau doublon NON resolu avec /mots/2-lettres/commencant/w (meme
+  contenu a 4 mots) -- gagnant canonique entre les deux non tranche ce soir. Laisse
+  EXCLU par prudence (statu quo, aucune regression), commentaire de code documentant
+  precisement la question pour le chantier de suivi plutot qu'un correctif partiel non
+  verifie.
+11 candidats hors de la couverture du balayage borne (result_count > 25, non
+  verifiables ce soir avec le meme niveau de rigueur) ECARTES du lot plutot qu'indexes
+  sans verification -- 5 dans avec_three_letters, 6 dans combined_with_letter.
+avant toute ecriture sur storage/seo_fr.sqlite : verifie qu'aucune ligne "index,follow"
+  proposee ne recouvre une route actuellement noindex par quarantaine D-047 sans passer
+  par la resolution ci-dessus (0 "suspicious_registry_losers" apres resolution -- aucune
+  page deja indexee ne perd contre une nouvelle page du complement kaikki).
+autorisation d'indexation obtenue directement de l'utilisateur en chat (pas relayee par
+  un agent) avant toute ecriture sur le registre.
+```
+
+Mesures :
+
+```text
+storage/seo_fr.sqlite : 1 162 936 -> 1 170 949 lignes totales (+8 013), index,follow ->
+  1 139 936 lignes. 7 lots appliques via scripts/apply_seo_batch.php --force :
+  avec_single_letter (363, pur rafraichissement), avec_two_letters (4 180),
+  avec_three_letters (27 815), combined_with_length (5 166, famille word_list_combined),
+  combined_with_letter (9 398), commencant_avec (645), position (2 307).
+public/sitemaps/*.xml + public/sitemap-index.xml regeneres (scripts/build_sitemaps.php) :
+  54 fragments, 1 139 936 URLs au total, EXACTEMENT egal au compte index,follow du
+  registre. git status confirme uniquement les fragments attendus modifies (avec-pair,
+  avec-triple, combined-0002, combined-with, commencant-avec, position).
+0 regression : 0 route deja index,follow avant ce lot ne devient noindex ou ne change de
+  canonical_path -- verifie explicitement pour chaque lot avant application (pas apres).
+tests/Seo/ProposeSeoBatch*Test.php : 7 des 8 fichiers mis a jour et VERTS (valeurs
+  remesurees directement contre la sortie reelle de scripts/propose_seo_batch.php, jamais
+  recalculees a la main) -- avec_single_letter (363, 0 a 1 resultat), avec_two_letters
+  (4180, 48 a 1 resultat, 2:a:z/2:u:w liberees), avec_three_letters (27820, 880 a 1
+  resultat, 10-lettres/avec/a/w/x liberee), combined_with_length (5166, 869 a 1
+  resultat), combined_with_letter (9404, 602 a 1 resultat, F+Q liberee), commencant_avec
+  (645, 2 a 1 resultat -- X+J/X+K liberees, V+W a 2 resultats), position (2307, meme
+  batch_id/added_at fixes -- regularisation, pas une nouvelle proposition).
+  ProposeSeoBatchCommencantTerminantMultilettresTest.php delibrement laisse ROUGE (famille
+  reportee), seul echec attendu du fichier.
+php tests/run.php (suite complete) : lance apres la mise a jour des 7 fichiers de test,
+  resultat verifie avant tout commit/deploiement.
+```
+
+Conséquences :
+
+```text
+Chantier de suivi explicitement documente et reporte (PAS a l'abandon) :
+  - commencant_terminant_multilettres (2 943 URLs) : necessite le balayage exhaustif
+    scripts/check_combinatorial_duplicates.php (~5h) plutot que le balayage borne.
+  - 11 candidats > 25 resultats non couverts par le balayage borne (5 avec_three_letters,
+    6 combined_with_letter) : a verifier individuellement ou via le balayage exhaustif.
+  - revalidation des ~1 467 entrees restantes de D041_EXCLUDED_ROUTE_PATHS (138
+    avec_two, 666 avec_three, 24 position, 639 commencant/terminant) contre la base a
+    844 961 termes -- seules AVEC_TWO_LETTERS_EXCLUDED_TIER_DUPLICATES et
+    AVEC_THREE_LETTERS_EXCLUDED_TIER_DUPLICATES (listes distinctes, deja revalidees
+    ci-dessus) l'ont ete ce soir.
+  - /mots/2-lettres/avec/w vs /mots/2-lettres/commencant/w : doublon potentiel non
+    resolu, laisse EXCLU par prudence, commentaire de code en place
+    (scripts/propose_seo_batch.php, D041_EXCLUDED_ROUTE_PATHS).
+  - result_count affiche dans les 20 fichiers scripts/seo-batches/*.php deja appliques
+    est perime (affichage seulement, aucun risque d'indexation -- le registre reel est
+    la seule source de verite au runtime, docs/05).
+storage/seo_fr.sqlite modifie UNIQUEMENT en local (hors depot git, D-007) -- aucun impact
+  production tant qu'un deploiement manuel n'est pas fait. public/sitemaps/*.xml et
+  public/sitemap-index.xml SONT versionnes et font partie de ce commit.
+```

@@ -78,7 +78,7 @@ return function (): void {
     $exitCode = proc_close($process);
 
     Assert::same(0, $exitCode, "propose_seo_batch.php combined_with_letter aurait du reussir : {$stderr}");
-    Assert::true(str_contains($stderr, '8848 ligne(s) proposee(s)'), $stderr);
+    Assert::true(str_contains($stderr, '9404 ligne(s) proposee(s)'), $stderr);
 
     $tmpFile = tempnam(sys_get_temp_dir(), 'combined_with_letter_batch_');
     file_put_contents($tmpFile, $stdout);
@@ -87,7 +87,11 @@ return function (): void {
         $batch = require $tmpFile;
 
         Assert::true(str_starts_with($batch['batch_id'], 'combined_with_letter-proposed-'), 'batch_id dynamique attendu (nouvelle proposition)');
-        Assert::same(8_848, count($batch['rows']), '11 348 combinaisons start_end_with a >= 1 resultat moins 1 198 (D-032) moins 227 (C-1) moins 428 (I-A) moins 333 (C-2) moins 314 (D-041, doublons croises avec d\'autres familles combinatoires) = 8 848');
+        // D-051 (2026-09-02) : C-1/I-A/C-2 sont des controles DYNAMIQUES (recalcules en direct
+        // contre storage/dictionary_fr.sqlite a chaque execution, pas des listes figees) --
+        // aucun code a corriger, la hausse vient uniquement du complement kaikki (+6 781 mots)
+        // qui deplace mecaniquement le nombre de doublons/paniers a chaque controle.
+        Assert::same(9_404, count($batch['rows']), 'combinaisons start_end_with a >= 1 resultat apres D-032/C-1/I-A/C-2 (tous dynamiques) moins D-041 (statique, non revalide)');
 
         // --- Forme exacte de la route : commencant + terminant + avec, chacun d'une seule
         // --- lettre, SANS longueur -- et jamais la lettre "avec" degeneree (D-032). ---
@@ -114,7 +118,8 @@ return function (): void {
             }
         }
 
-        Assert::same(448, $singleResultCount, 'pages a exactement 1 resultat parmi les 8 848 maillables (754 avant D-041, moins 306 exclues par D-041), GARDEES (docs/05, jamais sur le seul compteur)');
+        // D-051 (2026-09-02) : remesure directe sur le nouveau lot.
+        Assert::same(602, $singleResultCount, 'pages a exactement 1 resultat, GARDEES (docs/05, jamais sur le seul compteur)');
 
         // --- Cas connus, verifies contre list_counts (voir le rapport AFTER pour la
         // --- verification independante complete, agent seo-registry). ---
@@ -130,12 +135,16 @@ return function (): void {
         Assert::same(10_000, $byPath['/mots/commencant/r/terminant/s/avec/e']['result_count'], 'plafonne (ROW_EXAMINATION_CEILING, D-019 -- 82 517 mots reels)');
 
         // --- Regression C-1 (audit consolide, bloquant) : exemples exacts fournis par l'audit,
-        // --- reproduits independamment -- une seule page (FAQ) derriere commencant/f/terminant/q,
-        // --- qui contient deja un A ; trois lettres (h,i,p) toutes deja presentes dans XIPHO,
+        // --- reproduits independamment -- trois lettres (h,i,p) toutes deja presentes dans XIPHO,
         // --- seul mot derriere commencant/x/terminant/o. Ces routes ne doivent JAMAIS etre
         // --- proposees : meme contenu que leur page parente deja indexee, sans canonical
         // --- designant un gagnant. ---
-        Assert::true(!isset($byPath['/mots/commencant/f/terminant/q/avec/a']), 'C-1 : FAQ, doublon de contenu avec /mots/commencant/f/terminant/q');
+        // --- D-051 (2026-09-02) : le cas FAQ/avec/a n'est PLUS un doublon -- le panier F...Q
+        // --- comptait un seul mot (FAQ) avant D-051, il en compte desormais 4 (FAQ, FITEQ, FLQ,
+        // --- FTQ, tous des sigles du complement kaikki) ; seul FAQ contient un A, donc avec/a
+        // --- (toujours {FAQ}) n'egale plus le contenu de son parent (4 mots). Liberee, pas un bug. ---
+        Assert::true(isset($byPath['/mots/commencant/f/terminant/q/avec/a']), 'D-051 : liberee, le panier F...Q a desormais 4 mots (FAQ/FITEQ/FLQ/FTQ), seul FAQ contient A');
+        Assert::same(1, $byPath['/mots/commencant/f/terminant/q/avec/a']['result_count']);
         Assert::true(!isset($byPath['/mots/commencant/x/terminant/o/avec/h']), 'C-1 : XIPHO, doublon de contenu avec /mots/commencant/x/terminant/o');
         Assert::true(!isset($byPath['/mots/commencant/x/terminant/o/avec/i']), 'C-1 : XIPHO, doublon de contenu avec /mots/commencant/x/terminant/o');
         Assert::true(!isset($byPath['/mots/commencant/x/terminant/o/avec/p']), 'C-1 : XIPHO, doublon de contenu avec /mots/commencant/x/terminant/o');

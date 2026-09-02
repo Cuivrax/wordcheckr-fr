@@ -23,9 +23,13 @@ use Tests\Support\Assert;
  *   non vides, surligne <mark> la partie conservee/modifiee la ou attendu, groupe
  *   anagramsPlusOne par lettre ajoutee, et n'affiche "Voir les N mots ->" que
  *   lorsque le total depasse les elements deja affiches.
- * - D-018 (nature grammaticale, genre, conjugaison) : pas de ligne pos/genre si
- *   $page->pos est null, pas de section conjugaison si $conjugation->asLemma ET
- *   $conjugation->asForm sont vides. Les fixtures POSER/POSERA/TABLE/ETRE reprennent
+ * - D-018 (nature grammaticale, genre, conjugaison) : pas de carte pos/genre (repli
+ *   .sense-card "Nature Grammaticale" dans .direct) si $page->pos est null, pas de
+ *   section conjugaison si $conjugation->asLemma ET $conjugation->asForm sont vides.
+ *   Le repli pos/genre reutilise exactement le markup .sense-card/.sense-meta/.sense-
+ *   label/.sense-pos d'une vraie carte de sens (retour utilisateur : typo identique,
+ *   pas seulement similaire -- app/View/word.php et public/assets/css/site.css). Les
+ *   fixtures POSER/POSERA/TABLE/ETRE reprennent
  *   des valeurs reelement observees sur storage/dictionary_fr.sqlite (verifie
  *   manuellement pendant l'implementation) plutot que des valeurs inventees.
  *   $relations est deliberement laisse a null sur ces fixtures cibles D-018 meme
@@ -240,8 +244,18 @@ return function (): void {
     $htmlNotAdmitted = $render($notAdmittedPage, null, $noConjugation, $noSenses);
     Assert::true(!str_contains($htmlNotAdmitted, 'class="relations"'), 'GHOSTER : francais non admis, aucune section relations');
     Assert::true(!str_contains($htmlNotAdmitted, 'Recherches Liées'), 'GHOSTER : francais non admis, aucune recherche liee');
-    Assert::true(str_contains($htmlNotAdmitted, '<p class="pos-line">Verbe</p>'), 'GHOSTER : pos renseigne malgre le statut non admis, ligne attendue');
+    Assert::true(
+        str_contains($htmlNotAdmitted, '<span class="sense-label">Nature Grammaticale</span> <span class="sense-pos">Verbe</span>'),
+        'GHOSTER : pos renseigne malgre le statut non admis, carte nature grammaticale attendue (meme markup que .sense-card)',
+    );
     Assert::true(!str_contains($htmlNotAdmitted, 'class="conjugation"'), 'GHOSTER : aucune donnee de conjugaison, aucune section');
+    // D-054 : nonAdmittedCategory non renseigne sur cette fixture (repli sur la phrase
+    // generique) -- couvre le cas majoritaire (435 120 formes anterieures a D-051), aucune
+    // regression attendue.
+    Assert::true(
+        str_contains($htmlNotAdmitted, 'GHOSTER existe en français, mais ce mot n’est pas admis dans le dictionnaire officiel du Scrabble.'),
+        'GHOSTER : nonAdmittedCategory NULL, phrase generique "Reponse Directe" inchangee (D-054, pas de regression)',
+    );
 
     $unknownPage = new TermPage(
         normalized: 'ZZZQQQXXX',
@@ -259,7 +273,7 @@ return function (): void {
     $htmlUnknown = $render($unknownPage, null, $noConjugation, $noSenses);
     Assert::true(!str_contains($htmlUnknown, 'class="relations"'), 'ZZZQQQXXX : inconnu, aucune section relations');
     Assert::true(!str_contains($htmlUnknown, 'Recherches Liées'), 'ZZZQQQXXX : inconnu, aucune recherche liee');
-    Assert::true(!str_contains($htmlUnknown, 'class="pos-line"'), 'ZZZQQQXXX : pos absent (terme inconnu), aucune ligne nature grammaticale');
+    Assert::true(!str_contains($htmlUnknown, 'Nature Grammaticale'), 'ZZZQQQXXX : pos absent (terme inconnu), aucune carte nature grammaticale');
     Assert::true(!str_contains($htmlUnknown, 'class="conjugation"'), 'ZZZQQQXXX : pos absent, aucune section conjugaison');
 
     // -------------------------------------------------------------------
@@ -302,7 +316,10 @@ return function (): void {
         queryCount: 1,
     );
     $htmlPoser = $render($poserPage, null, $poserConjugation, $noSenses);
-    Assert::true(str_contains($htmlPoser, '<p class="pos-line">Verbe</p>'), 'POSER : ligne "Verbe" attendue');
+    Assert::true(
+        str_contains($htmlPoser, '<span class="sense-label">Nature Grammaticale</span> <span class="sense-pos">Verbe</span>'),
+        'POSER : carte nature grammaticale "Verbe" attendue',
+    );
     Assert::true(str_contains($htmlPoser, '<h2>Se Conjugue</h2>'), 'POSER : titre "Se Conjugue" attendu (asLemma non vide)');
     Assert::true(!str_contains($htmlPoser, '<h2>Conjugaison</h2>'), 'POSER : pas le titre generique "Conjugaison" (asLemma non vide)');
     foreach (['Présent', 'Futur', 'Imparfait', 'Participe présent', 'Participe passé'] as $tenseLabel) {
@@ -379,7 +396,10 @@ return function (): void {
         queryCount: 1,
     );
     $htmlTable = $render($tablePage, null, $tableConjugation, $noSenses);
-    Assert::true(str_contains($htmlTable, '<p class="pos-line">Nom féminin, aussi verbe</p>'), 'TABLE : ligne "Nom féminin, aussi verbe" attendue');
+    Assert::true(
+        str_contains($htmlTable, '<span class="sense-label">Nature Grammaticale</span> <span class="sense-pos">Nom féminin, aussi verbe</span>'),
+        'TABLE : carte nature grammaticale "Nom féminin, aussi verbe" attendue',
+    );
     Assert::true(str_contains($htmlTable, 'Forme conjuguée de <a href="/mot/tabler">TABLER</a> (participe passé).'), 'TABLE : phrase participe passe attendue');
     Assert::true(str_contains($htmlTable, 'Forme conjuguée de <a href="/mot/tabler">TABLER</a> (présent, 1re pers. sing.).'), 'TABLE : phrase present 1s attendue');
     Assert::true(str_contains($htmlTable, 'Forme conjuguée de <a href="/mot/tabler">TABLER</a> (présent, 3e pers. sing.).'), 'TABLE : phrase present 3s attendue');
@@ -401,7 +421,10 @@ return function (): void {
         gender: 'm',
     );
     $htmlChat = $render($chatPage, null, $noConjugation, $noSenses);
-    Assert::true(str_contains($htmlChat, '<p class="pos-line">Nom masculin</p>'), 'CHAT : ligne "Nom masculin" attendue');
+    Assert::true(
+        str_contains($htmlChat, '<span class="sense-label">Nature Grammaticale</span> <span class="sense-pos">Nom masculin</span>'),
+        'CHAT : carte nature grammaticale "Nom masculin" attendue',
+    );
     Assert::true(!str_contains($htmlChat, 'class="conjugation"'), 'CHAT : aucune donnee de conjugaison, aucune section');
 
     // ETRE : verbe suppletif exclu de verb_forms (non fiable, D-018) -- asLemma vide
@@ -423,7 +446,10 @@ return function (): void {
         gender: 'm',
     );
     $htmlEtre = $render($etrePage, null, $noConjugation, $noSenses);
-    Assert::true(str_contains($htmlEtre, '<p class="pos-line">Verbe, aussi nom masculin</p>'), 'ETRE : ligne "Verbe, aussi nom masculin" attendue');
+    Assert::true(
+        str_contains($htmlEtre, '<span class="sense-label">Nature Grammaticale</span> <span class="sense-pos">Verbe, aussi nom masculin</span>'),
+        'ETRE : carte nature grammaticale "Verbe, aussi nom masculin" attendue',
+    );
     Assert::true(!str_contains($htmlEtre, 'class="conjugation"'), 'ETRE : verbe supplétif exclu, aucune section conjugaison malgre pos=V');
 
     // Francais non admis + conjugaison (ex. reel : ABADAIENT -> ABADER, pos absent) :
@@ -447,11 +473,112 @@ return function (): void {
         queryCount: 1,
     );
     $htmlFormOnlyNotAdmitted = $render($formOnlyNotAdmittedPage, null, $formOnlyConjugation, $noSenses);
-    Assert::true(!str_contains($htmlFormOnlyNotAdmitted, 'class="pos-line"'), 'ABADAIENT : pos absent, aucune ligne nature grammaticale');
+    Assert::true(!str_contains($htmlFormOnlyNotAdmitted, 'Nature Grammaticale'), 'ABADAIENT : pos absent, aucune carte nature grammaticale');
     Assert::true(
         str_contains($htmlFormOnlyNotAdmitted, 'Forme conjuguée de <a href="/mot/abader">ABADER</a> (imparfait, 3e pers. plur.).'),
         'ABADAIENT : section conjugaison attendue malgre le statut francais non admis',
     );
+    // D-054 : ABADAIENT aussi anterieur a D-051 (nonAdmittedCategory NULL) -- confirme le
+    // repli generique sur un second cas independant de GHOSTER.
+    Assert::true(
+        str_contains($htmlFormOnlyNotAdmitted, 'ABADAIENT existe en français, mais ce mot n’est pas admis dans le dictionnaire officiel du Scrabble.'),
+        'ABADAIENT : nonAdmittedCategory NULL, phrase generique "Reponse Directe" inchangee (D-054, pas de regression)',
+    );
+
+    // -------------------------------------------------------------------
+    // D-054 -- phrase "Reponse Directe" specifique selon $page->nonAdmittedCategory
+    // (D-051, jeu ferme de 10 valeurs). Un cas par categorie, phrase attendue ecrite en
+    // clair (pas de reutilisation du tableau de app/View/word.php) pour verifier le
+    // rendu independamment de l'implementation. badge/subtitle/title verifies identiques
+    // sur un cas (proper_noun) -- seule la phrase "direct" doit varier.
+    // -------------------------------------------------------------------
+    $notAdmittedCategoryCases = [
+        'proper_noun' => ['ABERDEEN', 'ABERDEEN est un nom propre — les noms propres ne sont jamais admis au Scrabble, quelle que soit leur notoriété.'],
+        'acronym' => ['OVNI', 'OVNI est un sigle ou une abréviation, pas un mot du dictionnaire — les sigles ne sont pas admis au Scrabble.'],
+        'slang' => ['CHELOU', 'CHELOU est un mot d’argot, absent des dictionnaires officiels du Scrabble.'],
+        'colloquial' => ['BOBARD', 'BOBARD est un mot familier, non répertorié dans les dictionnaires officiels du Scrabble.'],
+        'regional' => ['CHOCOLATINE', 'CHOCOLATINE est un régionalisme, employé dans certaines régions mais absent des dictionnaires officiels du Scrabble.'],
+        'dialectal' => ['DRACHE', 'DRACHE est un mot dialectal, propre à un parler régional, non répertorié dans les dictionnaires officiels du Scrabble.'],
+        'archaic' => ['OCCIRE', 'OCCIRE est une graphie ancienne, tombée en désuétude — les dictionnaires actuels du Scrabble ne la reconnaissent pas.'],
+        'dated' => ['NENNI', 'NENNI est un mot vieilli, tombé en désuétude, absent des dictionnaires actuels du Scrabble.'],
+        'obsolete' => ['CLEF', 'CLEF est une ancienne orthographe, remplacée depuis par une autre graphie, non reconnue par les dictionnaires actuels du Scrabble.'],
+        'literary' => ['NYCTHEMERE', 'NYCTHEMERE est un mot littéraire rare, absent des dictionnaires officiels du Scrabble.'],
+    ];
+
+    foreach ($notAdmittedCategoryCases as $category => [$word, $expectedSentence]) {
+        $letters = $tiles($word, $tileScores);
+        $categoryPage = new TermPage(
+            normalized: $word,
+            slug: strtolower($word),
+            found: true,
+            status: TermPage::STATUS_FRENCH_NOT_ADMITTED,
+            score: array_sum(array_column($letters, 'value')),
+            length: strlen($word),
+            isOds8: false,
+            isOds9: false,
+            letters: $letters,
+            previousWord: null,
+            nextWord: null,
+            nonAdmittedCategory: $category,
+        );
+        $htmlCategory = $render($categoryPage, null, $noConjugation, $noSenses);
+
+        Assert::true(
+            str_contains($htmlCategory, $expectedSentence),
+            $word . ' (' . $category . ') : phrase "Reponse Directe" specifique attendue (D-054)',
+        );
+    }
+
+    // La valeur brute de nonAdmittedCategory (identifiant snake_case, ex. "proper_noun")
+    // ne doit jamais fuiter telle quelle dans le HTML -- verifiee via l'absence de "_"
+    // dans tout le rendu de cette fixture. NB : ne peut pas se verifier categorie par
+    // categorie ci-dessus, car plusieurs adjectifs francais legitimes des phrases
+    // attendues coincident avec le nom de la categorie (ex. "dialectal" est a la fois le
+    // nom de la categorie et le mot francais correct dans sa propre phrase) -- seul
+    // "proper_noun" (underscore, jamais present dans un rendu francais normal) permet ce
+    // test sans faux positif.
+    $properNounLetters = $tiles('ABERDEEN', $tileScores);
+    $properNounLeakCheckPage = new TermPage(
+        normalized: 'ABERDEEN',
+        slug: 'aberdeen',
+        found: true,
+        status: TermPage::STATUS_FRENCH_NOT_ADMITTED,
+        score: array_sum(array_column($properNounLetters, 'value')),
+        length: 8,
+        isOds8: false,
+        isOds9: false,
+        letters: $properNounLetters,
+        previousWord: null,
+        nextWord: null,
+        nonAdmittedCategory: 'proper_noun',
+    );
+    $htmlProperNounLeakCheck = $render($properNounLeakCheckPage, null, $noConjugation, $noSenses);
+    Assert::true(
+        !str_contains($htmlProperNounLeakCheck, 'proper_noun'),
+        'ABERDEEN : la valeur brute "proper_noun" ne doit jamais apparaitre dans le HTML rendu',
+    );
+
+    // badge/subtitle/title identiques a la fixture GHOSTER (nonAdmittedCategory NULL) --
+    // seule la phrase "direct" doit varier selon la categorie.
+    $aberdeenLetters = $tiles('ABERDEEN', $tileScores);
+    $aberdeenPage = new TermPage(
+        normalized: 'ABERDEEN',
+        slug: 'aberdeen',
+        found: true,
+        status: TermPage::STATUS_FRENCH_NOT_ADMITTED,
+        score: array_sum(array_column($aberdeenLetters, 'value')),
+        length: 8,
+        isOds8: false,
+        isOds9: false,
+        letters: $aberdeenLetters,
+        previousWord: null,
+        nextWord: null,
+        nonAdmittedCategory: 'proper_noun',
+    );
+    $htmlAberdeen = $render($aberdeenPage, null, $noConjugation, $noSenses);
+    Assert::true(str_contains($htmlAberdeen, '>Non Admis<'), 'ABERDEEN : badge "Non Admis" identique, inchange par D-054');
+    Assert::true(str_contains($htmlAberdeen, 'Vous ne pouvez pas le jouer.'), 'ABERDEEN : sous-titre identique, inchange par D-054');
+    Assert::true(str_contains($htmlAberdeen, 'Non, ABERDEEN N’est Pas Admis Au Scrabble'), 'ABERDEEN : titre identique (schema Non, %s N’est Pas Admis), inchange par D-054');
 
     // -------------------------------------------------------------------
     // Invariants communs a tous les cas (deja verifies en Phase 1, reconduits ici).

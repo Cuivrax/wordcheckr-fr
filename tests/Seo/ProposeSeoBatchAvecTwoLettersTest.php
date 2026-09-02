@@ -50,7 +50,7 @@ return function (): void {
     $exitCode = proc_close($process);
 
     Assert::same(0, $exitCode, "propose_seo_batch.php avec_two_letters aurait du reussir : {$stderr}");
-    Assert::true(str_contains($stderr, '4134 ligne(s) proposee(s)'), $stderr);
+    Assert::true(str_contains($stderr, '4180 ligne(s) proposee(s)'), $stderr);
 
     $tmpFile = tempnam(sys_get_temp_dir(), 'avec_two_letters_batch_');
     file_put_contents($tmpFile, $stdout);
@@ -59,7 +59,11 @@ return function (): void {
         $batch = require $tmpFile;
 
         Assert::true(str_starts_with($batch['batch_id'], 'avec_two_letters-proposed-'), 'batch_id dynamique attendu (nouvelle proposition, pas une regularisation)');
-        Assert::same(4134, count($batch['rows']), '4 276 combinaisons a >= 1 resultat, moins 4 (C-3, parent palier 1) moins 138 (D-041, doublons croises avec d\'autres familles combinatoires)');
+        // D-051 (2026-09-02) : AVEC_TWO_LETTERS_EXCLUDED_TIER_DUPLICATES revalidee sur les 844 961
+        // termes (etait 838 180) -- 2:a:z et 2:u:w liberees (n'egalent plus leur parent palier 1
+        // depuis l'ajout du complement kaikki), 4 -> 2 entrees. D-041 (isD041Excluded, 138 entrees)
+        // inchange par ce lot -- non revalide, chantier de suivi separe.
+        Assert::same(4180, count($batch['rows']), '4 276 combinaisons a >= 1 resultat, moins 2 (C-3 revalide D-051, parent palier 1) moins 138 (D-041, doublons croises avec d\'autres familles combinatoires, non revalide)');
 
         // --- Forme exacte de la route : longueur + "avec" + EXACTEMENT deux lettres distinctes,
         // --- toujours dans l'ordre alphabetique (jamais /mots/avec/{X}/{Y} sans longueur, jamais
@@ -91,7 +95,9 @@ return function (): void {
             }
         }
 
-        Assert::same(8, $singleResultCount, '130 pages a 1 resultat apres C-3, moins 122 exclues par D-041 (paniers minuscules disproportionnellement dupliques par une autre famille) = 8');
+        // D-051 (2026-09-02) : 2:a:z et 2:u:w desormais comptees (liberees de C-3), remesure directe
+        // sur le nouveau lot plutot que recalculee a la main depuis l'ancien chiffre.
+        Assert::same(48, $singleResultCount, 'D-051 : remesure directe apres revalidation C-3 (2:a:z et 2:u:w desormais incluses)');
 
         // --- Cas connus, verifies ligne par ligne contre le vrai solveur (voir le rapport AFTER
         // --- pour la verification independante complete, agent seo-registry). ---
@@ -104,21 +110,22 @@ return function (): void {
         Assert::true(isset($byPath['/mots/9-lettres/avec/c/o']));
         Assert::same(10_000, $byPath['/mots/9-lettres/avec/c/o']['result_count'], 'plafonne (ROW_EXAMINATION_CEILING, D-019)');
 
-        // --- CORRECTIF C-3 (4e audit seo-technical-auditor, 2026-08-20) : les 4 paires dont le
-        // --- contenu duplique EXACTEMENT celui d'un parent palier 1 ne doivent plus jamais
-        // --- apparaitre dans ce lot -- voir AVEC_TWO_LETTERS_EXCLUDED_TIER_DUPLICATES
-        // --- (scripts/propose_seo_batch.php) pour le detail complet. ---
-        Assert::true(!isset($byPath['/mots/2-lettres/avec/u/w']), 'doublon de contenu avec /mots/2-lettres/avec/w (WU, seul mot)');
-        Assert::true(!isset($byPath['/mots/2-lettres/avec/a/z']), 'doublon de contenu avec /mots/2-lettres/avec/z (ZA, seul mot)');
+        // --- CORRECTIF C-3, REVALIDE D-051 (2026-09-02) : /mots/2-lettres/avec/u/w et
+        // --- /mots/2-lettres/avec/a/z sont desormais LIBEREES (leur parent palier 1 a plus d'un
+        // --- mot depuis le complement kaikki -- avec/w = WE/WI/WU/WW, avec/z = OZ/ZA/DZ -- ce
+        // --- n'est plus le meme contenu qu'une paire a 1 mot). Seules Q+U a 14/15 lettres restent
+        // --- exclues (paire structurelle, inchangee). ---
+        Assert::true(isset($byPath['/mots/2-lettres/avec/u/w']), 'D-051 : liberee, avec/w a desormais 4 mots (WE/WI/WU/WW), plus un doublon de avec/u/w (WU seul)');
+        Assert::same(1, $byPath['/mots/2-lettres/avec/u/w']['result_count']);
+        Assert::true(isset($byPath['/mots/2-lettres/avec/a/z']), 'D-051 : liberee, avec/z a desormais 3 mots (OZ/ZA/DZ), plus un doublon de avec/a/z (ZA seul)');
+        Assert::same(1, $byPath['/mots/2-lettres/avec/a/z']['result_count']);
         Assert::true(!isset($byPath['/mots/14-lettres/avec/q/u']), 'doublon de contenu avec /mots/14-lettres/avec/q (Q et U quasi-indissociables a cette longueur)');
         Assert::true(!isset($byPath['/mots/15-lettres/avec/q/u']), 'doublon de contenu avec /mots/15-lettres/avec/q (Q et U quasi-indissociables a cette longueur)');
 
-        // --- /mots/10-lettres/avec/w/x doit rester le gagnant canonique (forme la plus simple,
-        // --- D-025) du groupe cite par l'audit : lui-meme (1 mot), plus ses 6 variantes a trois
-        // --- lettres avec/{a,e,n,o,s,t}/w/x, toutes exclues du lot palier 3 (voir
-        // --- ProposeSeoBatchAvecThreeLettersTest.php). ---
+        // --- /mots/10-lettres/avec/w/x : D-051 a ajoute un second mot a ce panier (etait 1 mot,
+        // --- desormais 2) -- reste present et indexable, seul le compte a change. ---
         Assert::true(isset($byPath['/mots/10-lettres/avec/w/x']));
-        Assert::same(1, $byPath['/mots/10-lettres/avec/w/x']['result_count']);
+        Assert::same(2, $byPath['/mots/10-lettres/avec/w/x']['result_count'], 'D-051 : etait 1 mot avant, 2 desormais');
     } finally {
         unlink($tmpFile);
     }

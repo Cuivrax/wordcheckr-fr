@@ -42,7 +42,7 @@ return function (): void {
     $exitCode = proc_close($process);
 
     Assert::same(0, $exitCode, "propose_seo_batch.php combined_with_length aurait du reussir : {$stderr}");
-    Assert::true(str_contains($stderr, '4849 ligne(s) proposee(s)'), $stderr);
+    Assert::true(str_contains($stderr, '5166 ligne(s) proposee(s)'), $stderr);
 
     $tmpFile = tempnam(sys_get_temp_dir(), 'combined_with_length_batch_');
     file_put_contents($tmpFile, $stdout);
@@ -51,7 +51,9 @@ return function (): void {
         $batch = require $tmpFile;
 
         Assert::true(str_starts_with($batch['batch_id'], 'combined_with_length-proposed-'), 'batch_id dynamique attendu (nouvelle proposition)');
-        Assert::same(4_849, count($batch['rows']), '5 193 combinaisons length_start_end reelles moins 52 (D-025) moins 292 (D-041, doublons croises avec d\'autres familles combinatoires) = 4 849');
+        // D-051 (2026-09-02) : LengthLinksBuilder::DUPLICATE_START_END_KEYS revalidee sur les
+        // 844 961 termes (agent data-engine, D-053) -- 52 -> 42 (21 sorties + 11 nouvelles).
+        Assert::same(5_166, count($batch['rows']), 'combinaisons length_start_end reelles moins 42 (D-025 revalide D-051) moins 292 (D-041, doublons croises avec d\'autres familles combinatoires, non revalide)');
 
         // --- Forme exacte de la route : longueur + commencant + terminant, chacun d'une seule
         // --- lettre (jamais /mots/commencant/{X}/terminant/{Y} seul, jamais un prefixe/suffixe
@@ -80,7 +82,8 @@ return function (): void {
             }
         }
 
-        Assert::same(725, $singleResultCount, 'pages a exactement 1 resultat parmi les 4 849, GARDEES (docs/05, jamais sur le seul compteur)');
+        // D-051 (2026-09-02) : remesure directe sur le nouveau lot.
+        Assert::same(869, $singleResultCount, 'pages a exactement 1 resultat, GARDEES (docs/05, jamais sur le seul compteur)');
 
         // --- Les 52 paires a contenu strictement duplique avec la variante sans longueur
         // --- (D-025, I-1) ne doivent JAMAIS apparaitre -- verifie sur un echantillon connu, pas

@@ -53,28 +53,43 @@ final class LengthLinksBuilder
      *
      * Source : storage/seo_fr.sqlite, `SELECT route_path, notes FROM registry WHERE
      * family = 'word_list_combined' AND notes LIKE '%ATTENTION doublon%'` -- exactement 52
-     * lignes, chacune citant sa longueur partagee en toutes lettres ("tous les mots de cette
-     * paire partagent la longueur N"). Verifie une seconde fois de facon independante (0
-     * divergence dans les deux sens) en comparant list_counts : une entree 'length_start_end'
-     * "{N}:{X}:{Y}" est un doublon si et seulement si son `count` est EGAL au `count` de l'entree
-     * 'start_end' "{X}:{Y}" correspondante (meme total, donc aucun mot de cette paire n'existe a
-     * une autre longueur) -- reproduit exactement les 52 memes triples, voir
-     * tests/Search/LengthLinksBuilderTest.php et reports/query-plans/combined-length-maillage.md.
+     * lignes (838 180 termes), chacune citant sa longueur partagee en toutes lettres ("tous les
+     * mots de cette paire partagent la longueur N"). Verifie une seconde fois de facon
+     * independante (0 divergence dans les deux sens) en comparant list_counts : une entree
+     * 'length_start_end' "{N}:{X}:{Y}" est un doublon si et seulement si son `count` est EGAL au
+     * `count` de l'entree 'start_end' "{X}:{Y}" correspondante (meme total, donc aucun mot de
+     * cette paire n'existe a une autre longueur) -- reproduit exactement les 52 memes triples a
+     * l'epoque, voir tests/Search/LengthLinksBuilderTest.php et reports/query-plans/
+     * combined-length-maillage.md.
      *
-     * Liste figee : valable pour l'etat actuel de storage/dictionary_fr.sqlite (838 180 termes,
-     * inchange depuis D-022, integrity_check = ok). Une reconstruction future de la base devra
-     * revalider cette liste (le test de coherence ci-dessus le detecterait, comparaison
-     * list_counts, jamais un echantillon).
+     * REVALIDATION D-051/D-052 (2026-09-02, 838 180 -> 844 961 termes, 52 -> 42, RECALCUL COMPLET
+     * depuis list_counts, jamais un patch incrementaire de l'ancienne liste) : 21 cles SORTIES
+     * (10:W:L, 2:I:P, 2:I:V, 2:Q:Q, 3:D:V, 3:F:Q, 3:J:B, 3:Q:C, 3:U:H, 3:V:V, 4:C:J, 4:F:J, 5:S:V,
+     * 5:U:K, 5:X:G, 6:M:V, 6:O:W, 7:D:Q, 7:N:P, 7:V:Q, 8:R:W -- une paire deja monolithique a une
+     * longueur perd cette propriete des qu'un nouveau mot de la MEME paire commencant+terminant
+     * apparait a une longueur DIFFERENTE, jamais l'inverse : monotonie de l'ajout de mots, D-051)
+     * et 11 cles NOUVELLES (2:S:J, 2:U:Q, 2:W:W, 2:X:P, 3:G:Q, 3:L:W, 5:K:W, 7:V:J, 7:W:Q, 8:K:Q,
+     * 8:Y:C -- CAS NON COUVERT par la monotonie ci-dessus : ce sont des paires commencant+terminant
+     * qui n'EXISTAIENT PAS DU TOUT dans la base a 838 180 termes -- ex. aucun mot ne commencait par
+     * S et finissait par J -- et que le complement kaikki cree pour la premiere fois, toutes a une
+     * seule longueur par construction d'un tout petit panier neuf). Les deux categories sont
+     * couvertes par le MEME recalcul complet (aucun raisonnement particulier requis cote code),
+     * seule cette note documente pourquoi un simple diff "ancien - nouveau" ne suffit pas a
+     * expliquer le changement de compte.
+     *
+     * Liste figee : valable pour l'etat actuel de storage/dictionary_fr.sqlite (844 961 termes,
+     * D-051/D-052, integrity_check = ok). Une reconstruction future de la base devra revalider
+     * cette liste (le test de coherence ci-dessus le detecterait, comparaison list_counts, jamais
+     * un echantillon).
      *
      * @var list<string>
      */
     private const DUPLICATE_START_END_KEYS = [
-        '3:A:J', '5:B:J', '4:C:J', '7:D:Q', '3:D:V', '2:E:J', '4:F:J', '3:F:Q', '4:F:W', '3:G:W',
-        '9:I:B', '2:I:P', '2:I:V', '9:I:W', '3:J:B', '3:M:J', '6:M:V', '11:M:W', '7:N:P', '8:N:W',
-        '4:O:J', '9:O:Q', '6:O:W', '2:P:V', '3:Q:C', '9:Q:P', '2:Q:Q', '9:R:Q', '8:R:W', '5:S:V',
-        '5:T:J', '8:T:Q', '8:T:W', '3:U:B', '3:U:H', '5:U:K', '4:U:V', '9:V:B', '7:V:Q', '3:V:V',
-        '10:W:L', '14:X:C', '5:X:G', '5:X:O', '7:X:U', '12:X:X', '4:Y:P', '5:Y:Q', '4:Y:V', '8:Z:J',
-        '3:Z:P', '6:Z:Q',
+        '11:M:W', '12:X:X', '14:X:C', '2:E:J', '2:P:V', '2:S:J', '2:U:Q', '2:W:W', '2:X:P', '3:A:J',
+        '3:G:Q', '3:G:W', '3:L:W', '3:M:J', '3:U:B', '3:Z:P', '4:F:W', '4:O:J', '4:U:V', '4:Y:P',
+        '4:Y:V', '5:B:J', '5:K:W', '5:T:J', '5:X:O', '5:Y:Q', '6:Z:Q', '7:V:J', '7:W:Q', '7:X:U',
+        '8:K:Q', '8:N:W', '8:T:Q', '8:T:W', '8:Y:C', '8:Z:J', '9:I:B', '9:I:W', '9:O:Q', '9:Q:P',
+        '9:R:Q', '9:V:B',
     ];
 
     /**
@@ -84,17 +99,26 @@ final class LengthLinksBuilder
      * du 2026-08-21 : 1 656 groupes, 2 089 pages en excès).
      *
      * "2-lettres/avec/w" (Family::WORD_LIST_AVEC_SINGLE_LETTER, 2 composants -- WU, seul mot de 2
-     * lettres avec W) fait partie d'un groupe de 3 pages au contenu identique : elle-même,
-     * "2-lettres/commencant/w/terminant/u" (Family::WORD_LIST_COMBINED avec longueur, 3
+     * lettres avec W a 838 180 termes) faisait partie d'un groupe de 3 pages au contenu identique :
+     * elle-même, "2-lettres/commencant/w/terminant/u" (Family::WORD_LIST_COMBINED avec longueur, 3
      * composants) et "terminant/wu" (Family::WORD_LIST_TERMINANT sans longueur, 1 seul composant).
-     * Le gagnant du groupe est "terminant/wu" (le plus petit compte des trois) --
-     * App\Search\DuplicatePageResolver::resolveDuplicateWinner() retire donc "2:W" ICI, pas parce
-     * qu'elle perd face à la variante avec longueur (2 < 3, elle la battrait seule à seule), mais
-     * parce qu'une troisième page à 1 seul composant gagne le groupe entier.
+     * Le gagnant du groupe etait "terminant/wu" (le plus petit compte des trois) --
+     * App\Search\DuplicatePageResolver::resolveDuplicateWinner() retirait donc "2:W" ICI, pas
+     * parce qu'elle perdait face à la variante avec longueur (2 < 3, elle la battrait seule à
+     * seule), mais parce qu'une troisième page à 1 seul composant gagnait le groupe entier.
+     *
+     * REVALIDATION D-051/D-052 (2026-09-02, 838 180 -> 844 961 termes) -- CETTE clé précise
+     * (contrairement aux listes EXTERNAL_DUPLICATE_KEYS des autres builders "avec", laissées
+     * inchangées faute de registre reconstruit) est vérifiable directement contre `terms` : les
+     * DEUX côtés de la comparaison ("avec W, longueur 2" et "termine par WU, une requête suffixe
+     * pure") sont des motifs simples, sans dépendance au registre. Vérifié : `length_with '2:W'`
+     * vaut désormais 4 (WE, WI, WU, WW -- le complément kaikki a ajouté WE et WI) tandis que
+     * `normalized LIKE '%WU'` vaut toujours 1 (WU seul) -- la relation est CASSÉE (4 ≠ 1), "2:W"
+     * N'EST PLUS un doublon de contenu. Liste devenue VIDE.
      *
      * @var list<string>
      */
-    private const EXTERNAL_DUPLICATE_WITH_KEYS = ['2:W'];
+    private const EXTERNAL_DUPLICATE_WITH_KEYS = [];
 
     /**
      * Doublon de contenu CROISÉ avec une famille EXTÉRIEURE pour byEnd (D-047, balayage générique
@@ -105,14 +129,21 @@ final class LengthLinksBuilder
      * été appliqué au registre réel dès sa découverte mais laissait ce builder générer des liens
      * internes VIVANTS depuis /mots/{N}-lettres vers ces pages devenues noindex,follow (violation
      * R5, confirmée en direct via HTTP avant correctif : /mots/2-lettres liait vers
-     * /mots/2-lettres/terminant/l, noindex depuis D-047). "2:L" perd face à
-     * /mots/2-lettres/commencant/il (2 composants contre 3 -- IL est le seul mot admettant les
-     * deux lectures) ; "2:X" perd de même face à /mots/2-lettres/commencant/ex. Voir
-     * docs/DECISIONS.md D-047/D-048.
+     * /mots/2-lettres/terminant/l, noindex depuis D-047). "2:L" perdait face à
+     * /mots/2-lettres/commencant/il (2 composants contre 3 -- IL était le seul mot admettant les
+     * deux lectures à 838 180 termes) ; "2:X" perdait de même face à /mots/2-lettres/commencant/ex.
+     * Voir docs/DECISIONS.md D-047/D-048.
+     *
+     * REVALIDATION D-051/D-052 (2026-09-02, 838 180 -> 844 961 termes) -- mêmes motifs simples que
+     * EXTERNAL_DUPLICATE_WITH_KEYS ci-dessus, vérifiables directement contre `terms` sans registre :
+     * "2:L" (mots de 2 lettres terminant par L) vaut désormais 3 (EL, IL, OL -- le complément
+     * kaikki a ajouté EL et OL) contre 1 seul mot ("IL") côté "commençant/il" -- relation CASSÉE
+     * (3 ≠ 1), "2:L" N'EST PLUS un doublon, SORTI de la liste. "2:X" (EX, toujours seul) reste
+     * inchangé (1 = 1 côté "commençant/ex", relation intacte).
      *
      * @var list<string>
      */
-    private const EXTERNAL_DUPLICATE_END_KEYS = ['2:L', '2:X'];
+    private const EXTERNAL_DUPLICATE_END_KEYS = ['2:X'];
 
     public function __construct(
         private readonly Connection $connection,

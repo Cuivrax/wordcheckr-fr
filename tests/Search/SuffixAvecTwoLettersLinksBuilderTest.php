@@ -49,8 +49,8 @@ return function (): void {
     $reflection = new ReflectionClass(SuffixAvecTwoLettersLinksBuilder::class);
     $duplicateParentKeys = $reflection->getConstant('DUPLICATE_PARENT_KEYS');
     $siblingDuplicateKeys = $reflection->getConstant('SIBLING_DUPLICATE_KEYS');
-    Assert::same(82, count($duplicateParentKeys), 'exactement 82 doublons parent attendus (D-045)');
-    Assert::same(283, count($siblingDuplicateKeys), 'exactement 283 doublons soeurs attendus (D-045)');
+    Assert::same(82, count($duplicateParentKeys), 'exactement 82 doublons parent attendus (D-045, D-051/D-052 -- composition changee, total identique)');
+    Assert::same(212, count($siblingDuplicateKeys), 'exactement 212 doublons soeurs attendus (D-045, D-051/D-052 -- etait 283)');
     Assert::same(count($duplicateParentKeys), count(array_unique($duplicateParentKeys)), 'aucun doublon dans la liste figee elle-meme');
     Assert::same(count($siblingDuplicateKeys), count(array_unique($siblingDuplicateKeys)), 'aucun doublon dans la liste figee elle-meme');
     Assert::same(0, count(array_intersect($duplicateParentKeys, $siblingDuplicateKeys)), 'les deux listes doivent rester disjointes');

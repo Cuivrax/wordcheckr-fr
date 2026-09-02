@@ -216,6 +216,12 @@ if ($path === '/api/suggest') {
     return;
 }
 
+if ($path === '/mot' || $path === '/mot/') {
+    $redirect('/mots', 301);
+
+    return;
+}
+
 if (preg_match('#^/mot/([^/]+)$#u', $path, $matches) === 1) {
     $segment = $matches[1];
 

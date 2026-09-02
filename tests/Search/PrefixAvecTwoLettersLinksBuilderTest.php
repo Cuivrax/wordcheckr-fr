@@ -44,34 +44,39 @@ return function (): void {
         Assert::true($linksAB->links[$i - 1]['letter'] < $linksAB->links[$i]['letter'], 'ordre alphabetique attendu');
     }
 
-    // --- Reflection : les deux listes figees ont les comptes reels calcules pour D-045. ---
+    // --- Reflection : les deux listes figees ont les comptes reels recalcules pour D-051/D-052
+    // --- (2026-09-02, 838 180 -> 844 961 termes, RECALCUL COMPLET depuis list_counts/`terms`,
+    // --- jamais un patch incrementaire) : etaient 46/58 sur 838 180 termes. ---
     $reflection = new ReflectionClass(PrefixAvecTwoLettersLinksBuilder::class);
     $duplicateParentKeys = $reflection->getConstant('DUPLICATE_PARENT_KEYS');
     $siblingDuplicateKeys = $reflection->getConstant('SIBLING_DUPLICATE_KEYS');
-    Assert::same(46, count($duplicateParentKeys), 'exactement 46 doublons parent attendus (D-045)');
-    Assert::same(58, count($siblingDuplicateKeys), 'exactement 58 doublons soeurs attendus (D-045)');
+    Assert::same(52, count($duplicateParentKeys), 'exactement 52 doublons parent attendus (D-045, D-051/D-052 -- etait 46)');
+    Assert::same(54, count($siblingDuplicateKeys), 'exactement 54 doublons soeurs attendus (D-045, D-051/D-052 -- etait 58)');
     Assert::same(count($duplicateParentKeys), count(array_unique($duplicateParentKeys)), 'aucun doublon dans la liste figee elle-meme');
     Assert::same(count($siblingDuplicateKeys), count(array_unique($siblingDuplicateKeys)), 'aucun doublon dans la liste figee elle-meme');
     Assert::same(0, count(array_intersect($duplicateParentKeys, $siblingDuplicateKeys)), 'les deux listes doivent rester disjointes');
 
-    // --- Cas connu, verifie manuellement (rapport de tache D-045) : A+Q+U est un doublon PARENT
-    // --- exact (tous les mots de A+Q contiennent deja U) -- ne doit JAMAIS apparaitre depuis
-    // --- commencant/a/avec/q. ---
-    Assert::true(in_array('A:Q:U', $duplicateParentKeys, true), 'sanity check : A:Q:U fait bien partie de la liste figee');
-    $linksAQ = $builder->build('A', 'Q');
-    $foundU = array_values(array_filter($linksAQ->links, static fn (array $l): bool => $l['letter'] === 'U'));
-    Assert::true($foundU === [], 'A:Q:U est un doublon parent exact (D-045) -- ne doit jamais etre produit depuis commencant/a/avec/q');
-    $rawCountAQU = (int) $pdo->query("SELECT count FROM list_counts WHERE list_type = 'start_with_pair' AND list_key = 'A:Q:U'")->fetch()['count'];
-    Assert::true($rawCountAQU > 0, 'sanity check : A:Q:U existe bien dans list_counts (precalcul brut inchange, seule la sortie du builder est filtree)');
+    // --- Cas connu (D-051/D-052, remplace l'ancien exemple A:Q:U -- casse par le complement
+    // --- kaikki, SORTI de la liste) : W+A+J est un doublon PARENT exact (WEBJOURNAL est le seul
+    // --- mot commencant par W avec J, il contient deja A) -- ne doit JAMAIS apparaitre depuis
+    // --- commencant/w/avec/a. ---
+    Assert::true(in_array('W:A:J', $duplicateParentKeys, true), 'sanity check : W:A:J fait bien partie de la liste figee (D-051/D-052)');
+    $linksWA = $builder->build('W', 'A');
+    $foundJ = array_values(array_filter($linksWA->links, static fn (array $l): bool => $l['letter'] === 'J'));
+    Assert::true($foundJ === [], 'W:A:J est un doublon parent exact -- ne doit jamais etre produit depuis commencant/w/avec/a');
+    $rawCountWAJ = (int) $pdo->query("SELECT count FROM list_counts WHERE list_type = 'start_with_pair' AND list_key = 'W:A:J'")->fetch()['count'];
+    Assert::same(1, $rawCountWAJ, 'sanity check : W:A:J existe dans list_counts et vaut 1 (WEBJOURNAL, precalcul brut inchange, seule la sortie du builder est filtree)');
 
-    // --- Cas connu, verifie manuellement : D:J:Y perd face a D:J:K (meme panier exact,
-    // --- DJERMAKOYE/DJERMAKOYES) -- D:J:Y ne doit jamais apparaitre depuis commencant/d/avec/j. ---
-    Assert::true(in_array('D:J:Y', $siblingDuplicateKeys, true), 'sanity check : D:J:Y fait bien partie de la liste figee');
-    $linksDJ = $builder->build('D', 'J');
-    $foundY = array_values(array_filter($linksDJ->links, static fn (array $l): bool => $l['letter'] === 'Y'));
-    $foundK = array_values(array_filter($linksDJ->links, static fn (array $l): bool => $l['letter'] === 'K'));
-    Assert::true($foundY === [], 'D:J:Y est un doublon soeur (D-045) -- ne doit jamais etre produit');
-    Assert::true($foundK !== [], 'D:J:K est la forme gagnante (D-045) -- doit etre produit normalement');
+    // --- Cas connu (D-051/D-052, remplace l'ancien exemple D:J:Y -- casse par DJAKARTA, SORTI de
+    // --- la liste) : V:G:W perd face a V:E:W (meme mot unique, VOLKSWAGEN, qui contient E, G et W
+    // --- tous les trois) -- depuis commencant/v/avec/w, le partenaire E doit apparaitre (V:E:W,
+    // --- gagnant), le partenaire G ne doit jamais apparaitre (V:G:W, doublon soeur exclu). ---
+    Assert::true(in_array('V:G:W', $siblingDuplicateKeys, true), 'sanity check : V:G:W fait bien partie de la liste figee (D-051/D-052)');
+    $linksVW = $builder->build('V', 'W');
+    $foundG = array_values(array_filter($linksVW->links, static fn (array $l): bool => $l['letter'] === 'G'));
+    $foundE = array_values(array_filter($linksVW->links, static fn (array $l): bool => $l['letter'] === 'E'));
+    Assert::true($foundG === [], 'V:G:W est un doublon soeur -- ne doit jamais etre produit depuis commencant/v/avec/w');
+    Assert::true($foundE !== [], 'V:E:W est la forme gagnante (plus petite alphabetiquement) -- doit etre produit normalement');
 
     // --- Somme des comptes = total du palier 1 source, MOINS les extensions exclues, sur
     // --- quelques prefixes representatifs (pas les 26, pour rester rapide -- l'exhaustivite
