@@ -361,11 +361,21 @@ return function (): void {
         queryCount: 1,
     );
     $htmlPosera = $render($poseraPage, null, $poseraConjugation, $noSenses);
-    Assert::true(str_contains($htmlPosera, '<h2>Conjugaison</h2>'), 'POSERA : titre generique "Conjugaison" attendu (asLemma vide)');
+    // D-0XX : la section "Conjugaison" separee n'existe plus pour une simple forme conjuguee
+    // (asLemma vide) -- l'information vit desormais UNIQUEMENT dans la carte "Definition"
+    // (retour utilisateur : la meme info a deux endroits, formulee differemment, lisait comme
+    // une incoherence, pas une variation voulue).
+    Assert::true(!str_contains($htmlPosera, '<h2>Conjugaison</h2>'), 'POSERA : plus de section Conjugaison separee (D-0XX, info dans la carte Definition)');
     Assert::true(!str_contains($htmlPosera, '<h2>Se Conjugue</h2>'), 'POSERA : pas "Se Conjugue", POSERA n\'est pas un infinitif');
+    Assert::true(!str_contains($htmlPosera, 'Nature Grammaticale'), 'POSERA : pas de carte "Nature Grammaticale", supplantee par la carte Definition (forme conjuguee)');
     // D-0XX (rotation de gabarits) : POSERA -> crc32("POSERA") % 4 = 3 (gabarit E), stable et
     // deterministe -- recalcule ici plutot que suppose, voir app/View/word.php pour le detail
-    // des 4 gabarits.
+    // des 4 gabarits. Synthetisee directement dans la carte "Definition" ($noSenses ici --
+    // aucune fiche word_senses reelle a remplacer, meme chemin que ABADAIENT).
+    Assert::true(
+        str_contains($htmlPosera, '<span class="sense-label">Définition</span> <span class="sense-pos">verbe</span>'),
+        'POSERA : carte Definition avec etiquette "verbe" attendue',
+    );
     Assert::true(
         str_contains($htmlPosera, 'Conjugaison à la 3e pers. sing. du futur du verbe <a href="/mot/poser">POSER</a>.'),
         'POSERA : phrase courte attendue, temps/personne traduits en francais (gabarit E, crc32("POSERA") % 4 = 3)',
@@ -399,16 +409,26 @@ return function (): void {
         queryCount: 1,
     );
     $htmlTable = $render($tablePage, null, $tableConjugation, $noSenses);
+    // D-0XX : $posLine ("Nature Grammaticale") est desormais supprime des qu'une forme
+    // conjuguee existe (asForm non vide) -- une carte Definition va de toute facon etre
+    // affichee, $posLine y ferait doublon (retour utilisateur, meme raisonnement que
+    // POSERA/ABADAIENT). Remplace par UN SEUL representant choisi par ordre canonique
+    // temps/personne parmi les 3 entrees asForm (participe_passe rang 4, present/1s rang
+    // [0,0], present/3s rang [0,2]) -- present/1s gagne, jamais tous les 3 rendus separement
+    // (evite la repetition "4 fois la meme chose" signalee sur AMOCHE en production reelle).
+    Assert::true(!str_contains($htmlTable, 'Nature Grammaticale'), 'TABLE : plus de carte "Nature Grammaticale", supplantee par la carte Definition');
     Assert::true(
-        str_contains($htmlTable, '<span class="sense-label">Nature Grammaticale</span> <span class="sense-pos">Nom féminin, aussi verbe</span>'),
-        'TABLE : carte nature grammaticale "Nom féminin, aussi verbe" attendue',
+        str_contains($htmlTable, '<span class="sense-label">Définition</span> <span class="sense-pos">verbe</span>'),
+        'TABLE : carte Definition avec etiquette "verbe" attendue',
     );
-    // D-0XX (rotation de gabarits) : le participe passe reste TOUJOURS sur le gabarit A
-    // original (aucune personne a inserer dans les 3 autres gabarits) ; les deux formes au
-    // present suivent la rotation -- crc32("TABLE") % 4 = 2 (gabarit D), stable.
-    Assert::true(str_contains($htmlTable, 'Forme conjuguée de <a href="/mot/tabler">TABLER</a> (participe passé).'), 'TABLE : phrase participe passe attendue (jamais en rotation)');
-    Assert::true(str_contains($htmlTable, "Cette forme vient du verbe <a href=\"/mot/tabler\">TABLER</a>, conjugué au présent à la 1re pers. sing."), 'TABLE : phrase present 1s attendue (gabarit D, crc32("TABLE") % 4 = 2)');
-    Assert::true(str_contains($htmlTable, "Cette forme vient du verbe <a href=\"/mot/tabler\">TABLER</a>, conjugué au présent à la 3e pers. sing."), 'TABLE : phrase present 3s attendue (gabarit D, crc32("TABLE") % 4 = 2)');
+    // crc32("TABLE") % 4 = 2 (gabarit D), stable.
+    Assert::true(
+        str_contains($htmlTable, "Cette forme vient du verbe <a href=\"/mot/tabler\">TABLER</a>, conjugué au présent à la 1re pers. sing."),
+        'TABLE : phrase du representant (present 1s, gagne sur present 3s et participe passe par ordre canonique) attendue (gabarit D, crc32("TABLE") % 4 = 2)',
+    );
+    Assert::true(!str_contains($htmlTable, 'participe passé'), 'TABLE : le participe passe ne doit PAS etre rendu, un seul representant par mot');
+    Assert::true(!str_contains($htmlTable, '3e pers. sing.'), 'TABLE : present/3s ne doit PAS etre rendu, un seul representant par mot');
+    Assert::true(!str_contains($htmlTable, '<h2>Conjugaison</h2>') && !str_contains($htmlTable, '<h2>Se Conjugue</h2>'), 'TABLE : pas de section Conjugaison separee (asLemma vide)');
 
     // CHAT : nom simple, aucune conjugaison -- section entiere absente.
     $chatPage = new TermPage(
@@ -480,10 +500,17 @@ return function (): void {
     );
     $htmlFormOnlyNotAdmitted = $render($formOnlyNotAdmittedPage, null, $formOnlyConjugation, $noSenses);
     Assert::true(!str_contains($htmlFormOnlyNotAdmitted, 'Nature Grammaticale'), 'ABADAIENT : pos absent, aucune carte nature grammaticale');
-    // D-0XX (rotation de gabarits) : crc32("ABADAIENT") % 4 = 2 (gabarit D), stable.
+    // D-0XX (rotation de gabarits) : crc32("ABADAIENT") % 4 = 2 (gabarit D), stable. Mot
+    // francais non admis, aucune fiche word_senses (D-043/D-052 ne couvrent pas les 435 120
+    // formes anterieures a D-051) -- carte "Definition" SYNTHETISEE depuis Conjugation
+    // (asForm), seule source de cette info, pas de section "Conjugaison" separee.
+    Assert::true(
+        str_contains($htmlFormOnlyNotAdmitted, '<span class="sense-label">Définition</span> <span class="sense-pos">verbe</span>'),
+        'ABADAIENT : carte Definition synthetisee (etiquette "verbe") attendue malgre l\'absence de word_senses',
+    );
     Assert::true(
         str_contains($htmlFormOnlyNotAdmitted, "Cette forme vient du verbe <a href=\"/mot/abader\">ABADER</a>, conjugué à l'imparfait à la 3e pers. plur."),
-        'ABADAIENT : section conjugaison attendue malgre le statut francais non admis (gabarit D)',
+        'ABADAIENT : phrase de la carte Definition attendue malgre le statut francais non admis (gabarit D)',
     );
     // D-054 : ABADAIENT aussi anterieur a D-051 (nonAdmittedCategory NULL) -- confirme le
     // repli generique sur un second cas independant de GHOSTER.

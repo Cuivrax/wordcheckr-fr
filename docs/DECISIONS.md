@@ -5106,7 +5106,8 @@ storage/seo_fr.sqlite modifie UNIQUEMENT en local (hors depot git, D-007) jusqu'
 ## D-058 — Rotation Déterministe De 4 Gabarits Pour La Phrase « Forme Conjuguée De... »
 
 Date : 2026-09-03
-Statut : accepté et appliqué
+Statut : accepté et appliqué, CORRIGÉ après retour utilisateur sur la mise en production (voir
+« CORRECTIF » en fin d'entrée)
 
 Contexte :
 
@@ -5199,4 +5200,92 @@ NON fait dans ce ticket (perimetre explicitement exclu, question posee et tranch
   - formes d'adjectif/pluriel : aucune fonctionnalite equivalente n'existe sur ce depot,
     resterait un chantier separe complet (nouvelle source de donnees, nouveau lookup,
     nouvelle section UI) si jamais ouvert.
+```
+
+CORRECTIF (2026-09-03, retour utilisateur sur captures d'ecran production reelle -- ABADONS,
+POSERA, AMOCHE) :
+
+```text
+mauvais perimetre initial trouve et corrige : la premiere implementation avait varie la phrase
+  UNIQUEMENT dans Conjugation::$asForm (App\Search\ConjugationLookup, section "Conjugaison"
+  separee de app/View/word.php) SANS toucher la vraie cible que l'utilisateur demandait --
+  word_senses.definition (source='template', D-043, "gabarit gratuit palier 0",
+  scripts/generate_word_senses.py:219), affichee dans la carte "Definition" ("Reponse
+  Directe"). Consequence en production : DEUX endroits montraient desormais des textes
+  DIFFERENTS pour la meme information (l'ancien gabarit fixe dans la carte Definition, le
+  nouveau gabarit varie dans la section Conjugaison), et pour tout mot avec plusieurs entrees
+  asForm (ex. AMOCHE : participe passe + present 1s + present 3s), la section Conjugaison les
+  rendait TOUTES separement -- 1 carte Definition + 3 lignes Conjugaison, "4 fois la meme
+  chose" (mot exact de l'utilisateur). Zone "Conjugaison" par ailleurs jamais stylee (simple
+  paragraphe .conjugation-form, pas une .sense-card).
+correctif applique : la phrase varie desormais UNIQUEMENT dans la carte "Definition" --
+  $conjugationVerbFormHtml calcule une fois (meme logique de rotation crc32/4 gabarits,
+  inchangee), un SEUL representant choisi par ordre canonique temps puis personne quand
+  plusieurs entrees asForm existent pour le meme mot (present avant futur avant imparfait
+  avant les deux participes ; a temps egal, 1re pers. avant 2e avant 3e, singulier avant
+  pluriel) -- jamais toutes les entrees rendues separement. Deux cas :
+    - une fiche word_senses reelle existe (pos=V, source=template, D-043) : sa 'definition'
+      stockee est REMPLACEE par le texte varie, calcule EN DIRECT depuis Conjugation (donnee
+      vivante), jamais un second passage d'ecriture sur storage/dictionary_fr.sqlite pour ce
+      simple habillage cosmetique.
+    - aucune fiche word_senses (mot francais non admis anterieur a D-051, ex. ABADAIENT --
+      435 120 formes concernees, D-043/D-052 ne couvrent que les mots admis + le complement
+      kaikki) : une carte "Definition" SYNTHETISEE est ajoutee directement (etiquette "verbe"),
+      seule source de cette info desormais (avant : uniquement dans la section Conjugaison,
+      jamais stylee).
+  la section "Conjugaison" separee (App\View\word.php, <h2>) ne rend plus JAMAIS l'ancien
+  paragraphe asForm -- elle ne montre plus que le cas asLemma (le mot EST un infinitif connu,
+  liste SES propres formes conjuguees, ex. POSER -- inchange, jamais concerne par ce defaut).
+  $posLine ("Nature Grammaticale", repli quand aucun sens n'existe) desormais aussi supprime
+  des que $conjugation->asForm n'est pas vide (garde-fou par prudence, jamais observe sur les
+  donnees reelles a ce jour -- pos Kartmaan et word_senses/asForm ne se recoupent jamais vides
+  simultanement en pratique, mais eviterait le meme doublon si un jour un mot combinait les
+  deux).
+CSS .conjugation-form (jamais stylee au-dela d'un paragraphe simple, cause du "pas de mise en
+  forme" signale) supprimee de public/assets/css/site.css -- son role est repris par
+  .sense-card/.sense-meta/.sense-label/.sense-pos, deja utilise et deja bien anime.
+```
+
+Mesures (correctif) :
+
+```text
+verification manuelle (serveur local) sur les 3 mots exacts des captures d'ecran de
+  l'utilisateur + TABLE + POSER (verbe infinitif reel, temoin de non-regression) :
+  ABADONS -> UNE carte Definition ("verbe" / "Conjugaison a la 1re pers. plur. du present du
+    verbe ABADER."), aucune section Conjugaison (asLemma vide).
+  POSERA -> UNE carte Definition ("verbe" / "Conjugaison a la 3e pers. sing. du futur du verbe
+    POSER."), aucune section Conjugaison.
+  AMOCHE -> UNE SEULE carte Definition (etait 1 Definition + 3 Conjugaison avant correctif) --
+    "Cette forme vient du verbe AMOCHER, conjugue au present a la 1re pers. sing." (present 1s
+    gagne sur present 3s et participe passe par l'ordre canonique).
+  TABLE -> meme resultat qu'AMOCHE (present 1s gagnant), la vraie definition Kartmaan de TABLE
+    (nom) coexiste normalement avec la carte verbe quand les deux sens sont reels en base.
+  POSER (infinitif reel) -> inchange : sa vraie definition Kartmaan ("Mettre quelque chose sur
+    une surface.") PLUS la section "Se Conjugue" (word-stream de ses propres formes) --
+    confirme que le cas asLemma n'a jamais ete touche par ce defaut ni par son correctif.
+tests/Frontend/WordViewTest.php : assertions POSERA/TABLE/ABADAIENT entierement retravaillees
+  pour la nouvelle architecture (carte Definition unique avec etiquette "verbe", absence de
+  section Conjugaison separee pour ces 3 mots, absence du representant NON choisi -- ex. TABLE
+  ne doit contenir ni "participe passe" ni "3e pers. sing."). Toutes revues en direct contre le
+  rendu reel avant d'etre ecrites (jamais recalculees a la main sans confirmation), memes 4
+  gabarits/crc32 inchanges (verifie : le correctif ne change PAS QUEL gabarit un mot obtient,
+  seulement OU et COMBIEN de fois il est affiche).
+php tests/run.php (suite complete) : 54 reussis / 1 echoue (ProposeSeoBatchCommencantTerminant
+  MultilettresTest.php, echec attendu et documente depuis D-055/D-057, sans rapport avec ce
+  correctif).
+```
+
+Conséquences (correctif) :
+
+```text
+la version fautive (1re passe de D-058) avait ete committee, poussee et DEPLOYEE en
+  production avant ce correctif -- corrige et redeploye dans la foulee, pas de fenetre
+  prolongee ou l'incoherence visuelle etait visible en dehors du controle initial (insuffisant)
+  de l'auteur du correctif.
+lecon retenue (a appliquer aux prochaines demandes similaires) : verifier OU une information
+  est REELLEMENT affichee en production (ici : deux mecanismes distincts produisaient un texte
+  de forme similaire, word_senses stocke vs Conjugation calculee en direct) avant de modifier
+  seulement l'un des deux -- une simple lecture du code source ne suffit pas a garantir qu'un
+  seul mecanisme existe, une verification visuelle sur des mots reels (captures d'ecran ou
+  serveur local) reste necessaire avant de declarer un correctif termine.
 ```

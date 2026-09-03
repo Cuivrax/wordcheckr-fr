@@ -329,8 +329,14 @@ $genderLabels = ['m' => 'masculin', 'f' => 'féminin', 'e' => 'épicène'];
 // propre pos/genre : $posLine deviendrait une redite, elle n'est alors pas construite. Le
 // texte calcule ici est imprime plus bas dans le meme markup .sense-card qu'une vraie carte
 // de sens (voir doc de tete) -- rien a changer ici, seule l'impression differe.
+//
+// D-0XX : meme raisonnement si le mot EST une forme conjuguee (asForm non vide) -- une carte
+// "Definition" (reelle ou synthetisee depuis Conjugation, voir plus bas) va de toute facon
+// etre affichee, $posLine y ferait alors doublon. Jamais observe sur les donnees reelles a ce
+// jour (pos Kartmaan et word_senses/asForm ne se recoupent jamais vides simultanement en
+// pratique), garde-fou par prudence plutot que suppose impossible.
 $posLine = null;
-if ($senses->senses === [] && $page->pos !== null && isset($posLabels[$page->pos])) {
+if ($senses->senses === [] && $conjugation->asForm === [] && $page->pos !== null && isset($posLabels[$page->pos])) {
     $posLine = $posLabels[$page->pos];
 
     if ($page->pos === 'N' && $page->gender !== null && isset($genderLabels[$page->gender])) {
@@ -346,6 +352,89 @@ if ($senses->senses === [] && $page->pos !== null && isset($posLabels[$page->pos
 
         $posLine .= ', aussi ' . $secondary;
     }
+}
+
+// Conjugaison (D-018) : temps/personne traduits en francais lisible, jamais de tag anglais
+// brut affiche. Selection representative fixe (docs/DECISIONS.md D-018) -- ordre canonique
+// impose ici, pas l'ordre alphabetique renvoye par ConjugationLookup.
+$tenseOrder = ['present', 'future', 'imperfect', 'participle_present', 'participle_past'];
+$tenseLabels = [
+    'present' => 'Présent',
+    'future' => 'Futur',
+    'imperfect' => 'Imparfait',
+    'participle_present' => 'Participe présent',
+    'participle_past' => 'Participe passé',
+];
+$personLabels = [
+    '1s' => '1re pers. sing.',
+    '2s' => '2e pers. sing.',
+    '3s' => '3e pers. sing.',
+    '1p' => '1re pers. plur.',
+    '2p' => '2e pers. plur.',
+    '3p' => '3e pers. plur.',
+];
+$personRank = array_flip(['1s', '2s', '3s', '1p', '2p', '3p']);
+$tenseRank = array_flip($tenseOrder);
+
+// D-0XX (rotation de gabarits, valide avec l'utilisateur apres correctif) : la phrase "cette
+// page EST une forme conjuguee de LEMME" vit desormais UNIQUEMENT dans la carte "Definition"
+// plus bas -- PAS une section "Conjugaison" separee (retour utilisateur explicite : la meme
+// information a deux endroits, formulee differemment, lit comme une incoherence visuelle, pas
+// une variation voulue -- captures d'ecran ABADONS/AMOCHE a l'appui). Un seul representant
+// choisi par ordre canonique temps puis personne quand $conjugation->asForm porte plusieurs
+// entrees pour le meme mot (rare, ex. TABLE -> TABLER present 1s/3s + participe passe) --
+// jamais tous rendus separement, evite la repetition "4 fois la meme chose" signalee.
+$conjugationTensePrepositionDe = [
+    'present' => 'du présent',
+    'future' => 'du futur',
+    'imperfect' => "de l'imparfait",
+];
+$conjugationTensePrepositionA = [
+    'present' => 'au présent',
+    'future' => 'au futur',
+    'imperfect' => "à l'imparfait",
+];
+
+$conjugationVerbFormHtml = null;
+if ($conjugation->asForm !== []) {
+    $representative = $conjugation->asForm[0];
+    $bestRank = null;
+    foreach ($conjugation->asForm as $formEntry) {
+        $rank = [$tenseRank[$formEntry['tense']] ?? 99, $personRank[$formEntry['person']] ?? 99];
+        if ($bestRank === null || $rank < $bestRank) {
+            $bestRank = $rank;
+            $representative = $formEntry;
+        }
+    }
+
+    $tenseKey = $representative['tense'];
+    $tenseLabel = mb_strtolower($tenseLabels[$tenseKey] ?? $tenseKey);
+    $personLabel = $representative['person'] !== null ? ($personLabels[$representative['person']] ?? null) : null;
+
+    if ($personLabel === null || !isset($conjugationTensePrepositionDe[$tenseKey])) {
+        // Participe (pas de personne) ou temps hors des 3 couverts par la rotation --
+        // gabarit A original, seul gabarit valide sans personne.
+        $verbFormText = sprintf(
+            'Forme conjuguée de %%LIEN%% (%s).',
+            $personLabel !== null ? $tenseLabel . ', ' . $personLabel : $tenseLabel,
+        );
+    } else {
+        $tensePrepositionDe = $conjugationTensePrepositionDe[$tenseKey];
+        $tensePrepositionA = $conjugationTensePrepositionA[$tenseKey];
+        $variant = crc32($page->normalized) % 4;
+
+        $verbFormText = match ($variant) {
+            0 => sprintf('Forme conjuguée de %%LIEN%% (%s, %s).', $tenseLabel, $personLabel),
+            1 => sprintf('%s %s du verbe %%LIEN%%.', $personLabel, $tensePrepositionDe),
+            // $personLabel se termine deja par un point d'abreviation ("sing."/"plur.") --
+            // AUCUN point final ajoute ici, sinon double point ("sing..").
+            2 => sprintf('Cette forme vient du verbe %%LIEN%%, conjugué %s à la %s', $tensePrepositionA, $personLabel),
+            default => sprintf('Conjugaison à la %s %s du verbe %%LIEN%%.', $personLabel, $tensePrepositionDe),
+        };
+    }
+
+    $conjugationLink = '<a href="/mot/' . e($representative['slug']) . '">' . e($representative['lemma']) . '</a>';
+    $conjugationVerbFormHtml = str_replace('%LIEN%', $conjugationLink, $verbFormText);
 }
 
 // Cartes de definition (D-0XX) : une par sens, pos + genre (si nom) en etiquette, phrase de
@@ -378,89 +467,47 @@ foreach ($senses->senses as $sense) {
     }
 
     $cardIndexByDefinition[$definitionKey] = count($senseCards);
-    $senseCards[] = ['pos_labels' => [$label], 'definition' => $sense['definition']];
+    $senseCards[] = [
+        'pos_labels' => [$label],
+        'definition' => $sense['definition'],
+        'pos' => $sense['pos'],
+        'source' => $sense['source'],
+        'html' => false,
+    ];
 }
 foreach ($senseCards as &$card) {
     $card['pos_label'] = implode(' / ', $card['pos_labels']);
 }
 unset($card);
 
-// Conjugaison (D-018) : temps/personne traduits en francais lisible, jamais de tag anglais
-// brut affiche. Selection representative fixe (docs/DECISIONS.md D-018) -- ordre canonique
-// impose ici, pas l'ordre alphabetique renvoye par ConjugationLookup.
-$tenseOrder = ['present', 'future', 'imperfect', 'participle_present', 'participle_past'];
-$tenseLabels = [
-    'present' => 'Présent',
-    'future' => 'Futur',
-    'imperfect' => 'Imparfait',
-    'participle_present' => 'Participe présent',
-    'participle_past' => 'Participe passé',
-];
-$personLabels = [
-    '1s' => '1re pers. sing.',
-    '2s' => '2e pers. sing.',
-    '3s' => '3e pers. sing.',
-    '1p' => '1re pers. plur.',
-    '2p' => '2e pers. plur.',
-    '3p' => '3e pers. plur.',
-];
-$personRank = array_flip(['1s', '2s', '3s', '1p', '2p', '3p']);
-
-// asForm : phrase courte par entree, jamais fusionnee -- reste simple meme quand un meme
-// lemme apparait sous plusieurs temps/personnes (rare, ex. TABLE -> TABLER).
-//
-// D-0XX (a dater a la validation) : rotation deterministe entre 4 gabarits pour eviter la
-// meme phrase repetee mot pour mot sur des milliers de pages -- demande produit, gabarits
-// discutes et valides un par un avec l'utilisateur. Selection par crc32($page->normalized)
-// modulo 4 : STABLE (le meme mot affiche toujours le meme gabarit, pas un tirage a chaque
-// rendu), aucune nouvelle requete, aucun etat. Seuls le present/futur/imparfait (les temps
-// qui portent une personne) entrent dans la rotation ; les deux participes (person === null,
-// le francais ne les conjugue pas par personne) restent sur le gabarit A original, seul
-// gabarit qui ne mentionne jamais la personne.
-$conjugationTensePrepositionDe = [
-    'present' => 'du présent',
-    'future' => 'du futur',
-    'imperfect' => "de l'imparfait",
-];
-$conjugationTensePrepositionA = [
-    'present' => 'au présent',
-    'future' => 'au futur',
-    'imperfect' => "à l'imparfait",
-];
-
-$conjugationFormPhrases = [];
-foreach ($conjugation->asForm as $formEntry) {
-    $tenseKey = $formEntry['tense'];
-    $tenseLabel = mb_strtolower($tenseLabels[$tenseKey] ?? $tenseKey);
-    $personLabel = $formEntry['person'] !== null ? ($personLabels[$formEntry['person']] ?? null) : null;
-
-    if ($personLabel === null || !isset($conjugationTensePrepositionDe[$tenseKey])) {
-        // Participe (pas de personne) ou temps hors des 3 couverts par la rotation --
-        // gabarit A original, seul gabarit valide sans personne.
-        $text = sprintf(
-            'Forme conjuguée de %%LIEN%% (%s).',
-            $personLabel !== null ? $tenseLabel . ', ' . $personLabel : $tenseLabel,
-        );
-    } else {
-        $tensePrepositionDe = $conjugationTensePrepositionDe[$tenseKey];
-        $tensePrepositionA = $conjugationTensePrepositionA[$tenseKey];
-        $variant = crc32($page->normalized) % 4;
-
-        $text = match ($variant) {
-            0 => sprintf('Forme conjuguée de %%LIEN%% (%s, %s).', $tenseLabel, $personLabel),
-            1 => sprintf('%s %s du verbe %%LIEN%%.', $personLabel, $tensePrepositionDe),
-            // $personLabel se termine deja par un point d'abreviation ("sing."/"plur.") --
-            // AUCUN point final ajoute ici, sinon double point ("sing..").
-            2 => sprintf('Cette forme vient du verbe %%LIEN%%, conjugué %s à la %s', $tensePrepositionA, $personLabel),
-            default => sprintf('Conjugaison à la %s %s du verbe %%LIEN%%.', $personLabel, $tensePrepositionDe),
-        };
+// D-0XX : la carte stockee en base pour une forme conjuguee (pos=V, source=template, D-043,
+// jamais retouchee) porte l'ancienne phrase fixe -- remplacee ici par le texte varie calcule
+// plus haut, en direct depuis Conjugation (donnee vivante), jamais un second passage
+// d'ecriture sur storage/dictionary_fr.sqlite pour ce simple habillage cosmetique.
+$verbFormCardReplaced = false;
+if ($conjugationVerbFormHtml !== null) {
+    foreach ($senseCards as &$card) {
+        if ($card['pos'] === 'V' && $card['source'] === 'template') {
+            $card['definition'] = $conjugationVerbFormHtml;
+            $card['html'] = true;
+            $verbFormCardReplaced = true;
+            break;
+        }
     }
+    unset($card);
 
-    $conjugationFormPhrases[] = [
-        'lemma' => $formEntry['lemma'],
-        'slug' => $formEntry['slug'],
-        'text' => $text,
-    ];
+    // Mot francais non admis, forme conjuguee mais AUCUNE fiche word_senses (pilote D-043
+    // limite aux mots admis + complement kaikki D-052 -- 435 120 formes anterieures a D-051
+    // toujours sans aucun sens, ex. ABADAIENT) : aucune carte a remplacer ci-dessus, on
+    // l'ajoute directement plutot que de perdre l'information.
+    if (!$verbFormCardReplaced) {
+        $senseCards[] = [
+            'pos_labels' => ['verbe'],
+            'pos_label' => 'verbe',
+            'definition' => $conjugationVerbFormHtml,
+            'html' => true,
+        ];
+    }
 }
 
 // asLemma : regroupe par temps (comme anagramsPlusOne regroupe par lettre ajoutee, meme
@@ -567,27 +614,21 @@ $conjugationHeading = $conjugation->asLemma !== [] ? 'Se Conjugue' : 'Conjugaiso
 <?php foreach ($senseCards as $card): ?>
       <div class="sense-card">
         <p class="sense-meta"><span class="sense-label">Définition</span> <span class="sense-pos"><?= e($card['pos_label']) ?></span></p>
-        <p class="sense-text"><?= e($card['definition']) ?></p>
+        <p class="sense-text"><?= $card['html'] ? $card['definition'] : e($card['definition']) ?></p>
       </div>
 <?php endforeach; ?>
     </section>
 <?php endif; ?>
 
-<?php if ($conjugation->asLemma !== [] || $conjugation->asForm !== []): ?>
+<?php if ($conjugation->asLemma !== []): ?>
     <section class="conjugation">
       <h2><?= e($conjugationHeading) ?></h2>
-<?php foreach ($conjugationFormPhrases as $phrase): ?>
-<?php $conjugationLink = '<a href="/mot/' . e($phrase['slug']) . '">' . e($phrase['lemma']) . '</a>'; ?>
-      <p class="conjugation-form"><?= str_replace('%LIEN%', $conjugationLink, $phrase['text']) ?></p>
-<?php endforeach; ?>
-<?php if ($conjugation->asLemma !== []): ?>
       <p class="word-stream">
 <?php foreach ($tenseOrder as $tenseKey): ?>
 <?php if (!isset($conjugationLemmaGroups[$tenseKey])): continue; endif; ?>
 <span class="word-text"><span class="plus"><?= e($tenseLabels[$tenseKey]) ?></span></span> <?php foreach ($conjugationLemmaGroups[$tenseKey] as $group): ?><a href="/mot/<?= e($group['slug']) ?>"<?php if ($group['persons'] !== []): ?> title="<?= e(implode(' / ', array_map(static fn (string $p): string => $personLabels[$p] ?? $p, $group['persons']))) ?>"<?php endif; ?>><?= e($group['form']) ?></a> <?php endforeach; ?>
 <?php endforeach; ?>
       </p>
-<?php endif; ?>
     </section>
 <?php endif; ?>
 

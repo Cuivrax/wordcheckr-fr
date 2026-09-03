@@ -876,13 +876,6 @@ select:focus-visible {
   font-weight: 700;
 }
 
-.conjugation-form {
-  margin: 10px 0 0;
-  color: var(--muted);
-  line-height: 1.55;
-  font-size: 0.9rem;
-}
-
 /* Relations de la fiche mot (Phase 4) -- grille de categories, deux colonnes sur
    desktop, une seule sous 700px (docs/04). Meme convention de bordure que le reste
    de la fiche (border-bottom sur chaque section, jamais de bordure double). */
