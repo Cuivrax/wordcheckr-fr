@@ -121,6 +121,14 @@ respectivement, aucune double ponctuation, élision correcte sur l'imparfait ("�
 S'applique automatiquement à toutes les pages de formes conjuguées, aucun rebuild nécessaire.
 Routes témoins (/, /mots/commencant → 301) inchangées.
 
+CORRECTIF D-058 DÉPLOYÉ le 2026-09-03 (commit d88d1d3) : la 1re passe avait varié la phrase
+dans une section "Conjugaison" séparée (jamais stylée) au lieu de la carte "Définition" réelle
+— retour utilisateur sur captures d'écran production (ABADONS/POSERA/AMOCHE, ce dernier
+montrant 4 répétitions de la même info). Corrigé : un seul représentant par mot, la carte
+Définition (réelle ou synthétisée) porte désormais la phrase variée, la section Conjugaison
+séparée ne montre plus que le cas infinitif (ex. POSER listant ses propres formes). Vérifié en
+direct sur les 3 mots exacts des captures : une seule carte chacun, plus de doublon.
+
 D-049 APPLIQUÉ ET CORRIGÉ (2026-09-01) : "avec" SANS AUCUN ancrage (BARE, ni longueur ni préfixe
 ni suffixe) — demande produit explicite, preuve de volume réel Semrush. Convention de nom `BARE`
 alignée avec le dépôt allemand cousin. 1er audit seo-technical-auditor : **NO GO** (5 bloquants),
