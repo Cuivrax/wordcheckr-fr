@@ -103,6 +103,17 @@ diagnostiquée) — le sous-ensemble 26+ reste non balayé, chantier de suivi. R
 textuelle de D041_EXCLUDED_ROUTE_PATHS et audit d'orphelines page-par-page toujours pas
 faits — voir D-057 pour le détail complet.
 
+D-057 DÉPLOYÉ SUR O2SWITCH le 2026-09-03 (commit 8a04052, code via git archive, seule
+storage/seo_fr.sqlite transférée — dictionary_fr.sqlite inchangée par ce lot). Intégrité ET
+comptes vérifiés avant bascule (1 170 960 lignes / 1 137 274 en index,follow, identiques aux
+mesures locales). Vérifié en direct sur https://www.wordcheckr.fr : routes témoins 200 (/,
+/mot/steppes, /mots/7-lettres, /sitemap-index.xml, /mots/10-lettres/avec/a/b/j/w toujours
+servie en 200 malgré son passage noindex) ; /mots/commencant en 301 (D-056, toujours actif) ;
+storage/ en 404. Contenu réel vérifié : /mots/10-lettres/avec/a/b/j/w affiche bien
+`<meta name="robots" content="noindex,follow">` et `<link rel="canonical" href=".../mots/
+commencant/webj">`. TTFB stabilisé à 170-184 ms après le cache froid initial de bascule
+(budget < 250 ms respecté).
+
 D-049 APPLIQUÉ ET CORRIGÉ (2026-09-01) : "avec" SANS AUCUN ancrage (BARE, ni longueur ni préfixe
 ni suffixe) — demande produit explicite, preuve de volume réel Semrush. Convention de nom `BARE`
 alignée avec le dépôt allemand cousin. 1er audit seo-technical-auditor : **NO GO** (5 bloquants),
