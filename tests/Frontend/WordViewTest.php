@@ -520,6 +520,123 @@ return function (): void {
     );
 
     // -------------------------------------------------------------------
+    // D-0XX (repli regex, retour utilisateur sur capture d'ecran reelle -- MANAGERA) : ~65%
+    // des cartes "forme conjuguee" (pos=V, source=template) n'ont AUCUNE ligne verb_forms
+    // correspondante ($conjugation->asForm reste vide) -- avant ce repli, le lemme stocke en
+    // base n'etait jamais transforme en lien ni mis en majuscule. Fixtures MANAGERA/DESENVASEES/
+    // CITERENT/SEYAIENT reprennent des valeurs reellement observees sur
+    // storage/dictionary_fr.sqlite (verifie manuellement pendant l'implementation), pas
+    // inventees -- meme discipline que les fixtures D-018 plus haut dans ce fichier.
+    $managera = new TermPage(
+        normalized: 'MANAGERA',
+        slug: 'managera',
+        found: true,
+        status: TermPage::STATUS_ADMITTED,
+        score: $scoreFor('MANAGERA'),
+        length: 8,
+        isOds8: true,
+        isOds9: true,
+        letters: $tiles('MANAGERA', $tileScores),
+        previousWord: 'MANAGENT',
+        nextWord: 'MANAGERAI',
+        pos: 'V',
+    );
+    $manageraSenses = new WordSenses(
+        senses: [['pos' => 'V', 'gender' => null, 'definition' => 'Forme conjuguée du verbe manager (futur, 3e personne du singulier).', 'source' => 'template']],
+        queryCount: 1,
+    );
+    $htmlManagera = $render($managera, null, $noConjugation, $manageraSenses);
+    // crc32("MANAGERA") % 4 = 2 (gabarit D), stable -- meme mecanisme de selection que la
+    // donnee vivante Conjugation, verifie en direct contre le rendu reel avant d'ecrire cette
+    // assertion (jamais recalcule a la main sans confirmation).
+    Assert::true(
+        str_contains($htmlManagera, "Cette forme vient du verbe <a href=\"/mot/manager\">MANAGER</a>, conjugué au futur à la 3e pers. sing."),
+        'MANAGERA : lemme lie et majuscule, rotation appliquee malgre verb_forms vide (repli regex)',
+    );
+    Assert::true(!str_contains($htmlManagera, '>manager<'), 'MANAGERA : jamais le lemme brut en minuscule dans un lien');
+
+    // Participe (genre/nombre parfois dans le detail source, structure differente des 4
+    // gabarits) : lien seul, DETAIL jamais retouche.
+    $desenvasees = new TermPage(
+        normalized: 'DESENVASEES',
+        slug: 'desenvasees',
+        found: true,
+        status: TermPage::STATUS_ADMITTED,
+        score: $scoreFor('DESENVASEES'),
+        length: 11,
+        isOds8: true,
+        isOds9: true,
+        letters: $tiles('DESENVASEES', $tileScores),
+        previousWord: 'DESENVASEE',
+        nextWord: 'DESENVASER',
+        pos: 'V',
+    );
+    $desenvaseesSenses = new WordSenses(
+        senses: [['pos' => 'V', 'gender' => null, 'definition' => 'Participe passé féminin pluriel du verbe désenvaser.', 'source' => 'template']],
+        queryCount: 1,
+    );
+    $htmlDesenvasees = $render($desenvasees, null, $noConjugation, $desenvaseesSenses);
+    Assert::true(
+        str_contains($htmlDesenvasees, 'Participe passé féminin pluriel du verbe <a href="/mot/désenvaser">DÉSENVASER</a>.'),
+        'DESENVASEES : participe -- lien seul, detail (genre/nombre) jamais retouche',
+    );
+
+    // Aucun detail temps/personne du tout dans la glose source -- lien seul, aucun gabarit
+    // variable possible (pas de donnee a faire varier).
+    $citerent = new TermPage(
+        normalized: 'CITERENT',
+        slug: 'citerent',
+        found: true,
+        status: TermPage::STATUS_ADMITTED,
+        score: $scoreFor('CITERENT'),
+        length: 8,
+        isOds8: true,
+        isOds9: true,
+        letters: $tiles('CITERENT', $tileScores),
+        previousWord: 'CITEREE',
+        nextWord: 'CITERIONS',
+        pos: 'V',
+    );
+    $citerentSenses = new WordSenses(
+        senses: [['pos' => 'V', 'gender' => null, 'definition' => 'Forme conjuguée du verbe citer.', 'source' => 'template']],
+        queryCount: 1,
+    );
+    $htmlCiterent = $render($citerent, null, $noConjugation, $citerentSenses);
+    Assert::true(
+        str_contains($htmlCiterent, 'Forme conjuguée du verbe <a href="/mot/citer">CITER</a>.'),
+        'CITERENT : aucun detail temps/personne -- lien seul',
+    );
+
+    // Glose source deja malformee (fragment tronque -- cas reel "seoir (au sens...", jamais
+    // ferme) : garde-fou (tense_phrase extrait contient "verbe") -- laissee TOTALEMENT
+    // inchangee plutot que de risquer une reconstruction fautive.
+    $seyaient = new TermPage(
+        normalized: 'SEYAIENT',
+        slug: 'seyaient',
+        found: true,
+        status: TermPage::STATUS_ADMITTED,
+        score: $scoreFor('SEYAIENT'),
+        length: 8,
+        isOds8: true,
+        isOds9: true,
+        letters: $tiles('SEYAIENT', $tileScores),
+        previousWord: 'SEXY',
+        nextWord: 'SEZIG',
+        pos: 'V',
+    );
+    $seyaientDefinition = 'Forme conjuguée du verbe convenir) (imparfait du verbe seoir (au sens, 3e personne du pluriel).';
+    $seyaientSenses = new WordSenses(
+        senses: [['pos' => 'V', 'gender' => null, 'definition' => $seyaientDefinition, 'source' => 'template']],
+        queryCount: 1,
+    );
+    $htmlSeyaient = $render($seyaient, null, $noConjugation, $seyaientSenses);
+    Assert::true(
+        str_contains($htmlSeyaient, e($seyaientDefinition)),
+        'SEYAIENT : glose source malformee -- laissee totalement inchangee (garde-fou), aucun lien inseree',
+    );
+    Assert::true(!str_contains($htmlSeyaient, '<a href="/mot/convenir'), 'SEYAIENT : aucune tentative de lien sur une base suspecte');
+
+    // -------------------------------------------------------------------
     // D-054 -- phrase "Reponse Directe" specifique selon $page->nonAdmittedCategory
     // (D-051, jeu ferme de 10 valeurs). Un cas par categorie, phrase attendue ecrite en
     // clair (pas de reutilisation du tableau de app/View/word.php) pour verifier le

@@ -384,16 +384,49 @@ $tenseRank = array_flip($tenseOrder);
 // choisi par ordre canonique temps puis personne quand $conjugation->asForm porte plusieurs
 // entrees pour le meme mot (rare, ex. TABLE -> TABLER present 1s/3s + participe passe) --
 // jamais tous rendus separement, evite la repetition "4 fois la meme chose" signalee.
-$conjugationTensePrepositionDe = [
-    'present' => 'du présent',
-    'future' => 'du futur',
-    'imperfect' => "de l'imparfait",
-];
-$conjugationTensePrepositionA = [
-    'present' => 'au présent',
-    'future' => 'au futur',
-    'imperfect' => "à l'imparfait",
-];
+//
+// Elision "du"/"au" vs "de l'"/"à l'" GENERIQUE (premiere lettre voyelle du temps) plutot
+// qu'un dictionnaire fige par temps -- les noms de temps/mode grammaticaux sont TOUJOURS
+// masculins en francais ("le present", "le passe simple", "l'imparfait"...), donc la regle
+// d'elision ne depend que de la premiere lettre, jamais du temps precis. Permet de reutiliser
+// EXACTEMENT la meme fonction pour les temps connus (verb_forms, ci-dessous) et pour les temps
+// extraits en texte libre depuis une glose Kartmaan (repli plus bas, tous temps francais
+// confondus -- passe simple, subjonctif, conditionnel... jamais enumeres a la main).
+$renderVerbFormPhrase = static function (
+    string $lemma,
+    string $slug,
+    ?string $tensePhrase,
+    ?string $personLabel,
+    int $variant,
+): string {
+    $link = '<a href="/mot/' . e($slug) . '">' . e($lemma) . '</a>';
+
+    if ($tensePhrase === null) {
+        // Aucune information de temps/personne du tout (glose source sans detail) -- lien
+        // seul, aucun gabarit variable possible.
+        return "Forme conjuguée de {$link}.";
+    }
+
+    if ($personLabel === null) {
+        // Participe (le francais ne le conjugue pas par personne) ou temps sans personne
+        // connue -- gabarit A original, seul gabarit valide sans personne.
+        return "Forme conjuguée de {$link} ({$tensePhrase}).";
+    }
+
+    $firstChar = mb_strtolower(mb_substr($tensePhrase, 0, 1));
+    $isVowel = in_array($firstChar, ['a', 'e', 'i', 'o', 'u', 'y'], true);
+    $tensePrepositionDe = $isVowel ? ("de l'" . $tensePhrase) : ('du ' . $tensePhrase);
+    $tensePrepositionA = $isVowel ? ("à l'" . $tensePhrase) : ('au ' . $tensePhrase);
+
+    return match ($variant) {
+        0 => "Forme conjuguée de {$link} ({$tensePhrase}, {$personLabel}).",
+        1 => "{$personLabel} {$tensePrepositionDe} du verbe {$link}.",
+        // $personLabel se termine deja par un point d'abreviation ("sing."/"plur.") -- AUCUN
+        // point final ajoute ici, sinon double point ("sing..").
+        2 => "Cette forme vient du verbe {$link}, conjugué {$tensePrepositionA} à la {$personLabel}",
+        default => "Conjugaison à la {$personLabel} {$tensePrepositionDe} du verbe {$link}.",
+    };
+};
 
 $conjugationVerbFormHtml = null;
 if ($conjugation->asForm !== []) {
@@ -408,33 +441,77 @@ if ($conjugation->asForm !== []) {
     }
 
     $tenseKey = $representative['tense'];
-    $tenseLabel = mb_strtolower($tenseLabels[$tenseKey] ?? $tenseKey);
+    $tensePhrase = mb_strtolower($tenseLabels[$tenseKey] ?? $tenseKey);
     $personLabel = $representative['person'] !== null ? ($personLabels[$representative['person']] ?? null) : null;
+    $variant = crc32($page->normalized) % 4;
 
-    if ($personLabel === null || !isset($conjugationTensePrepositionDe[$tenseKey])) {
-        // Participe (pas de personne) ou temps hors des 3 couverts par la rotation --
-        // gabarit A original, seul gabarit valide sans personne.
-        $verbFormText = sprintf(
-            'Forme conjuguée de %%LIEN%% (%s).',
-            $personLabel !== null ? $tenseLabel . ', ' . $personLabel : $tenseLabel,
-        );
-    } else {
-        $tensePrepositionDe = $conjugationTensePrepositionDe[$tenseKey];
-        $tensePrepositionA = $conjugationTensePrepositionA[$tenseKey];
-        $variant = crc32($page->normalized) % 4;
+    $conjugationVerbFormHtml = $renderVerbFormPhrase(
+        $representative['lemma'],
+        $representative['slug'],
+        $tensePhrase,
+        $personLabel,
+        $variant,
+    );
+}
 
-        $verbFormText = match ($variant) {
-            0 => sprintf('Forme conjuguée de %%LIEN%% (%s, %s).', $tenseLabel, $personLabel),
-            1 => sprintf('%s %s du verbe %%LIEN%%.', $personLabel, $tensePrepositionDe),
-            // $personLabel se termine deja par un point d'abreviation ("sing."/"plur.") --
-            // AUCUN point final ajoute ici, sinon double point ("sing..").
-            2 => sprintf('Cette forme vient du verbe %%LIEN%%, conjugué %s à la %s', $tensePrepositionA, $personLabel),
-            default => sprintf('Conjugaison à la %s %s du verbe %%LIEN%%.', $personLabel, $tensePrepositionDe),
-        };
+// D-0XX (repli) : ~65% des cartes "forme conjuguee" (pos=V, source=template) n'ont AUCUNE
+// ligne verb_forms correspondante -- $conjugation->asForm reste alors vide et la logique
+// ci-dessus ne produit rien, contrairement a ce qu'on avait suppose au premier correctif
+// (retour utilisateur, ex. MANAGERA -> "manager" jamais un lien, jamais en majuscule). Racine
+// du probleme : ces 172 579 cartes viennent d'un DEUXIEME mecanisme entierement independant
+// (scripts/lib/reference_definitions.py::render_grammatical_template(), regex sur la glose
+// Kartmaan BRUTE, jamais verb_forms) -- verifie exhaustivement sur les 172 579 lignes reelles,
+// 3 formats fermes couvrent 172 503 (99,96%) :
+//   "Forme conjuguée du verbe LEMME (TEMPS, ORDINAL personne du NOMBRE)." (140 724 lignes)
+//   "Forme conjuguée du verbe LEMME." (20 628 lignes, aucun detail -- lien seul)
+//   "Participe DETAIL du verbe LEMME." (11 151 lignes, genre/nombre parfois dans DETAIL --
+//     structure differente des gabarits ci-dessus, lien seul, DETAIL jamais retouche)
+// Les 76 restantes (0,04%, glose source deja malformee -- ex. parenthese jamais fermee,
+// fragment tronque) restent totalement INCHANGEES plutot que de risquer une reconstruction
+// fautive -- meme garde-fou applique au format 1 si le TEMPS extrait contient un chiffre, une
+// parenthese ou le mot "verbe" (signe de troncature), verifie sur l'ensemble des 140 724 avant
+// d'ecrire cette regle.
+$conjugationFallbackHtml = null;
+if ($conjugationVerbFormHtml === null) {
+    foreach ($senses->senses as $sense) {
+        if ($sense['pos'] !== 'V' || $sense['source'] !== 'template') {
+            continue;
+        }
+
+        $definition = $sense['definition'];
+
+        if (preg_match(
+            '/^Forme conjuguée du verbe (\S+) \((.+), (1re|2e|3e) personne du (singulier|pluriel)\)\.$/u',
+            $definition,
+            $m,
+        ) === 1) {
+            [, $lemma, $tensePhraseRaw, $ordinal, $number] = $m;
+
+            if (preg_match('/[()0-9]|verbe/ui', $tensePhraseRaw) === 1 || mb_strlen($tensePhraseRaw) > 40) {
+                // Glose source deja malformee (fragment tronque) -- laissee totalement
+                // inchangee, jamais de reconstruction sur une base suspecte.
+                break;
+            }
+
+            $personKey = ($ordinal === '1re' ? '1' : ($ordinal === '2e' ? '2' : '3'))
+                . ($number === 'singulier' ? 's' : 'p');
+
+            $conjugationFallbackHtml = $renderVerbFormPhrase(
+                mb_strtoupper($lemma),
+                mb_strtolower($lemma),
+                mb_strtolower($tensePhraseRaw),
+                $personLabels[$personKey] ?? null,
+                crc32($page->normalized) % 4,
+            );
+        } elseif (preg_match('/^Forme conjuguée du verbe (\S+)\.$/u', $definition, $m) === 1) {
+            $conjugationFallbackHtml = 'Forme conjuguée du verbe <a href="/mot/' . e(mb_strtolower($m[1])) . '">' . e(mb_strtoupper($m[1])) . '</a>.';
+        } elseif (preg_match('/^Participe (.+) du verbe (\S+)\.$/u', $definition, $m) === 1) {
+            [, $participleDetail, $lemma] = $m;
+            $conjugationFallbackHtml = 'Participe ' . e($participleDetail) . ' du verbe <a href="/mot/' . e(mb_strtolower($lemma)) . '">' . e(mb_strtoupper($lemma)) . '</a>.';
+        }
+
+        break; // un seul sens pos=V/source=template par fiche (D-043), jamais plusieurs.
     }
-
-    $conjugationLink = '<a href="/mot/' . e($representative['slug']) . '">' . e($representative['lemma']) . '</a>';
-    $conjugationVerbFormHtml = str_replace('%LIEN%', $conjugationLink, $verbFormText);
 }
 
 // Cartes de definition (D-0XX) : une par sens, pos + genre (si nom) en etiquette, phrase de
@@ -482,13 +559,16 @@ unset($card);
 
 // D-0XX : la carte stockee en base pour une forme conjuguee (pos=V, source=template, D-043,
 // jamais retouchee) porte l'ancienne phrase fixe -- remplacee ici par le texte varie calcule
-// plus haut, en direct depuis Conjugation (donnee vivante), jamais un second passage
-// d'ecriture sur storage/dictionary_fr.sqlite pour ce simple habillage cosmetique.
+// plus haut, en direct depuis Conjugation (donnee vivante) si disponible, sinon par le repli
+// regex ci-dessus -- jamais un second passage d'ecriture sur storage/dictionary_fr.sqlite pour
+// ce simple habillage cosmetique.
 $verbFormCardReplaced = false;
-if ($conjugationVerbFormHtml !== null) {
+if ($conjugationVerbFormHtml !== null || $conjugationFallbackHtml !== null) {
+    $replacementHtml = $conjugationVerbFormHtml ?? $conjugationFallbackHtml;
+
     foreach ($senseCards as &$card) {
         if ($card['pos'] === 'V' && $card['source'] === 'template') {
-            $card['definition'] = $conjugationVerbFormHtml;
+            $card['definition'] = $replacementHtml;
             $card['html'] = true;
             $verbFormCardReplaced = true;
             break;
@@ -499,12 +579,15 @@ if ($conjugationVerbFormHtml !== null) {
     // Mot francais non admis, forme conjuguee mais AUCUNE fiche word_senses (pilote D-043
     // limite aux mots admis + complement kaikki D-052 -- 435 120 formes anterieures a D-051
     // toujours sans aucun sens, ex. ABADAIENT) : aucune carte a remplacer ci-dessus, on
-    // l'ajoute directement plutot que de perdre l'information.
+    // l'ajoute directement plutot que de perdre l'information. $conjugationFallbackHtml exige
+    // deja une carte pos=V/template existante (il boucle sur $senses->senses pour la trouver),
+    // donc n'atteint jamais cette branche -- seul $conjugationVerbFormHtml (donnee vivante
+    // Conjugation) peut necessiter une carte synthetisee de toutes pieces.
     if (!$verbFormCardReplaced) {
         $senseCards[] = [
             'pos_labels' => ['verbe'],
             'pos_label' => 'verbe',
-            'definition' => $conjugationVerbFormHtml,
+            'definition' => $replacementHtml,
             'html' => true,
         ];
     }

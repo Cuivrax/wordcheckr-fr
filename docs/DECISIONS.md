@@ -5348,3 +5348,117 @@ transmis en parallele a ES/DE/EN (meme demande utilisateur) : verifier si les me
   independamment le meme piege de marge sur .relations-intro que celui trouve ici -- relaye a
   ES/DE en complement de la demande initiale.
 ```
+
+## D-060 — Repli Regex Pour Les Cartes « Forme Conjuguée » Sans Correspondance `verb_forms` (65% Des Cas)
+
+Date : 2026-09-03
+Statut : accepté et appliqué
+
+Contexte :
+
+```text
+retour utilisateur sur capture d'ecran production reelle (/mot/managera) : le correctif D-058
+  (rotation de gabarits) ne s'appliquait pas -- "manager" ni lien ni majuscule, texte fixe
+  d'origine affiche tel quel. Verifie sur pieces (jamais suppose) : MANAGERA a ZERO ligne
+  verb_forms (form_normalized), bien que "futur" soit l'un des 5 temps couverts par
+  App\Search\Conjugation -- $conjugation->asForm reste donc vide pour ce mot, la logique D-058
+  (qui depend entierement de cette donnee vivante) ne trouve rien a faire.
+mesure exhaustive (pas un cas isole) : 264 961 cartes "Definition" pos=V/source=template au
+  total (D-043, gabarit gratuit "palier 0"), dont 172 579 (65%) SANS AUCUNE ligne verb_forms
+  correspondante. Racine identifiee : ces 172 579 cartes proviennent d'un DEUXIEME mecanisme de
+  generation entierement independant de verb_forms/D-018 --
+  scripts/lib/reference_definitions.py::render_grammatical_template(), qui detecte un gabarit
+  grammatical directement dans la glose Kartmaan BRUTE par regex (ex. "Troisieme personne du
+  singulier du futur de manager") et le reformule -- jamais derive de verb_forms, qui ne
+  couvre qu'un sous-ensemble de verbes/temps distinct et plus etroit. Consequence : le lemme,
+  temps et personne extraits a la generation NE SONT JAMAIS PERSISTES comme donnees
+  structurees, seul le texte final rendu est stocke dans word_senses.definition -- aucune
+  donnee vivante equivalente a Conjugation::asForm n'existe pour ces 172 579 mots.
+verifie exhaustivement (pas un echantillon) sur les 172 579 lignes reelles : 3 formats fermes
+  couvrent 172 503 (99,96%) --
+    "Forme conjuguée du verbe LEMME (TEMPS, ORDINAL personne du NOMBRE)." (140 724 lignes)
+    "Forme conjuguée du verbe LEMME." (20 628 lignes, aucun detail)
+    "Participe DETAIL du verbe LEMME." (11 151 lignes, genre/nombre parfois dans DETAIL)
+  76 restantes (0,04%) : glose source deja malformee par le generateur d'origine (ex.
+  parenthese jamais fermee sur "seoir (au sens du jeu...", fragment tronque) -- identifiees et
+  exclues explicitement, jamais une tentative de reconstruction sur une base suspecte.
+question ouverte posee et tranchee avec l'utilisateur en cours de route : d'abord lien seul
+  (le plus prudent), puis reconsidere ("on avait pas defini des meilleurs templates avec ES ?")
+  -- verifie que l'obstacle apparent (elision "du"/"au" selon des dizaines de temps distincts
+  jamais enumeres a la main) n'en est pas vraiment un : les noms de temps/mode grammaticaux
+  sont TOUJOURS masculins en francais ("le present", "le passe simple", "l'imparfait"...),
+  donc l'elision ne depend QUE de la premiere lettre du temps, jamais du temps precis --
+  confirme sur l'ensemble des temps distincts reellement presents en base (passe simple,
+  imparfait du subjonctif, conditionnel present, indicatif imparfait...) avant d'ecrire la
+  regle. Decision finale : rotation complete sur les 140 724 cas avec detail complet, lien
+  seul (gabarit classique, jamais retouche) pour les 20 628 + 11 151 cas sans detail exploitable
+  par les 4 gabarits, aucune modification pour les 76 cas malformes.
+```
+
+Décision :
+
+```text
+app/View/word.php : fonction generique $renderVerbFormPhrase() extraite (unifie l'ancien
+  mecanisme D-058, base sur les 5 temps connus de verb_forms, ET le nouveau repli -- MEME
+  regle d'elision generique des deux cotes, plus de dictionnaire fige par temps, aucun risque
+  de divergence entre les deux chemins). $conjugationVerbFormHtml (donnee vivante Conjugation)
+  reste le chemin PRIORITAIRE, inchange dans son comportement.
+repli $conjugationFallbackHtml (nouveau, actif uniquement quand $conjugationVerbFormHtml est
+  null) : parcourt $senses->senses a la recherche d'une carte pos=V/source=template, tente les
+  3 formats regex ci-dessus dans l'ordre --
+    format 1 (detail complet) : extrait lemme/temps/ordinal/nombre. Garde-fou explicite avant
+      toute rotation -- si le temps extrait contient un chiffre, une parenthese ou le mot
+      "verbe" (signe de troncature), la ligne est laissee TOTALEMENT INCHANGEE, aucun lien
+      insere. Sinon, ordinal+nombre mappes vers les MEMES cles $personLabels que le chemin
+      verb_forms ('1s'..'3p') -- pas un nouveau format de personne, reutilisation stricte --
+      puis rotation complete via $renderVerbFormPhrase() avec le temps extrait TEL QUEL (jamais
+      enumere a la main, generique sur tout temps francais).
+    format 2 (aucun detail) : lien seul, "Forme conjuguée du verbe LIEN." -- aucune rotation
+      possible, aucune donnee a faire varier.
+    format 3 (participe) : lien seul, "Participe DETAIL du verbe LIEN." -- DETAIL (genre/
+      nombre inclus parfois) jamais retouche, structure differente des 4 gabarits.
+  aucun des 3 formats reconnu : $conjugationFallbackHtml reste null, la carte stockee reste
+  affichee TELLE QUELLE (texte fixe d'origine, comportement identique a avant ce correctif --
+  jamais pire qu'aujourd'hui pour les 76 cas malformes).
+$posLine (repli "Nature Grammaticale") : aucun changement necessaire -- le repli ne fonctionne
+  deja que si $senses->senses est vide, et $conjugationFallbackHtml exige par construction une
+  carte pos=V/template DEJA presente dans $senses->senses (donc jamais vide dans ce cas).
+```
+
+Mesures :
+
+```text
+verification manuelle exhaustive par categorie (serveur local, mots reels tires au hasard
+  depuis storage/dictionary_fr.sqlite, jamais des valeurs inventees) :
+  format 1 (12 mots, couvrant les 4 gabarits ET une dizaine de temps distincts -- passe
+    simple, imparfait du subjonctif, indicatif present, indicatif imparfait) : EMBETASSIEZ,
+    TUTOIERAS, CONTRECOLLENT, CONSTITUASSIONS, DEBOTTAT, REPLANTAMES, SPIRITUALISAS, CAMBAMES,
+    LABOURASSIONS, CHARIOTAI, SOULAMES, PRISSIONS -- tous lien + majuscule corrects, elision
+    verifiee correcte y compris sur lemmes accentues (DÉBOTTER, SOÛLER, EMBÊTER -- majuscules
+    UTF-8 correctes), aucune double ponctuation.
+  format 2 (3 mots) : CITERENT, AMARREES, FASSIEZ -- lien + majuscule, aucun detail ajoute.
+  format 3 (4 mots) : DESENVASEES, TELEMATISE, ENDIABLANT, PARAMETREE -- lien + majuscule,
+    detail (genre/nombre) intact.
+  garde-fou malformation (2 mots reels, "seoir (au sens..." jamais ferme) : SEYAIENT, SIEE --
+    confirmes TOTALEMENT inchanges, aucun lien insere sur la base suspecte.
+tests/Frontend/WordViewTest.php : 4 nouvelles fixtures ajoutees (MANAGERA rotation complete,
+  DESENVASEES participe, CITERENT sans detail, SEYAIENT garde-fou malformation) -- chaque
+  valeur attendue re-verifiee en direct contre le rendu reel avant d'etre ecrite dans le test.
+php tests/run.php : voir le rapport AFTER pour le compte final.
+```
+
+Conséquences :
+
+```text
+s'applique automatiquement a l'integralite des 172 503 cartes concernees des le deploiement
+  du code (aucune donnee a retoucher, aucun rebuild de storage/dictionary_fr.sqlite).
+lecon retenue pour la suite (deja relayee a ES/DE au moment du correctif D-058) : verifier OU
+  une information est REELLEMENT stockee/affichee en production avant de considerer un
+  correctif termine -- deux mecanismes de generation independants (verb_forms/D-018 ET
+  reference_definitions.py/D-043) produisaient la MEME classe de texte sans qu'aucun des deux
+  ne le sache, une simple lecture du code de rendu ne l'aurait jamais revele sans le retour
+  utilisateur sur une page reelle.
+non fait : les 76 cas malformes (0,04%) restent inchanges -- corriger la glose source
+  elle-meme releverait du pipeline offline (scripts/lib/reference_definitions.py,
+  perimetre data-engine), pas de ce correctif de vue.
+```
