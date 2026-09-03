@@ -534,8 +534,6 @@ foreach ($conjugationLemmaGroups as &$groupsBySlug) {
     unset($group);
 }
 unset($groupsBySlug);
-
-$conjugationHeading = $conjugation->asLemma !== [] ? 'Se Conjugue' : 'Conjugaison';
 ?>
 <!doctype html>
 <html lang="fr">
@@ -622,7 +620,7 @@ $conjugationHeading = $conjugation->asLemma !== [] ? 'Se Conjugue' : 'Conjugaiso
 
 <?php if ($conjugation->asLemma !== []): ?>
     <section class="conjugation">
-      <h2><?= e($conjugationHeading) ?></h2>
+      <h2>Se Conjugue</h2>
       <p class="word-stream">
 <?php foreach ($tenseOrder as $tenseKey): ?>
 <?php if (!isset($conjugationLemmaGroups[$tenseKey])): continue; endif; ?>
