@@ -116,7 +116,7 @@ $phraseLink = static function (string $path, string $label): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="<?= e($seo->robots) ?>">
-<title>Quel Mot Pouvez-Vous Jouer&nbsp;? | WORD CHECKR</title>
+<title>Quels Mots Pouvez-Vous Jouer Au Scrabble&nbsp;? | WORD CHECKR</title>
 <meta name="description" content="Vérifiez si un mot est admis dans les dictionnaires officiels du Scrabble ou trouvez les mots jouables avec vos lettres, avec le score de chacun.">
 <?php if ($seo->canonicalUrl !== null): ?>
 <link rel="canonical" href="<?= e($seo->canonicalUrl) ?>">
@@ -140,7 +140,7 @@ $phraseLink = static function (string $path, string $label): string {
 <main class="site main" id="main">
   <section class="hero">
     <span class="eyebrow">Réponse immédiate</span>
-    <h1>Quel Mot Pouvez-Vous Jouer&nbsp;?</h1>
+    <h1>Quels Mots Pouvez-Vous Jouer Au Scrabble&nbsp;?</h1>
 
     <div class="search-card">
 <?php if ($error): ?>

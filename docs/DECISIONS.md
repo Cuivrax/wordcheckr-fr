@@ -5289,3 +5289,62 @@ lecon retenue (a appliquer aux prochaines demandes similaires) : verifier OU une
   seul mecanisme existe, une verification visuelle sur des mots reels (captures d'ecran ou
   serveur local) reste necessaire avant de declarer un correctif termine.
 ```
+
+## D-059 — Mot-Clé « Scrabble » Sur Le H1/Title De La Home + Typo « Jouer Autour De » Alignée Sur « Réponse Directe »
+
+Date : 2026-09-03
+Statut : accepté et appliqué
+
+Contexte :
+
+```text
+demande produit utilisateur, deux points independants :
+  1. H1/title de la home ("Quel Mot Pouvez-Vous Jouer ?") ne mentionne jamais "Scrabble" --
+     signal SEO le plus fort de la page manquant, alors que le site est explicitement
+     positionne Scrabble ("On est quand meme focus 100% Scrabble") et que "jouer au scrabble"
+     est une requete a volume reel (meme raisonnement Semrush deja invoque pour D-049).
+  2. Retour utilisateur sur capture d'ecran production : la section "Jouer Autour De {MOT}"
+     (relations, app/View/word.php) et sa phrase d'intro n'ont pas la meme typo que la
+     section "Reponse Directe" juste au-dessus -- incoherence visuelle repérée a l'oeil.
+```
+
+Décision :
+
+```text
+app/View/home.php : title et H1 "Quel Mot Pouvez-Vous Jouer ?" -> "Quels Mots Pouvez-Vous
+  Jouer Au Scrabble ?" (accord pluriel corrige au passage, "Mot" -> "Mots"). Perimetre
+  volontairement limite a la home (confirmation explicite utilisateur, "juste sur la home") --
+  la meme phrase sur les pages mot (App\View\word.php, "Vous pouvez le jouer.") reste
+  INCHANGEE, le mot "Scrabble" y est deja present juste au-dessus dans le H1/title de la fiche
+  ("Oui, X Est Admis Au Scrabble"), gain plus faible qu'un ajout redondant.
+public/assets/css/site.css : .relations-title/.relations-intro alignes sur .direct h2/.direct
+  p (meme font-size 0.92rem/0.9rem, meme font-weight, meme line-height 1.55, meme color) --
+  seul le margin-top de 21px de .relations-title reste propre a cette section (espacement
+  vertical avec la section precedente, .relations garde padding-top: 0, question de layout
+  pas de typo). .relations-intro NE REPREND PAS le margin: 0 de .direct p : contrairement a
+  .direct p (dernier element de sa section), .relations-intro est TOUJOURS suivie de
+  .relation-grid dans la MEME section -- un margin a 0 collerait le texte contre la bordure
+  superieure du premier .relation sans respiration. Garde un margin-bottom de 8px (echelle
+  d'espacement deja utilisee ailleurs sur la fiche, .direct p + p/.direct .sense-card) --
+  piege identifie independamment par le depot cousin EN sur la meme structure heritee du fork,
+  relaye a ES/DE avant qu'ils ne le reproduisent.
+```
+
+Mesures :
+
+```text
+tests/Frontend/HomeViewTest.php/WordViewTest.php/PlayViewTest.php : verifies individuellement
+  apres chaque changement, VERTS (aucune assertion figee sur l'ancien texte de la home).
+php tests/run.php (suite complete) : 54 reussis / 1 echoue (ProposeSeoBatchCommencantTerminant
+  MultilettresTest.php, echec attendu et documente depuis D-055/D-057, sans rapport).
+```
+
+Conséquences :
+
+```text
+transmis en parallele a ES/DE/EN (meme demande utilisateur) : verifier si les memes deux
+  ecarts existent chez eux (mot-cle absent du H1/title home, typo incoherente entre sections)
+  et appliquer si pertinent. EN a deja applique les deux de son cote et signale
+  independamment le meme piege de marge sur .relations-intro que celui trouve ici -- relaye a
+  ES/DE en complement de la demande initiale.
+```

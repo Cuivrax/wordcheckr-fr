@@ -884,17 +884,28 @@ select:focus-visible {
   border-bottom: 1px solid var(--line);
 }
 
+/* Typo alignee sur .direct h2/.direct p (retour utilisateur : "Jouer Autour De" et sa phrase
+   d'intro devaient avoir la meme typo que "Reponse Directe") -- meme font-size/poids/line-
+   height/couleur des deux cotes, seul le margin-top de 21px reste propre a .relations-title
+   (espacement vertical avec la section precedente, .relations garde padding-top: 0 -- pas une
+   question de typo, jamais touche ici). .relations-intro GARDE son propre margin-bottom
+   (contrairement a .direct p, margin: 0) : .direct p est le dernier element de sa section
+   (juste une bordure en dessous), .relations-intro est TOUJOURS suivie de .relation-grid dans
+   la meme section -- un margin a 0 collerait le texte contre la bordure superieure du premier
+   .relation, sans respiration (meme piege releve independamment par le depot cousin EN sur la
+   meme structure heritee du fork). 8px choisi pour rester sur l'echelle d'espacement deja
+   utilisee ailleurs sur cette fiche (.direct p + p, .direct .sense-card). */
 .relations-title {
   font-size: 0.92rem;
-  margin: 21px 0 2px;
+  margin: 21px 0 6px;
   font-weight: 700;
 }
 
 .relations-intro {
-  margin: 0 0 5px;
+  margin: 0 0 8px;
   color: var(--muted);
-  font-size: 0.8rem;
-  line-height: 1.45;
+  line-height: 1.55;
+  font-size: 0.9rem;
 }
 
 .relation-grid {
