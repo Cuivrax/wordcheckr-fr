@@ -406,18 +406,60 @@ $personLabels = [
 ];
 $personRank = array_flip(['1s', '2s', '3s', '1p', '2p', '3p']);
 
-// asForm : phrase courte par entree ("Forme conjuguee de LEMME (temps, personne)."), jamais
-// fusionnee -- reste simple meme quand un meme lemme apparait sous plusieurs temps/personnes
-// (rare, ex. TABLE -> TABLER).
+// asForm : phrase courte par entree, jamais fusionnee -- reste simple meme quand un meme
+// lemme apparait sous plusieurs temps/personnes (rare, ex. TABLE -> TABLER).
+//
+// D-0XX (a dater a la validation) : rotation deterministe entre 4 gabarits pour eviter la
+// meme phrase repetee mot pour mot sur des milliers de pages -- demande produit, gabarits
+// discutes et valides un par un avec l'utilisateur. Selection par crc32($page->normalized)
+// modulo 4 : STABLE (le meme mot affiche toujours le meme gabarit, pas un tirage a chaque
+// rendu), aucune nouvelle requete, aucun etat. Seuls le present/futur/imparfait (les temps
+// qui portent une personne) entrent dans la rotation ; les deux participes (person === null,
+// le francais ne les conjugue pas par personne) restent sur le gabarit A original, seul
+// gabarit qui ne mentionne jamais la personne.
+$conjugationTensePrepositionDe = [
+    'present' => 'du présent',
+    'future' => 'du futur',
+    'imperfect' => "de l'imparfait",
+];
+$conjugationTensePrepositionA = [
+    'present' => 'au présent',
+    'future' => 'au futur',
+    'imperfect' => "à l'imparfait",
+];
+
 $conjugationFormPhrases = [];
 foreach ($conjugation->asForm as $formEntry) {
-    $tenseLabel = mb_strtolower($tenseLabels[$formEntry['tense']] ?? $formEntry['tense']);
+    $tenseKey = $formEntry['tense'];
+    $tenseLabel = mb_strtolower($tenseLabels[$tenseKey] ?? $tenseKey);
     $personLabel = $formEntry['person'] !== null ? ($personLabels[$formEntry['person']] ?? null) : null;
+
+    if ($personLabel === null || !isset($conjugationTensePrepositionDe[$tenseKey])) {
+        // Participe (pas de personne) ou temps hors des 3 couverts par la rotation --
+        // gabarit A original, seul gabarit valide sans personne.
+        $text = sprintf(
+            'Forme conjuguée de %%LIEN%% (%s).',
+            $personLabel !== null ? $tenseLabel . ', ' . $personLabel : $tenseLabel,
+        );
+    } else {
+        $tensePrepositionDe = $conjugationTensePrepositionDe[$tenseKey];
+        $tensePrepositionA = $conjugationTensePrepositionA[$tenseKey];
+        $variant = crc32($page->normalized) % 4;
+
+        $text = match ($variant) {
+            0 => sprintf('Forme conjuguée de %%LIEN%% (%s, %s).', $tenseLabel, $personLabel),
+            1 => sprintf('%s %s du verbe %%LIEN%%.', $personLabel, $tensePrepositionDe),
+            // $personLabel se termine deja par un point d'abreviation ("sing."/"plur.") --
+            // AUCUN point final ajoute ici, sinon double point ("sing..").
+            2 => sprintf('Cette forme vient du verbe %%LIEN%%, conjugué %s à la %s', $tensePrepositionA, $personLabel),
+            default => sprintf('Conjugaison à la %s %s du verbe %%LIEN%%.', $personLabel, $tensePrepositionDe),
+        };
+    }
 
     $conjugationFormPhrases[] = [
         'lemma' => $formEntry['lemma'],
         'slug' => $formEntry['slug'],
-        'detail' => $personLabel !== null ? $tenseLabel . ', ' . $personLabel : $tenseLabel,
+        'text' => $text,
     ];
 }
 
@@ -535,7 +577,8 @@ $conjugationHeading = $conjugation->asLemma !== [] ? 'Se Conjugue' : 'Conjugaiso
     <section class="conjugation">
       <h2><?= e($conjugationHeading) ?></h2>
 <?php foreach ($conjugationFormPhrases as $phrase): ?>
-      <p class="conjugation-form">Forme conjuguée de <a href="/mot/<?= e($phrase['slug']) ?>"><?= e($phrase['lemma']) ?></a> (<?= e($phrase['detail']) ?>).</p>
+<?php $conjugationLink = '<a href="/mot/' . e($phrase['slug']) . '">' . e($phrase['lemma']) . '</a>'; ?>
+      <p class="conjugation-form"><?= str_replace('%LIEN%', $conjugationLink, $phrase['text']) ?></p>
 <?php endforeach; ?>
 <?php if ($conjugation->asLemma !== []): ?>
       <p class="word-stream">

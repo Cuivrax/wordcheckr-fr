@@ -5102,3 +5102,101 @@ storage/seo_fr.sqlite modifie UNIQUEMENT en local (hors depot git, D-007) jusqu'
   deploiement associe a cette entree. public/sitemaps/*.xml et public/sitemap-index.xml
   SONT versionnes et font partie du commit associe.
 ```
+
+## D-058 — Rotation Déterministe De 4 Gabarits Pour La Phrase « Forme Conjuguée De... »
+
+Date : 2026-09-03
+Statut : accepté et appliqué
+
+Contexte :
+
+```text
+idee relayee par les depots cousins ES/DE (leur produit owner) : au lieu d'une seule phrase
+  fixe repetee mot pour mot sur des milliers de pages de formes conjuguees, faire varier la
+  formulation -- plusieurs gabarits, choisis de facon deterministe par mot (stable dans le
+  temps, pas un tirage aleatoire a chaque rendu). Chez ES/DE, la cible est leur propre
+  substitut leger a Conjugation (glose kaikki directe) ; sur ce depot, la cible reelle est
+  UNIQUEMENT App\View\word.php:538, la phrase "Forme conjuguee de LEMME (temps, personne)."
+  (D-018), affichee une fois par entree App\Search\Conjugation::$asForm.
+verifie avant toute proposition : AUCUNE fonctionnalite "forme d'adjectif/pluriel" n'existe
+  sur ce depot (schema.sql:223, "participe passe (forme de base seule, sans accord de
+  genre/nombre -- hors perimetre)") -- l'idee relayee mentionnait une extension future aux
+  formes non-verbales cote ES/DE, mais rien d'equivalent n'existe ici a etendre. Perimetre de
+  cette decision limite aux formes verbales conjuguees, seul cas reel sur ce depot.
+4 gabarits discutes et valides un par un avec l'utilisateur (texte propose, corrige --
+  gabarit a base de ":" explicitement refuse, "pas commun, je n'aime pas" -- puis validé).
+```
+
+Décision :
+
+```text
+app/View/word.php (perimetre frontend) : $conjugationFormPhrases desormais construit avec un
+  champ 'text' contenant la phrase complete (placeholder %LIEN% pour le lien vers le lemme,
+  substitue au rendu par str_replace() apres construction du <a href> echappe) plutot que
+  l'ancien champ 'detail' (juste "temps, personne", toujours inseree dans LA MEME phrase
+  fixe cote vue).
+selection du gabarit : crc32($page->normalized) % 4 -- deterministe et stable (le meme mot
+  affiche toujours le meme gabarit, a chaque rendu, sans etat ni nouvelle requete), calcule
+  sur le mot de la PAGE (la forme conjuguee affichee), pas sur le lemme.
+seuls les 3 temps qui portent une personne (present/futur/imparfait) entrent dans la
+  rotation. Les deux participes (person === null, le francais ne les conjugue pas par
+  personne) restent TOUJOURS sur le gabarit A original (seul gabarit qui ne mentionne jamais
+  la personne) -- aucune tentative de forcer une phrase "sans personne" dans les 3 autres
+  gabarits, qui en ont tous besoin structurellement.
+petite table de prepositions par temps ajoutee ($conjugationTensePrepositionDe/_A) plutot
+  qu'un "du "/"au " concatene aveuglement devant le libelle -- "imparfait" commence par une
+  voyelle ("de l'imparfait"/"a l'imparfait", pas "du imparfait"/"au imparfait"), trouve et
+  corrige AVANT toute validation utilisateur (signale explicitement, pas laisse pour un audit
+  ulterieur).
+les 4 gabarits retenus (exemple POSE, present, 3e pers. sing.) :
+    A (original, inchange) : "Forme conjuguée de {lien} ({temps}, {personne})."
+      -> "Forme conjuguée de poser (présent, 3e pers. sing.)."
+    B : "{Personne} {temps-de} du verbe {lien}."
+      -> "3e pers. sing. du présent du verbe poser."
+    D : "Cette forme vient du verbe {lien}, conjugué {temps-au} à la {personne}"
+      -> "Cette forme vient du verbe poser, conjugué au présent à la 3e pers. sing."
+      (AUCUN point final ajoute par le gabarit -- {personne} se termine deja par un point
+      d'abreviation, "sing."/"plur." -- trouve en testant en local, corrige avant validation
+      finale, voir Mesures)
+    E : "Conjugaison à la {personne} {temps-de} du verbe {lien}."
+      -> "Conjugaison à la 3e pers. sing. du présent du verbe poser."
+```
+
+Mesures :
+
+```text
+bug trouve et corrige EN COURS DE TEST (avant tout commit) : le gabarit D, tel que
+  formule initialement, se terminait par "%s." avec {personne} en dernier -- comme
+  {personne} finit deja par un point d'abreviation, ca produisait un double point
+  ("...à la 3e pers. sing..") sur les mots dont le hash tombait sur ce gabarit (ex.
+  DEMETTAIT). Trouve par test manuel local (serveur PHP integre, echantillon de 9 formes
+  reelles couvrant les 3 temps en rotation), corrige en retirant le point final du gabarit
+  (le point d'abreviation de {personne} sert de terminaison).
+verification manuelle (serveur local, echantillon de 9 formes reelles distinctes,
+  storage/dictionary_fr.sqlite) : les 4 gabarits vus en usage reel (PRAESUMEZ/CROUPISSONS ->
+  gabarit E ; PONDERE -> gabarit A, mot avec 3 entrees asForm y compris un participe qui
+  reste bien sur A ; ADIRERA -> gabarit E ; BLABLATEREZ/GAINAIT -> gabarit A ; DEMETTAIT ->
+  gabarit D, point unique confirme apres correctif ; SPATHIFIEZ -> gabarit B), aucune double
+  ponctuation, aucune elision fautive (imparfait) sur l'echantillon.
+tests/Frontend/WordViewTest.php : 3 assertions figees mises a jour vers le texte
+  reellement produit par la rotation (recalcule, pas suppose) -- POSERA (crc32 % 4 = 3,
+  gabarit E), TABLE (crc32 % 4 = 2, gabarit D, sur les 2 entrees present -- le participe
+  passe reste gabarit A, assertion inchangee), ABADAIENT (crc32 % 4 = 2, gabarit D).
+  Chaque nouvelle valeur re-verifiee en direct contre le serveur local avant d'etre ecrite
+  dans le test (jamais recalculee a la main sans confirmation).
+php tests/run.php : voir le rapport AFTER pour le compte final (aucun autre fichier de
+  test ne reference la phrase de conjugaison).
+```
+
+Conséquences :
+
+```text
+s'applique automatiquement a TOUTES les pages de formes conjuguees deja en base (aucune
+  donnee a retoucher, aucun rebuild necessaire) -- pur changement de vue, effectif des le
+  deploiement du code, sur l'integralite de verb_forms.
+NON fait dans ce ticket (perimetre explicitement exclu, question posee et tranchee avec
+  l'utilisateur) :
+  - formes d'adjectif/pluriel : aucune fonctionnalite equivalente n'existe sur ce depot,
+    resterait un chantier separe complet (nouvelle source de donnees, nouveau lookup,
+    nouvelle section UI) si jamais ouvert.
+```
