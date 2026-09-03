@@ -114,6 +114,13 @@ storage/ en 404. Contenu réel vérifié : /mots/10-lettres/avec/a/b/j/w affiche
 commencant/webj">`. TTFB stabilisé à 170-184 ms après le cache froid initial de bascule
 (budget < 250 ms respecté).
 
+D-058 DÉPLOYÉ SUR O2SWITCH le 2026-09-03 (commit 7523ae6, code seul via git archive, aucune
+base transférée — pure vue). Rotation de 4 gabarits pour la phrase "Forme conjuguée de..."
+vérifiée en direct sur 4 mots réels (POSERA/TABLE/ABADAIENT/POSAIT) : gabarits E/D/D/D
+respectivement, aucune double ponctuation, élision correcte sur l'imparfait ("à l'imparfait").
+S'applique automatiquement à toutes les pages de formes conjuguées, aucun rebuild nécessaire.
+Routes témoins (/, /mots/commencant → 301) inchangées.
+
 D-049 APPLIQUÉ ET CORRIGÉ (2026-09-01) : "avec" SANS AUCUN ancrage (BARE, ni longueur ni préfixe
 ni suffixe) — demande produit explicite, preuve de volume réel Semrush. Convention de nom `BARE`
 alignée avec le dépôt allemand cousin. 1er audit seo-technical-auditor : **NO GO** (5 bloquants),
