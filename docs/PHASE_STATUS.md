@@ -88,6 +88,21 @@ base transférée — pur correctif de routage). Les 7 racines de famille sans a
 /mots/motif) vérifiées 301 → /mots en direct sur https://www.wordcheckr.fr ; /mots/avec/a et
 /mots eux-mêmes vérifiés 200, inchangés.
 
+D-057 (2026-09-03) : balayage croisé complet borné (result_count ≤ 25, 20 familles, aucune
+restriction) — 2 515 groupes de doublons trouvés et résolus (2 673 lignes basculées en
+noindex,follow), très au-delà des 813 groupes déjà couverts par D-055 (concentré sur
+avec_four_letters/avec_bare_four_letters). Les 11 candidats > 25 résultats déferrés par
+D-055 vérifiés individuellement (fingerprint réel contre les 2 282 lignes du registre au
+même result_count, 0 correspondance) et ajoutés au registre. Le doublon /mots/2-lettres/
+avec/w vs /mots/2-lettres/commencant/w (question ouverte D-055) résolu : avec/w reste
+exclue de la génération, le vrai doublon (commencant/2-lettres/w vs terminant/wu) tranché
+en faveur de terminant/wu. storage/seo_fr.sqlite : 1 139 936 → 1 137 274 en index,follow,
+sitemaps régénérés (54 fragments, 10 modifiés). Extension à result_count ≤ 100 tentée deux
+fois, abandonnée (épuisement mémoire puis blocage 1h23 sans progression, cause non
+diagnostiquée) — le sous-ensemble 26+ reste non balayé, chantier de suivi. Revalidation
+textuelle de D041_EXCLUDED_ROUTE_PATHS et audit d'orphelines page-par-page toujours pas
+faits — voir D-057 pour le détail complet.
+
 D-049 APPLIQUÉ ET CORRIGÉ (2026-09-01) : "avec" SANS AUCUN ancrage (BARE, ni longueur ni préfixe
 ni suffixe) — demande produit explicite, preuve de volume réel Semrush. Convention de nom `BARE`
 alignée avec le dépôt allemand cousin. 1er audit seo-technical-auditor : **NO GO** (5 bloquants),

@@ -87,9 +87,31 @@ declare(strict_types=1);
  *
  * ## Usage
  *
- *     php scripts/check_combinatorial_duplicates.php [--quiet]
+ *     php scripts/check_combinatorial_duplicates.php [--quiet] [--max-result-count=N]
  *
- * --quiet   supprime la progression sur STDERR (le rapport final sur STDOUT est inchangé).
+ * --quiet               supprime la progression sur STDERR (le rapport final sur STDOUT est
+ *                        inchangé).
+ * --families=a,b,c      (D-057) borne le balayage aux familles listées (valeurs
+ *                        App\Seo\Family::WORD_LIST_*, ex. "word_list_commencant,
+ *                        word_list_terminant") plutôt que combinatorialFamilies() au complet --
+ *                        UNE FAMILLE À LA FOIS reste incomplète pour un vrai balayage croisé
+ *                        (un doublon peut toujours se cacher dans une famille non listée ici),
+ *                        réservé à une revalidation ciblée d'une famille précise après un
+ *                        premier balayage complet déjà propre, jamais un substitut à
+ *                        combinatorialFamilies() pour un audit initial.
+ * --max-result-count=N  (D-057) borne le balayage aux lignes `result_count <= N`, TOUTES
+ *                        familles combinatoires confondues (pas juste une famille précise) --
+ *                        un doublon de contenu entre deux familles ne peut structurellement
+ *                        exister qu'entre deux paniers de MÊME taille (même empreinte
+ *                        COUNT()+sha1 par construction), donc borner sur result_count ne peut
+ *                        jamais faire manquer un doublon touchant au moins une ligne sous ce
+ *                        seuil. Un doublon dont TOUTES les lignes dépassent N reste hors de ce
+ *                        balayage borné -- absent par défaut (N = illimité, comportement
+ *                        historique inchangé), à combiner avec une vérification ciblée
+ *                        (quelques lignes, pas des milliers) pour les candidats connus
+ *                        au-dessus du seuil. Réduit drastiquement le volume balayé sur un
+ *                        registre à plus d'un million de lignes (voir docs/DECISIONS.md D-057
+ *                        pour la mesure réelle).
  *
  * Variables d'environnement (réservées aux tests, tests/Seo/ -- même convention que
  * scripts/apply_seo_batch.php/scripts/build_sitemaps.php) :
@@ -119,6 +141,25 @@ use App\Seo\Family;
 
 $args = array_slice($argv, 1);
 $quiet = in_array('--quiet', $args, true);
+
+$maxResultCount = null;
+$familiesFilter = null;
+foreach ($args as $arg) {
+    if (str_starts_with($arg, '--max-result-count=')) {
+        $value = substr($arg, strlen('--max-result-count='));
+
+        if (!ctype_digit($value)) {
+            fwrite(STDERR, "--max-result-count doit etre un entier positif, recu : {$value}\n");
+            exit(2);
+        }
+
+        $maxResultCount = (int) $value;
+    }
+
+    if (str_starts_with($arg, '--families=')) {
+        $familiesFilter = array_values(array_filter(explode(',', substr($arg, strlen('--families=')))));
+    }
+}
 
 $root = dirname(__DIR__);
 $dictionaryPath = getenv('SCRABBLE_DICTIONARY_DB_PATH') ?: $root . '/storage/dictionary_fr.sqlite';
@@ -229,16 +270,30 @@ $registryPdo = $registryConnection->pdo();
 
 $families = combinatorialFamilies();
 
+if ($familiesFilter !== null) {
+    $unknown = array_diff($familiesFilter, $families);
+
+    if ($unknown !== []) {
+        fwrite(STDERR, '--families contient une valeur hors perimetre (pas une famille combinatoire connue) : ' . implode(', ', $unknown) . "\n");
+        exit(2);
+    }
+
+    $families = array_values(array_intersect($families, $familiesFilter));
+}
+
 if ($families === []) {
     fwrite(STDERR, "aucune famille combinatoire a balayer (App\\Seo\\Family::ALL vide ?)\n");
     exit(2);
 }
 
 $placeholders = implode(',', array_fill(0, count($families), '?'));
+$resultCountClause = $maxResultCount !== null ? ' AND result_count <= ?' : '';
+$resultCountParam = $maxResultCount !== null ? [$maxResultCount] : [];
+
 $countStatement = $registryPdo->prepare(
-    "SELECT COUNT(*) c FROM registry WHERE family IN ({$placeholders}) AND robots = 'index,follow'"
+    "SELECT COUNT(*) c FROM registry WHERE family IN ({$placeholders}) AND robots = 'index,follow'{$resultCountClause}"
 );
-$countStatement->execute($families);
+$countStatement->execute([...$families, ...$resultCountParam]);
 $totalRows = (int) $countStatement->fetch(PDO::FETCH_ASSOC)['c'];
 
 if (!$quiet) {
@@ -247,6 +302,9 @@ if (!$quiet) {
         count($families),
         implode(', ', $families),
     ));
+    if ($maxResultCount !== null) {
+        fwrite(STDERR, sprintf("borne --max-result-count=%d appliquee\n", $maxResultCount));
+    }
     fwrite(STDERR, sprintf("lignes a balayer : %d\n", $totalRows));
 }
 
@@ -254,9 +312,9 @@ if (!$quiet) {
 // section "Périmètre" -- une ligne noindex,follow n'est jamais candidate à l'élection du gagnant.
 $rowsStatement = $registryPdo->prepare(
     "SELECT route_path, family, robots, result_count FROM registry"
-    . " WHERE family IN ({$placeholders}) AND robots = 'index,follow' ORDER BY family, route_path"
+    . " WHERE family IN ({$placeholders}) AND robots = 'index,follow'{$resultCountClause} ORDER BY family, route_path"
 );
-$rowsStatement->execute($families);
+$rowsStatement->execute([...$families, ...$resultCountParam]);
 
 /** @var array<string, list<array{route_path: string, family: string}>> $groups */
 $groups = [];

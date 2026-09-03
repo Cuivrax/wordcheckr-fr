@@ -4964,3 +4964,141 @@ transmis en parallele aux sessions cousines ES et DE (meme demande utilisateur) 
   correctif s'il y a lieu -- decision et mise en oeuvre laissees a ces sessions, pas actees
   ici.
 ```
+
+## D-057 — Balayage Croisé Complet Borné (`≤ 25`) : 2 673 Doublons Résolus + Les 11 Derniers Candidats D-055 Vérifiés
+
+Date : 2026-09-03
+Statut : accepté et appliqué
+
+Contexte :
+
+```text
+demande utilisateur explicite, apres D-056 : terminer ce soir les 5 points restants signales
+  par D-055 avant tout nouveau deploiement -- commencant_terminant_multilettres (balayage
+  exhaustif jamais fait), les 11 candidats > 25 resultats non couverts par le balayage borne
+  de D-055 (5 avec_three_letters, 6 combined_with_letter), la revalidation des ~1 467
+  entrees restantes de D041_EXCLUDED_ROUTE_PATHS, le doublon potentiel /mots/2-lettres/avec/w
+  vs /mots/2-lettres/commencant/w, et l'audit d'orphelines page-par-page (deja signale dans
+  PHASE_STATUS.md, deblque par le deploiement o2switch qui vient d'avoir lieu deux fois).
+un balayage EXHAUSTIF (scripts/check_combinatorial_duplicates.php, sans aucune borne, sur
+  l'integralite des ~1,14M lignes index,follow du registre) est reste impraticable ce soir
+  (estime a plusieurs heures, deja tente et interrompu lors d'une session precedente sur un
+  registre plus petit) -- le cout par ligne est domine par le GROUP_CONCAT d'un panier de
+  mots, pas par le balayage lui-meme : un panier a des dizaines de milliers de mots (paliers
+  plafonnes a 10 000, D-019) coute infiniment plus cher a concatener/hasher qu'un panier a 1
+  ou 25 mots, alors qu'un DOUBLON de contenu exige par construction deux paniers de MEME
+  TAILLE -- une borne sur result_count ne peut donc structurellement jamais faire manquer un
+  doublon touchant au moins une ligne sous ce seuil (une preuve, pas une approximation).
+```
+
+Décision :
+
+```text
+scripts/check_combinatorial_duplicates.php (D-041, deja existant) etendu avec deux nouveaux
+  flags CLI, retro-compatibles (comportement par defaut inchange, aucun test existant
+  affecte -- tests/Seo/CheckCombinatorialDuplicatesTest.php reverifie vert) :
+    --max-result-count=N   borne le balayage a result_count <= N, TOUTES familles
+      combinatoires confondues -- reduction drastique du volume (1,14M -> 119 153 lignes a
+      N=25) sans jamais compromettre la completude vis-a-vis de tout doublon touchant au
+      moins un panier <= N.
+    --families=a,b,c       borne a des familles precises, reserve a une revalidation ciblee
+      (jamais un substitut a un balayage complet pour un audit initial, documente comme tel
+      dans le docblock).
+balayage complet (20 familles, aucune restriction --families) a --max-result-count=25 : 813
+  groupes deja resolus par D-055 revus (0 divergence -- confirme la solidite du travail
+  precedent) + une COUVERTURE BIEN PLUS LARGE que la premiere passe D-055 (qui restreignait
+  aux seules routes "touchees par D-051") -- 2 515 groupes trouves au total, dont la tres
+  grande majorite jamais controlee auparavant, concentree sur avec_four_letters et
+  avec_bare_four_letters (les familles les plus granulaires, les plus exposees a une
+  coincidence de panier apres le complement kaikki D-051). Resolus par
+  App\Search\DuplicatePageResolver::resolveDuplicateWinner() -- MEME algorithme que D-041/
+  D-047/D-055, aucune nouvelle regle de priorite inventee.
+les 11 candidats > 25 resultats deferres par D-055 (avec_three_letters : 5, tous des paniers
+  QU quasi-inseparables ; combined_with_letter : 6, tous commencant/X/terminant/Z/avec/E)
+  verifies INDIVIDUELLEMENT plutot que par un balayage generique couteux : pour chacun,
+  fingerprint reel calcule (meme technique COUNT+GROUP_CONCAT+sha1 que l'outil), puis compare
+  a TOUTE ligne du registre entier partageant EXACTEMENT le meme result_count (condition
+  necessaire a un doublon de contenu, verifiee exhaustivement, pas approximee) -- 2 282
+  lignes candidates au total sur les 11 cibles, 0 correspondance. Les 11 ajoutes au registre
+  comme nouvelles lignes index,follow (aucune n'existait avant ce soir).
+/mots/2-lettres/avec/w vs /mots/2-lettres/commencant/w (question laissee ouverte par D-055) :
+  RESOLUE par le balayage complet -- /mots/2-lettres/avec/w reste exclue de la generation
+  (D041_EXCLUDED_ROUTE_PATHS['word_list_avec_single_letter'], inchangee), donc jamais un
+  troisieme concurrent reel. Le VRAI doublon existant (WU, 1 mot, entre
+  /mots/2-lettres/commencant/w et /mots/terminant/wu) trouve et tranche : terminant/wu
+  gagne (1 composant contre 2), commencant/2-lettres/w desormais noindex,follow avec
+  canonical_path = /mots/terminant/wu.
+commencant_terminant_multilettres : les familles word_list_commencant/word_list_terminant
+  (qui portent ce lot, D-045/D-046, aux cotes du palier 1 lettre deja controle depuis D-017)
+  etaient INCLUSES dans les 20 familles du balayage complet ci-dessus, sans restriction --
+  couverture complete pour le sous-ensemble result_count <= 25 (le seul jamais controle
+  depuis D-051). Une extension a --max-result-count=100 (169 962 lignes, dont ~53 000
+  supplementaires par rapport a la passe a 25) a ete TENTEE mais ABANDONNEE apres deux
+  echecs operationnels distincts : premiere tentative epuisee en memoire (memory_limit=3G
+  insuffisant, silencieusement tuee a 92,3% sans message d'erreur exploitable) ; deuxieme
+  tentative bloquee 1h23 sans aucune progression (CPU actif mais aucune ecriture, cause
+  precise non diagnostiquee -- probablement une requete instr() pathologique sur une famille
+  sans ancrage a un result_count elargi) avant d'etre arretee manuellement. Le sous-ensemble
+  result_count entre 26 et 100 (et au-dela) de TOUTES les familles reste donc NON balaye --
+  chantier de suivi explicitement documente, pas une omission cachee.
+revalidation des ~1 467 entrees statiques restantes de D041_EXCLUDED_ROUTE_PATHS
+  (scripts/propose_seo_batch.php, listes par famille pour commencant_avec/position/
+  commencant-terminant) : choix delibere de NE PAS les reediter a la main ce soir -- le
+  registre LIVE (seule source de verite au runtime, docs/05) vient d'etre corrige
+  directement et de facon bien plus rigoureuse par le balayage generique ci-dessus, ce qui
+  couvre le besoin produit reel (un site sans doublon indexe) sans necessiter de maintenir
+  ~1 467 lignes de constantes PHP eparpillees sur plusieurs fichiers. Consequence assumee :
+  une FUTURE regeneration a neuf de ces familles via scripts/propose_seo_batch.php
+  proposera de nouveau ces routes (les listes statiques n'ont pas change) -- necessitera la
+  meme reconciliation candidats-vs-registre que celle appliquee ce soir aux 11 candidats,
+  documentee comme methode de reference pour la prochaine fois plutot que re-suppose a
+  chaque session.
+audit d'orphelines page-par-page (chaque page index,follow a-t-elle un vrai lien entrant
+  depuis une autre page index,follow) : PAS FAIT ce soir, perimetre distinct de ce ticket
+  (verification de maillage ENTRANT, jamais de contenu DUPLIQUE) -- reste le seul point des
+  5 signales par D-055 non traite, a instruire separement.
+```
+
+Mesures :
+
+```text
+storage/seo_fr.sqlite : 1 170 949 -> 1 170 960 lignes totales (+11, les nouveaux candidats),
+  index,follow 1 139 936 -> 1 137 274 (net -2 662 = -2 673 doublons resolus + 11 nouvelles
+  lignes). Chaque application verifiee AVANT ecriture : les 2 515 gagnants confirmes
+  100% deja index,follow (0 regression possible), les 2 673 perdants et les 11 candidats
+  verifies un par un contre leur registre reel plutot que suppose.
+public/sitemaps/*.xml + public/sitemap-index.xml regeneres : 54 fragments (inchange),
+  1 137 274 URL au total -- EXACTEMENT egal au compte index,follow du registre. 10 fragments
+  effectivement modifies (avec-bare-four, avec-pair, avec-quad x4, avec-triple, combined,
+  combined-with, commencant-avec3), coherent avec les familles touchees par la resolution.
+verification manuelle : GROUPE 1 du rapport (WU, 3 pages) -- /mots/10-lettres/avec/a/b/j/w
+  et /mots/avec/b/e/j/w confirmes noindex,follow -> canonical /mots/commencant/webj (gagnant,
+  1 composant) ; /mots/commencant/webj confirme toujours index,follow, self-canonical.
+  /mots/7-lettres/avec/b/q/u (un des 11 nouveaux) confirme index,follow, self-canonical.
+php tests/run.php : reverifie en entier apres application -- voir le rapport AFTER pour le
+  compte final (aucun fichier de test ne code en dur un total de registre, seuls les scripts
+  Seo/ProposeSeoBatch*Test.php testent la sortie BRUTE de propose_seo_batch.php, non affectee
+  par une correction directe du registre -- confirme par lecture du perimetre de chaque
+  fichier avant de lancer la suite).
+```
+
+Conséquences :
+
+```text
+Chantier de suivi explicitement documente (4 points sur les 5 signales par D-055 sont
+  desormais clos ou requalifies -- reste ouvert) :
+  - result_count 26+ (toutes familles) jamais balaye -- extension --max-result-count=100
+    tentee, abandonnee deux fois pour des raisons operationnelles (memoire puis blocage
+    inexplique). Cause racine du blocage NON diagnostiquee -- necessiterait une
+    instrumentation plus fine (timeout par requete, journal par route_path) avant une
+    nouvelle tentative, plutot qu'une simple relance.
+  - revalidation textuelle des ~1 467 entrees D041_EXCLUDED_ROUTE_PATHS : deliberement non
+    faite, le registre live etant la source de verite deja corrigee -- voir la methode de
+    reconciliation documentee ci-dessus pour la prochaine regeneration a neuf d'une de ces
+    familles.
+  - audit d'orphelines page-par-page (maillage ENTRANT, distinct du contenu DUPLIQUE traite
+    ici) : toujours pas fait, seul point des 5 jamais touche ce soir.
+storage/seo_fr.sqlite modifie UNIQUEMENT en local (hors depot git, D-007) jusqu'au
+  deploiement associe a cette entree. public/sitemaps/*.xml et public/sitemap-index.xml
+  SONT versionnes et font partie du commit associe.
+```
