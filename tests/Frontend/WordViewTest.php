@@ -637,6 +637,131 @@ return function (): void {
     Assert::true(!str_contains($htmlSeyaient, '<a href="/mot/convenir'), 'SEYAIENT : aucune tentative de lien sur une base suspecte');
 
     // -------------------------------------------------------------------
+    // D-0XX (extension pluriel/feminin/masculin, meme repli regex que le verbe ci-dessus,
+    // pos=N ou Adj, source=template) : 66 671 cartes "Forme plurielle/feminine/masculine de X."
+    // n'avaient jamais de lien ni de rotation avant cette extension. Fixtures MENISCALES/
+    // ABRASIVE/AALENIENS/AILS reprennent des valeurs reellement observees en local (verifie
+    // manuellement pendant l'implementation), pas inventees -- meme discipline que MANAGERA et
+    // consorts plus haut.
+    $meniscales = new TermPage(
+        normalized: 'MENISCALES',
+        slug: 'meniscales',
+        found: true,
+        status: TermPage::STATUS_ADMITTED,
+        score: $scoreFor('MENISCALES'),
+        length: 10,
+        isOds8: true,
+        isOds9: true,
+        letters: $tiles('MENISCALES', $tileScores),
+        previousWord: 'MENISCALE',
+        nextWord: 'MENISCITE',
+        pos: 'Adj',
+    );
+    $meniscalesSenses = new WordSenses(
+        senses: [['pos' => 'Adj', 'gender' => null, 'definition' => 'Forme féminine plurielle de méniscal.', 'source' => 'template']],
+        queryCount: 1,
+    );
+    $htmlMeniscales = $render($meniscales, null, $noConjugation, $meniscalesSenses);
+    // crc32("MENISCALES") % 4 = 1 (gabarit B), stable -- verifie en direct contre le rendu reel
+    // avant d'ecrire cette assertion (jamais recalcule a la main sans confirmation).
+    Assert::true(
+        str_contains($htmlMeniscales, 'Féminin pluriel de <a href="/mot/méniscal">MÉNISCAL</a>.'),
+        'MENISCALES : lemme lie et majuscule, qualificatif convertit en nom ("féminine plurielle" -> "Féminin pluriel"), seule la 1re lettre capitalisee',
+    );
+
+    // "de l'adjectif LEMME" -- elision recalculee sur LEMME (pas sur "l'adjectif" comme dans le
+    // texte source), contrairement au "d'"/"de " direct qui est repris tel quel.
+    $abrasive = new TermPage(
+        normalized: 'ABRASIVE',
+        slug: 'abrasive',
+        found: true,
+        status: TermPage::STATUS_ADMITTED,
+        score: $scoreFor('ABRASIVE'),
+        length: 8,
+        isOds8: true,
+        isOds9: true,
+        letters: $tiles('ABRASIVE', $tileScores),
+        previousWord: 'ABRASIONS',
+        nextWord: 'ABRASIVES',
+        pos: 'Adj',
+    );
+    $abrasiveSenses = new WordSenses(
+        senses: [['pos' => 'Adj', 'gender' => null, 'definition' => "Forme féminine de l'adjectif abrasif.", 'source' => 'template']],
+        queryCount: 1,
+    );
+    $htmlAbrasive = $render($abrasive, null, $noConjugation, $abrasiveSenses);
+    // crc32("ABRASIVE") % 4 = 1 (gabarit B).
+    Assert::true(
+        str_contains($htmlAbrasive, "Féminin d'<a href=\"/mot/abrasif\">ABRASIF</a>."),
+        "ABRASIVE : elision recalculee sur ABRASIF (voyelle) -- \"d'\", pas \"de l'adjectif\" ni \"de\"",
+    );
+
+    // Deux sens DISTINCTS pour le meme mot (adjectif ET nom propre) -- chacun substitue
+    // independamment, jamais qu'un seul pris au hasard (bug trouve et corrige pendant
+    // l'implementation : un premier essai avec un simple `break` ne traitait que le premier).
+    $aaleniens = new TermPage(
+        normalized: 'AALENIENS',
+        slug: 'aaleniens',
+        found: true,
+        status: TermPage::STATUS_ADMITTED,
+        score: $scoreFor('AALENIENS'),
+        length: 9,
+        isOds8: true,
+        isOds9: true,
+        letters: $tiles('AALENIENS', $tileScores),
+        previousWord: 'AALENIENNE',
+        nextWord: 'AALENIENNES',
+        pos: 'Adj',
+    );
+    $aaleniensSenses = new WordSenses(
+        senses: [
+            ['pos' => 'Adj', 'gender' => null, 'definition' => 'Forme masculine plurielle de aalénien.', 'source' => 'template'],
+            ['pos' => 'N', 'gender' => null, 'definition' => 'Forme plurielle de aalénien.', 'source' => 'template'],
+        ],
+        queryCount: 2,
+    );
+    $htmlAaleniens = $render($aaleniens, null, $noConjugation, $aaleniensSenses);
+    // crc32("AALENIENS") % 4 = 2 (gabarit D) -- meme variant sur les deux cartes : la rotation
+    // est stable par PAGE, pas par sens.
+    Assert::true(
+        str_contains($htmlAaleniens, 'Cette forme est le masculin pluriel de <a href="/mot/aalénien">AALÉNIEN</a>.'),
+        'AALENIENS : premier sens (adjectif) substitue',
+    );
+    Assert::true(
+        str_contains($htmlAaleniens, 'Cette forme est le pluriel de <a href="/mot/aalénien">AALÉNIEN</a>.'),
+        'AALENIENS : second sens (nom propre), DISTINCT du premier, egalement substitue',
+    );
+
+    // Detail additionnel apres le lemme (parenthese) -- la regle stricte "\.$" ne trouve pas de
+    // point immediatement apres le lemme, aucune correspondance : texte source laisse TOTALEMENT
+    // inchange plutot que de risquer une reconstruction fautive (meme prudence que SEYAIENT).
+    $ails = new TermPage(
+        normalized: 'AILS',
+        slug: 'ails',
+        found: true,
+        status: TermPage::STATUS_ADMITTED,
+        score: $scoreFor('AILS'),
+        length: 4,
+        isOds8: true,
+        isOds9: true,
+        letters: $tiles('AILS', $tileScores),
+        previousWord: 'AIGUS',
+        nextWord: 'AIMABLE',
+        pos: 'N',
+    );
+    $ailsDefinition = 'Forme plurielle de ail (utilisé en particulier par les scientifiques).';
+    $ailsSenses = new WordSenses(
+        senses: [['pos' => 'N', 'gender' => null, 'definition' => $ailsDefinition, 'source' => 'template']],
+        queryCount: 1,
+    );
+    $htmlAils = $render($ails, null, $noConjugation, $ailsSenses);
+    Assert::true(
+        str_contains($htmlAils, e($ailsDefinition)),
+        'AILS : detail apres le lemme -- laisse totalement inchange, aucun lien insere',
+    );
+    Assert::true(!str_contains($htmlAils, '<a href="/mot/ail"'), 'AILS : aucune tentative de lien sur une glose non conforme');
+
+    // -------------------------------------------------------------------
     // D-054 -- phrase "Reponse Directe" specifique selon $page->nonAdmittedCategory
     // (D-051, jeu ferme de 10 valeurs). Un cas par categorie, phrase attendue ecrite en
     // clair (pas de reutilisation du tableau de app/View/word.php) pour verifier le

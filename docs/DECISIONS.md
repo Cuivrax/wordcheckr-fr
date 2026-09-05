@@ -5462,3 +5462,101 @@ non fait : les 76 cas malformes (0,04%) restent inchanges -- corriger la glose s
   elle-meme releverait du pipeline offline (scripts/lib/reference_definitions.py,
   perimetre data-engine), pas de ce correctif de vue.
 ```
+
+## D-061 — Extension Du Repli Regex (D-060) Aux Formes Pluriel/Féminin/Masculin (66 671 Cas)
+
+Date : 2026-09-05
+Statut : accepté et appliqué
+
+Contexte :
+
+```text
+question directe utilisateur : "nous on a fait le mecanisme form of deja ?" -- verification sur
+  pieces (jamais suppose) : D-058/D-060 ne couvrent QUE pos=V (formes conjuguees). Les formes
+  flechies d'adjectifs et de noms (pluriel, feminin, masculin pluriel) portent la MEME classe de
+  bug que MANAGERA avant D-060 -- texte fixe stocke en base, jamais transforme en lien, jamais
+  mis en majuscule. Confirme en direct sur des mots reels (ex. /mot/meniscales affichait "Forme
+  feminine plurielle de meniscal." sans lien ni majuscule).
+mesure exhaustive (pas un echantillon) : 66 671 cartes pos IN ('N','Adj')/source=template
+  correspondant au gabarit "Forme (plurielle|féminine[ plurielle]|masculine[ plurielle])
+  (de l'adjectif |d'|de )LEMME." -- 36 633 pluriel, 18 761 feminin(e plurielle), 11 277
+  masculin(e plurielle). 66 497 (99,7%) matchent proprement le format ferme ; 174 (0,26%) gloses
+  malformees ou annotees (detail supplementaire apres le lemme, ex. "ail (utilise en
+  particulier...)") laissees TOTALEMENT inchangees, meme garde-fou que D-060.
+grammaticalement verifie avec l'utilisateur avant implementation : le qualificatif adjectival de
+  la glose source ("plurielle", "féminine", "masculine") doit devenir un NOM autonome dans les
+  gabarits varies ("pluriel", "féminin", "féminin pluriel", "masculin", "masculin pluriel") --
+  jamais l'adjectif tel quel hors du gabarit d'origine.
+2 bugs trouves et corriges PENDANT l'implementation, avant tout retour utilisateur :
+  mots a SENS MULTIPLES DISTINCTS (6 894 mots, ex. AALENIENS = a la fois "masculin pluriel de
+    l'adjectif aalenien" ET, separement, "pluriel du nom propre Aalenien") -- un premier essai
+    avec un simple `break` apres la premiere correspondance ne substituait que le premier sens,
+    laissant le second inchange. Corrige : repli en carte (`$inflectedFormFallbackByOriginalText`
+    indexee par texte ORIGINAL), toutes les cartes correspondantes substituees, aucun `break`.
+  capitalisation : `mb_convert_case(..., MB_CASE_TITLE)` capitalisait CHAQUE mot du qualificatif
+    nom ("Féminin Pluriel" au lieu de "Féminin pluriel") -- trouve par test manuel direct
+    (MENISCALES, ISSANTES), corrige par capitalisation manuelle de la seule 1re lettre.
+```
+
+Décision :
+
+```text
+app/View/word.php : meme philosophie que D-060, mecanisme independant et parallele (pas de
+  fusion avec $renderVerbFormPhrase -- structure de phrase differente, pas de temps/personne).
+  $qualifierNounForms : dictionnaire ferme adjectif -> nom (plurielle -> pluriel, féminine ->
+    féminin, féminine plurielle -> féminin pluriel, masculine -> masculin, masculine plurielle ->
+    masculin pluriel).
+  $renderInflectedFormPhrase() : 4 gabarits (rotation crc32($page->normalized) % 4, stable par
+    page, meme mecanisme que le reste du site) --
+    A "Forme {qualificatif adjectif} {prefixe}{LIEN}."
+    B "{Qualificatif nom, 1re lettre capitalisee} {prefixe}{LIEN}."
+    C "Cette forme est le {qualificatif nom} {prefixe}{LIEN}."
+    D "Version {qualificatif adjectif} {prefixe}{LIEN}."
+  $inflectedFormFallbackByOriginalText : parcourt $senses->senses (source=template uniquement,
+    AUCUN filtre sur pos -- contrairement au repli verbe, le regex seul suffit a identifier le
+    gabarit), tente la regex ci-dessus, garde-fou explicite (lemme contenant chiffre/parenthese/
+    guillemet, ou > 30 caracteres) -- rejet total si declenche. Variante "de l'adjectif LEMME" :
+    elision RECALCULEE sur la 1re lettre de LEMME (la precision "adjectif" disparait du gabarit
+    varie, l'elision doit donc suivre LEMME et non plus "l'adjectif"). Variantes "d'"/"de "
+    directes : reprises telles quelles (elision deja tranchee par la source sur LEMME).
+  substitution : meme point d'insertion que le repli verbe (apres construction de $senseCards),
+    mais par BOUCLE COMPLETE sans `break` -- toute carte non deja substituee dont le texte
+    original correspond a une cle du repli est remplacee independamment (couvre le cas
+    sens-multiples).
+```
+
+Mesures :
+
+```text
+verification manuelle exhaustive par categorie (serveur local, mots reels) :
+  rotation complete (12 mots, couvrant les 5 qualificatifs et les 4 gabarits) : CANTONADES,
+    SUPERGEANTES, BRUYANTE, MENISCALES, NEVROTOMIES, MULTISOUPAPES, MEANDREUSES, CRAMPES,
+    CHLASSES, PROS, ISSANTES, CARITATIVE -- tous lien + majuscule corrects, qualificatif nom
+    correctement forme, capitalisation limitee a la 1re lettre (apres correction du bug
+    MB_CASE_TITLE ci-dessus).
+  elision recalculee ("de l'adjectif") : ABRASIVE -> "Féminin d'ABRASIF." -- confirme correct
+    (ABRASIF commence par une voyelle).
+  sens multiples (1 mot, AALENIENS) : 2 cartes DISTINCTES, chacune substituee independamment,
+    confirme apres correction du bug break/continue ci-dessus.
+  garde-fou/non-correspondance (2 mots reels) : AMIS ("Forme plurielle de  ami." -- double
+    espace source, regex non satisfaite), AILS ("Forme plurielle de ail (utilise en
+    particulier...)." -- detail apres le lemme, regex non satisfaite) -- les deux confirmes
+    TOTALEMENT inchanges, aucun lien insere.
+tests/Frontend/WordViewTest.php : 4 nouvelles fixtures ajoutees (MENISCALES rotation avec
+  qualificatif converti, ABRASIVE elision recalculee, AALENIENS sens multiples, AILS
+  non-correspondance/inchange) -- chaque valeur attendue re-verifiee en direct contre le rendu
+  reel avant d'etre ecrite dans le test.
+php tests/run.php : voir le rapport AFTER pour le compte final.
+```
+
+Conséquences :
+
+```text
+s'applique automatiquement a l'integralite des 66 497 cartes concernees des le deploiement du
+  code (aucune donnee a retoucher, aucun rebuild de storage/dictionary_fr.sqlite).
+non fait : les 174 cas malformes/annotes (0,26%) restent inchanges -- corriger la glose source
+  elle-meme releverait du pipeline offline, pas de ce correctif de vue.
+hors perimetre de cette entree (demande separee de l'utilisateur, investigation data-engine
+  lancee en parallele) : etendre la generation de contenu "form of" aux 435 120 mots francais
+  NON ADMIS actuellement sans aucune couverture word_senses -- sujet distinct, pas traite ici.
+```

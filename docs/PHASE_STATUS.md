@@ -129,6 +129,35 @@ Définition (réelle ou synthétisée) porte désormais la phrase variée, la se
 séparée ne montre plus que le cas infinitif (ex. POSER listant ses propres formes). Vérifié en
 direct sur les 3 mots exacts des captures : une seule carte chacun, plus de doublon.
 
+D-059 DÉPLOYÉ SUR O2SWITCH le 2026-09-04 (commit 6106e11, code seul via git archive, aucune
+base transférée — pure vue). Mot-clé "Scrabble" ajouté au H1/title de la home uniquement (pages
+mot inchangées, périmètre explicitement limité à la home) ; typo "Jouer Autour De {MOT}" alignée
+sur "Réponse Directe" (`.relations-title`/`.relations-intro`). Vérifié en direct sur
+https://www.wordcheckr.fr : H1 home affiche "Quels Mots Pouvez-Vous Jouer Au Scrabble ?".
+Correctifs relayés à ES/DE/EN (typo `.relations-intro` notamment, piège margin trouvé
+indépendamment côté EN, appliqué ici avant qu'on le reproduise).
+
+D-060 DÉPLOYÉ SUR O2SWITCH le 2026-09-04 (commit ebf1644, code seul via git archive, aucune
+base transférée — pure vue). Repli regex pour les 172 503/172 579 (99,96%) cartes "Forme
+conjuguée" sans ligne `verb_forms` correspondante (65% du total) — rotation complète appliquée
+là où un détail temps/personne est extrait, lien seul sinon, 76 cas malformés laissés
+inchangés. Vérifié en direct sur https://www.wordcheckr.fr/mot/managera : "Cette forme vient du
+verbe MANAGER, conjugué au futur à la 3e pers. sing." (lien + majuscule, gabarit D, plus de
+texte fixe non transformé).
+
+D-061 APPLIQUÉ LOCALEMENT (2026-09-05, PAS ENCORE DÉPLOYÉ) : même extension que D-060, mais pour
+les 66 671 cartes pos=N/Adj (pluriel/féminin/féminin pluriel/masculin/masculin pluriel), 66 497
+(99,7%) matchées. Qualificatif adjectif de la glose source converti en nom autonome dans les
+gabarits variés (ex. "féminine plurielle" → "féminin pluriel"). Deux bugs trouvés et corrigés
+pendant l'implémentation (voir D-061 dans docs/DECISIONS.md pour le détail complet) : mots à
+sens multiples distincts (6 894 mots, un `break` prématuré ne substituait que le premier),
+sur-capitalisation du qualificatif nom (`MB_CASE_TITLE` capitalisait chaque mot au lieu de la
+seule 1re lettre). Vérifié en direct en local sur 16+ mots réels (rotation, élision recalculée,
+sens multiples, cas non conformes laissés inchangés) et 4 nouvelles fixtures
+`tests/Frontend/WordViewTest.php`. Confirmé en direct que la production n'a PAS encore ce
+correctif (https://www.wordcheckr.fr/mot/meniscales affiche toujours le texte fixe non lié) —
+déploiement à suivre.
+
 D-049 APPLIQUÉ ET CORRIGÉ (2026-09-01) : "avec" SANS AUCUN ancrage (BARE, ni longueur ni préfixe
 ni suffixe) — demande produit explicite, preuve de volume réel Semrush. Convention de nom `BARE`
 alignée avec le dépôt allemand cousin. 1er audit seo-technical-auditor : **NO GO** (5 bloquants),

@@ -514,6 +514,95 @@ if ($conjugationVerbFormHtml === null) {
     }
 }
 
+// D-0XX (meme repli, etendu au pluriel/feminin/masculin -- retour utilisateur : "on l'a fait
+// pour les verbes, il faudrait aussi pour ca"). Meme defaut exact que MANAGERA : 66 671 cartes
+// "Forme plurielle/féminine/masculine de LEMME" (source=template, pos=N ou Adj) stockees en
+// base sans jamais de lien ni de majuscule, jamais de variation. Verifie exhaustivement sur les
+// 66 671 lignes reelles avant d'ecrire cette regle : 66 497 (99,7%) suivent un format ferme --
+// "Forme (plurielle|féminine[ plurielle]|masculine[ plurielle]) (de l'adjectif |d'|de )LEMME."
+// -- les 174 restantes (0,26%, glose deja annotee/malformee, ex. "Forme plurielle de ail
+// (utilisé en particulier...)") restent totalement inchangees, meme garde-fou que MANAGERA.
+$qualifierNounForms = [
+    'plurielle' => 'pluriel',
+    'féminine' => 'féminin',
+    'féminine plurielle' => 'féminin pluriel',
+    'masculine' => 'masculin',
+    'masculine plurielle' => 'masculin pluriel',
+];
+
+$renderInflectedFormPhrase = static function (
+    string $lemma,
+    string $slug,
+    string $qualifierAdjective,
+    string $qualifierNoun,
+    string $dePrefix,
+    int $variant,
+): string {
+    $link = '<a href="/mot/' . e($slug) . '">' . e($lemma) . '</a>';
+    // Seule la 1re lettre de la phrase est capitalisee ("Féminin pluriel", pas "Féminin
+    // Pluriel") -- mb_convert_case(..., MB_CASE_TITLE) capitaliserait a tort CHAQUE mot.
+    $qualifierNounCapitalized = mb_strtoupper(mb_substr($qualifierNoun, 0, 1), 'UTF-8')
+        . mb_substr($qualifierNoun, 1);
+
+    return match ($variant) {
+        0 => "Forme {$qualifierAdjective} {$dePrefix}{$link}.",
+        1 => "{$qualifierNounCapitalized} {$dePrefix}{$link}.",
+        2 => "Cette forme est le {$qualifierNoun} {$dePrefix}{$link}.",
+        default => "Version {$qualifierAdjective} {$dePrefix}{$link}.",
+    };
+};
+
+// D-0XX : contrairement au cas verbe (un seul sens pos=V/template par fiche, D-043), un mot
+// peut porter PLUSIEURS sens plurielle/feminin/masculin DISTINCTS (6 894 mots reels mesures,
+// ex. AALENIENS = "masculin pluriel de l'adjectif aalénien" ET, separement, "pluriel du nom
+// propre Aalénien") -- toutes les entrees correspondantes sont donc traitees ici, indexees par
+// leur texte source original (jamais un seul "representant" choisi comme pour la conjugaison,
+// ce sont des FAITS DIFFERENTS, pas plusieurs mesures du meme fait).
+$inflectedFormFallbackByOriginalText = [];
+foreach ($senses->senses as $sense) {
+    if ($sense['source'] !== 'template') {
+        continue;
+    }
+
+    if (preg_match(
+        '/^Forme (plurielle|féminine(?: plurielle)?|masculine(?: plurielle)?) (de l\'adjectif |d\'|de )(\S+)\.$/u',
+        $sense['definition'],
+        $m,
+    ) !== 1) {
+        continue;
+    }
+
+    [, $qualifierAdjective, $dePrefixRaw, $lemma] = $m;
+
+    if (preg_match('/[()0-9«»]/u', $lemma) === 1 || mb_strlen($lemma) > 30) {
+        // Glose source deja annotee/malformee (ex. "ail (utilisé en particulier...") -- laissee
+        // totalement inchangee, meme garde-fou que le repli verbe ci-dessus.
+        continue;
+    }
+
+    // "de l'adjectif LEMME" -> la precision "adjectif" est deja portee par le qualificatif
+    // (féminine/masculine) et n'a pas besoin d'etre repetee dans les gabarits varies -- mais
+    // l'elision d'origine portait sur "l'adjectif", PAS sur LEMME : recalculee ici sur la
+    // premiere lettre du LEMME (meme regle generique que $renderVerbFormPhrase). "d'"/"de "
+    // directs restent tels quels (elision deja tranchee par la source sur LEMME, jamais
+    // recalculee dans ce cas -- juste reprise).
+    if ($dePrefixRaw === "de l'adjectif ") {
+        $firstLemmaChar = mb_strtolower(mb_substr($lemma, 0, 1));
+        $dePrefix = in_array($firstLemmaChar, ['a', 'e', 'i', 'o', 'u', 'y'], true) ? "d'" : 'de ';
+    } else {
+        $dePrefix = $dePrefixRaw;
+    }
+
+    $inflectedFormFallbackByOriginalText[$sense['definition']] = $renderInflectedFormPhrase(
+        mb_strtoupper($lemma),
+        mb_strtolower($lemma),
+        $qualifierAdjective,
+        $qualifierNounForms[$qualifierAdjective] ?? $qualifierAdjective,
+        $dePrefix,
+        crc32($page->normalized) % 4,
+    );
+}
+
 // Cartes de definition (D-0XX) : une par sens, pos + genre (si nom) en etiquette, phrase de
 // definition en dessous. $senses->senses est deja borne (SenseLookup::ROW_LIMIT), aucune
 // pagination necessaire ici.
@@ -591,6 +680,23 @@ if ($conjugationVerbFormHtml !== null || $conjugationFallbackHtml !== null) {
             'html' => true,
         ];
     }
+}
+
+// D-0XX : meme substitution pour la ou les cartes pluriel/feminin/masculin -- retrouvees par
+// le TEXTE original (pas de champ 'pos' fixe unique, contrairement au cas verbe : pos peut
+// etre N ou Adj selon le mot). Plusieurs cartes DISTINCTES possibles pour le meme mot (ex.
+// AALENIENS, voir plus haut) -- chacune substituee independamment, jamais qu'une seule prise
+// au hasard. Le texte original identifie sans ambiguite la bonne carte, y compris apres une
+// fusion campagnards-style (nom + adjectif, meme texte source) : la carte fusionnee garde ce
+// meme texte tant qu'elle n'a pas encore ete substituee.
+if ($inflectedFormFallbackByOriginalText !== []) {
+    foreach ($senseCards as &$card) {
+        if (!$card['html'] && isset($inflectedFormFallbackByOriginalText[$card['definition']])) {
+            $card['definition'] = $inflectedFormFallbackByOriginalText[$card['definition']];
+            $card['html'] = true;
+        }
+    }
+    unset($card);
 }
 
 // asLemma : regroupe par temps (comme anagramsPlusOne regroupe par lettre ajoutee, meme
