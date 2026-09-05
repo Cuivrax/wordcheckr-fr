@@ -145,18 +145,26 @@ inchangés. Vérifié en direct sur https://www.wordcheckr.fr/mot/managera : "Ce
 verbe MANAGER, conjugué au futur à la 3e pers. sing." (lien + majuscule, gabarit D, plus de
 texte fixe non transformé).
 
-D-061 APPLIQUÉ LOCALEMENT (2026-09-05, PAS ENCORE DÉPLOYÉ) : même extension que D-060, mais pour
-les 66 671 cartes pos=N/Adj (pluriel/féminin/féminin pluriel/masculin/masculin pluriel), 66 497
-(99,7%) matchées. Qualificatif adjectif de la glose source converti en nom autonome dans les
-gabarits variés (ex. "féminine plurielle" → "féminin pluriel"). Deux bugs trouvés et corrigés
-pendant l'implémentation (voir D-061 dans docs/DECISIONS.md pour le détail complet) : mots à
-sens multiples distincts (6 894 mots, un `break` prématuré ne substituait que le premier),
+D-061 DÉPLOYÉ SUR O2SWITCH le 2026-09-05 (commit e5e42f7, code seul via git archive, aucune base
+transférée — pure vue). Même extension que D-060, mais pour les 66 671 cartes pos=N/Adj
+(pluriel/féminin/féminin pluriel/masculin/masculin pluriel), 66 497 (99,7%) matchées.
+Qualificatif adjectif de la glose source converti en nom autonome dans les gabarits variés (ex.
+"féminine plurielle" → "féminin pluriel"). Deux bugs trouvés et corrigés pendant
+l'implémentation (voir D-061 dans docs/DECISIONS.md pour le détail complet) : mots à sens
+multiples distincts (6 894 mots, un `break` prématuré ne substituait que le premier),
 sur-capitalisation du qualificatif nom (`MB_CASE_TITLE` capitalisait chaque mot au lieu de la
-seule 1re lettre). Vérifié en direct en local sur 16+ mots réels (rotation, élision recalculée,
-sens multiples, cas non conformes laissés inchangés) et 4 nouvelles fixtures
-`tests/Frontend/WordViewTest.php`. Confirmé en direct que la production n'a PAS encore ce
-correctif (https://www.wordcheckr.fr/mot/meniscales affiche toujours le texte fixe non lié) —
-déploiement à suivre.
+seule 1re lettre). Vérifié en local sur 16+ mots réels (rotation, élision recalculée, sens
+multiples, cas non conformes laissés inchangés) et 4 nouvelles fixtures
+`tests/Frontend/WordViewTest.php` (isolément : OK, `php tests/run.php` en entier gêné par une
+lenteur environnementale préexistante et sans rapport, voir plus bas). Vérifié en direct sur
+https://www.wordcheckr.fr après bascule : /mot/meniscales ("Féminin pluriel de MÉNISCAL"),
+/mot/abrasive (élision "Féminin d'ABRASIF"), /mot/aaleniens (2 cartes distinctes substituées) —
+identiques aux résultats locaux. Routes témoins (/, /mots/7-lettres) toujours 200.
+`php tests/run.php` complet non obtenu malgré 4 tentatives : le run stalle ou progresse très
+lentement dans des tests `tests/Search/Avec*LinksBuilderTest.php` (vérification brute-force sur
+838 180 lignes, SANS AUCUN RAPPORT avec ce correctif de vue) — process confirmé actif (CPU
+mesuré via PowerShell `Get-Process`, pas bloqué), juste anormalement lent dans cette session ;
+cause non diagnostiquée, à surveiller si ça persiste sur un futur lot.
 
 D-049 APPLIQUÉ ET CORRIGÉ (2026-09-01) : "avec" SANS AUCUN ancrage (BARE, ni longueur ni préfixe
 ni suffixe) — demande produit explicite, preuve de volume réel Semrush. Convention de nom `BARE`
